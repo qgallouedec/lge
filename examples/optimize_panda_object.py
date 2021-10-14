@@ -38,7 +38,6 @@ def objective(trial: optuna.Study):
         go_explore = GoExplore(
             env=env,
             cell_computer=cell_computer,
-            go_timesteps=10000,
             explore_timesteps=0,
             horizon=horizon,
             count_pow=count_pow,
