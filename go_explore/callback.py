@@ -69,7 +69,7 @@ class StopTrainingOnMaxTimesteps(BaseCallback):
         self.max_timesteps = max_timesteps
 
     def _on_step(self) -> bool:
-        num_timesteps = self.locals["self"].num_timesteps
+        num_timesteps = self.n_calls
         continue_training = num_timesteps < self.max_timesteps
         return continue_training
 

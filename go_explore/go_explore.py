@@ -10,7 +10,7 @@ from stable_baselines3.common.type_aliases import GymEnv, Schedule
 from stable_baselines3.td3.policies import TD3Policy
 
 from go_explore.buffer import PathfinderBuffer
-from go_explore.callback import LogNbCellsCallback, SaveNbCellsCallback, StopTrainingOnEndTrajectory, StoreCallback
+from go_explore.callback import LogNbCellsCallback, SaveNbCellsCallback, StopTrainingOnEndTrajectory, StopTrainingOnMaxTimesteps, StoreCallback
 from go_explore.cell_computers import CellComputer
 from go_explore.wrapper import GoalBufferTrajcetorySetterWrapper, GoExploreWrapper, HardResetSometimesWrapper
 
@@ -21,7 +21,6 @@ class GoExplore:
 
     :param env: The environment to learn from (if registered in Gym, can be str)
     :param cell_computer: The cell computer
-    :param go_timesteps: The max number of timesteps before forcing to stop the explore phase (and move to the explore phase)
     :param explore_timesteps: The number of random move when in explore phase
     :param horizon: When a subgoal trajectory is generated, you can choose to ignore some some subgoal. Set to ``1`` means
         no subgoal is ignored. Set to ``2``means one subgoal up to two is ignored
@@ -62,7 +61,6 @@ class GoExplore:
         self,
         env: Union[GymEnv, str],
         cell_computer: CellComputer,
-        go_timesteps: int,
         explore_timesteps: int,
         horizon: int = 1,
         count_pow: int = 1,
@@ -92,7 +90,6 @@ class GoExplore:
         env = GoExploreWrapper(env, cell_computer)
         env = TimeLimit(env, max_episode_steps=50)
 
-        self.go_timesteps = go_timesteps
         self.explore_timesteps = explore_timesteps
 
         self.goal_buffer = PathfinderBuffer(
@@ -108,7 +105,7 @@ class GoExplore:
 
         self.compute_success = None
         self._goal_trajectory = None  # used for predict
-
+        
         self.model = DDPG(
             policy=policy,
             env=self.env,
@@ -139,14 +136,15 @@ class GoExplore:
 
         :param total_timesteps: Total number of timesteps
         """
+        self.stop_training_callback = StopTrainingOnMaxTimesteps(total_timesteps)
         while self.model.num_timesteps < total_timesteps:
             try:
-                self.go(total_timesteps)
+                self.go()
             except IndexError:
                 pass
             self.explore(50)
 
-    def go(self, total_timesteps: int) -> None:
+    def go(self) -> None:
         """
         Go phase. Ends when a trajectory is entirely acheived.
 
@@ -157,8 +155,9 @@ class GoExplore:
             LogNbCellsCallback(self.encountered_buffer),
             StopTrainingOnEndTrajectory(),
             self.save_nb_cells_callback,
+            self.stop_training_callback,
         ]
-        self.model.learn(total_timesteps, reset_num_timesteps=False, callback=callbacks)
+        self.model.learn(np.infty, reset_num_timesteps=False, callback=callbacks)
 
     def explore(self, explore_timesteps: int) -> None:
         """
@@ -170,6 +169,7 @@ class GoExplore:
             StoreCallback(self.encountered_buffer),
             LogNbCellsCallback(self.encountered_buffer),
             self.save_nb_cells_callback,
+            self.stop_training_callback,
         ]
         self.model.learn(explore_timesteps, callback=callbacks, use_random_action=True, reset_num_timesteps=False)
 

@@ -12,11 +12,10 @@ cell_computer = PandaObjectCellComputer()
 go_explore = GoExplore(
     env=env,
     cell_computer=cell_computer,
-    go_timesteps=10000,
     explore_timesteps=0,
     horizon=10,
     count_pow=4,
-    learning_rate=0.001057,
+    learning_rate=0.0043,
     batch_size=1024,
     tau=0.02,
     gamma=0.995,
@@ -31,4 +30,4 @@ go_explore = GoExplore(
     },
     verbose=1,
 )
-go_explore.exploration(20000)
+go_explore.exploration(1000)
