@@ -10,7 +10,13 @@ from stable_baselines3.common.type_aliases import GymEnv, Schedule
 from stable_baselines3.td3.policies import TD3Policy
 
 from go_explore.buffer import PathfinderBuffer
-from go_explore.callback import LogNbCellsCallback, SaveNbCellsCallback, StopTrainingOnEndTrajectory, StopTrainingOnMaxTimesteps, StoreCallback
+from go_explore.callback import (
+    LogNbCellsCallback,
+    SaveNbCellsCallback,
+    StopTrainingOnEndTrajectory,
+    StopTrainingOnMaxTimesteps,
+    StoreCallback,
+)
 from go_explore.cell_computers import CellComputer
 from go_explore.wrapper import GoalBufferTrajcetorySetterWrapper, GoExploreWrapper, HardResetSometimesWrapper
 
@@ -105,7 +111,7 @@ class GoExplore:
 
         self.compute_success = None
         self._goal_trajectory = None  # used for predict
-        
+
         self.model = DDPG(
             policy=policy,
             env=self.env,
