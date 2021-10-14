@@ -340,8 +340,8 @@ class PandaGoalBufferFileTrajcetorySetterWrapper(GoalTrajcetorySetterWrapper):
         """
         Create an envrionment, and fill the buffer using random actions.
         """
-        from stable_baselines3.go_explore.buffer import PathfinderBuffer
-        from stable_baselines3.go_explore.cell_computers import PandaCellComputer
+        from go_explore.buffer import PathfinderBuffer
+        from go_explore.cell_computers import PandaCellComputer
 
         env = gym.make("PandaReach-v1")
         env = UnGoalWrapper(env)
