@@ -104,7 +104,7 @@ class GoExplore:
         env = HardResetSometimesWrapper(env, 300)
         self.env = env
 
-        self.save_nb_cells_callback = SaveNbCellsCallback(self.encountered_buffer, 500)
+        self.save_nb_cells_callback = SaveNbCellsCallback(self.encountered_buffer)
 
         self.compute_success = None
         self._goal_trajectory = None  # used for predict
@@ -158,14 +158,7 @@ class GoExplore:
             StopTrainingOnEndTrajectory(),
             self.save_nb_cells_callback,
         ]
-        self.model.learn(
-            total_timesteps,
-            eval_env=self.env,
-            eval_freq=2000,
-            n_eval_episodes=100,
-            reset_num_timesteps=False,
-            callback=callbacks,
-        )
+        self.model.learn(total_timesteps, reset_num_timesteps=False, callback=callbacks)
 
     def explore(self, explore_timesteps: int) -> None:
         """

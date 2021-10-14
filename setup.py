@@ -9,6 +9,6 @@ setup(
     install_requires=["stable_baselines3 @ git+https://git@github.com/qgallouedec/stable-baselines3.git", "scipy"],
     extras_require={
         "tests": ["pytest", "black"],
-        "extra": ["panda-gym"],
+        "extra": ["panda-gym", "optuna"],
     },
 )
