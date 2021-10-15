@@ -25,8 +25,9 @@ def objective(trial: optuna.Study):
     batch_size = trial.suggest_categorical("batch_size", [32, 64, 128, 256, 512, 1024])
     tau = trial.suggest_categorical("tau", [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1])
     train_freq = trial.suggest_categorical("train_freq", [1, 2, 4, 8, 16, 32, 64, 128, 256, 512])
-    net_arch = tuple([[nb_neur for _ in range(depth)] for nb_neur in [32, 64, 128, 256] for depth in [2, 3]])
-    net_arch = trial.suggest_categorical("net_arch", net_arch)
+    arch_depth = trial.suggest_categorical("arch_depth", [2, 3, 4])
+    arch_width = trial.suggest_categorical("arch_width", [32, 64, 128, 256])
+    net_arch = [arch_width] * arch_depth
     n_sampled_goal = trial.suggest_categorical("n_sampled_goal", [1, 2, 3, 4, 5, 6])
     goal_selection_strategy = trial.suggest_categorical("goal_selection_strategy", ["future", "episode"])
     online_sampling = trial.suggest_categorical("online_sampling", [True, False])
@@ -34,7 +35,7 @@ def objective(trial: optuna.Study):
     count_pow = trial.suggest_categorical("count_pow", [0, 1, 2, 3, 4])
 
     nb_cells = []
-    for _ in range(6):
+    for _ in range(3):
         go_explore = GoExplore(
             env=env,
             cell_computer=cell_computer,
@@ -55,7 +56,7 @@ def objective(trial: optuna.Study):
                 "max_episode_length": 50,
             },
         )
-        go_explore.exploration(20000)
+        go_explore.exploration(200000)
 
         nb_cells.append(go_explore.encountered_buffer.nb_cells)
     return np.median(nb_cells)
@@ -63,6 +64,6 @@ def objective(trial: optuna.Study):
 
 if __name__ == "__main__":
     study = optuna.create_study(
-        storage="sqlite:///optimize_panda_object.db", study_name="ExploreObject", direction="maximize", load_if_exists=True
+        storage="sqlite:///optimize_panda_object.db", study_name="ExploreObject200k", direction="maximize", load_if_exists=True
     )
     study.optimize(objective, n_trials=5)
