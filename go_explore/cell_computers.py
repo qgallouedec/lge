@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, List
 
 import numpy as np
+from numpy.core.fromnumeric import squeeze
 
 
 class Cell:
@@ -42,7 +43,7 @@ class CellComputer(ABC):
         :param observation: The observation to convert as cell
         :return: The obtained cell.
         """
-        observations = np.expand_dims(observation, 0)
+        observations = observation.reshape((1, -1))
         cell = self.compute_cells(observations)[0]
         return cell
 
@@ -77,7 +78,6 @@ class DownsampleCellComputer(CellComputer):
     """
 
     def __init__(self, std: np.ndarray, coef: float) -> None:
-
         super().__init__()
         self.std = std
         self.coef = coef

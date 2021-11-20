@@ -1,4 +1,4 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 from stable_baselines3.common.buffers import BaseBuffer
 from stable_baselines3.common.callbacks import BaseCallback
@@ -31,7 +31,7 @@ class StoreCallback(BaseCallback):
         return super()._on_step()
 
 
-class EpisodeEndCallback(BaseCallback):
+class EpisodeEndCallback(BaseCallback, ABC):
     """
     Base class for callbacks called at the end of episodes.
 
@@ -85,12 +85,9 @@ class LogNbCellsCallback(BaseCallback):
     def __init__(self, buffer: PathfinderBuffer, verbose: int = 0) -> None:
         super().__init__(verbose=verbose)
         self.buffer = buffer
-        self.nb_cells = []
 
     def _on_step(self) -> bool:
         self.logger.record("cells/number", int(self.buffer.nb_cells))
-        if self.model.num_timesteps % 500 == 0:
-            self.nb_cells.append(self.buffer.nb_cells)
         return super()._on_step()
 
 
