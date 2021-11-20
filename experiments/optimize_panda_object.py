@@ -2,7 +2,7 @@
 
 # Usage :
 Can be run in parallel on many workers:
-$ python examples/optimize_panda_object.py >> out.log 2>&1 &
+$ python experiements/optimize_panda_object.py >> out.log 2>&1 &
 """
 
 import gym
