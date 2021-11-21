@@ -14,7 +14,7 @@ def objective(trial: optuna.Study):
     batch_size = trial.suggest_categorical("batch_size", [32, 64, 128, 256, 512, 1024])
     tau = trial.suggest_categorical("tau", [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1])
     train_freq = trial.suggest_categorical("train_freq", [1, 2, 4, 8, 16, 32, 64, 128, 256, 512])
-    net_depth = trial.suggest_categorical("net_depth", [2, 3,4])
+    net_depth = trial.suggest_categorical("net_depth", [2, 3, 4])
     net_width = trial.suggest_categorical("net_width", [32, 64, 128, 256])
     net_arch = [net_width for _ in range(net_depth)]
 
