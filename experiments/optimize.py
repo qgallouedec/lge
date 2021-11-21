@@ -33,6 +33,7 @@ def objective(trial: optuna.Study):
     target_policy_noise = trial.suggest_loguniform("target_policy_noise", 1e-5, 1)
     target_noise_clip = trial.suggest_loguniform("target_noise_clip", 1e-5, 1)
 
+    rewards = []
     for _ in range(3):
         model = TD3(
             "MlpPolicy",
@@ -49,18 +50,18 @@ def objective(trial: optuna.Study):
             target_noise_clip=target_noise_clip,
             verbose=0,
         )
-        model.learn(300000)
+        model.learn(100000)
 
-        rewards = 0
+        sum_reward = 0
         for _ in range(50):
             obs = env.reset()
             done = False
             while not done:
                 action = model.predict(obs)[0]
                 obs, reward, done, info = env.step(action)
-                rewards += reward
-
-    return rewards
+                sum_reward += reward
+        rewards.append(sum_reward)
+    return np.median(rewards)
 
 
 if __name__ == "__main__":
