@@ -4,8 +4,8 @@ import optuna
 import panda_gym
 from go_explore.simhash import SimHashWrapper
 from go_explore.wrapper import UnGoalWrapper
-from stable_baselines3 import TD3, HerReplayBuffer
-from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
+from stable_baselines3 import TD3
+from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 
@@ -23,9 +23,9 @@ def objective(trial: optuna.Study):
     action_noise = action_noise_cls(mean=np.zeros(env.action_space.shape), sigma=np.ones(env.action_space.shape) * 0.5)
 
     rewards = []
-    for _ in range(3):
+    for _ in range(1):
         model = TD3("MlpPolicy", env, action_noise=action_noise, verbose=1)
-        model.learn(10000)
+        model.learn(30000)
 
         eval_env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
         eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_reward=100)
