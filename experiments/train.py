@@ -26,6 +26,7 @@ def train():
     model = TD3("MlpPolicy", env, action_noise=action_noise, verbose=1)
     eval_env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
     eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_reward=100)
+    eval_env = SimHashWrapper(eval_env, granularity=0, beta=1)
 
     i = 0
     path = "./results/" + str(i)
