@@ -1,21 +1,21 @@
 import gym
 import numpy as np
 import optuna
-
+import panda_gym
+from go_explore.simhash import SimHashWrapper
+from go_explore.wrapper import UnGoalWrapper
 from stable_baselines3 import TD3, HerReplayBuffer
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 
-from go_explore.simhash import SimHashWrapper
 
 # Define an objective function to be minimized.
 def objective(trial: optuna.Study):
-
     beta = trial.suggest_loguniform("beta", 1e-2, 1e2)
     granularity = trial.suggest_categorical("granularity", [16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192])
 
-    env = DummyVecEnv([lambda: gym.make("MountainCarContinuous-v0")])
+    env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
     env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_reward=100)
     env = SimHashWrapper(env, granularity=granularity, beta=beta)
 
@@ -24,10 +24,10 @@ def objective(trial: optuna.Study):
 
     rewards = []
     for _ in range(3):
-        model = TD3("MlpPolicy", env, action_noise=action_noise, verbose=0)
-        model.learn(50000)
+        model = TD3("MlpPolicy", env, action_noise=action_noise, verbose=1)
+        model.learn(10000)
 
-        eval_env = DummyVecEnv([lambda: gym.make("MountainCarContinuous-v0")])
+        eval_env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
         eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_reward=100)
         sum_reward = 0
         for _ in range(50):
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     import optuna.visualization
 
     study = optuna.create_study(
-        storage="sqlite:///example.db", study_name="MountainCarContinuousSimHash", direction="maximize", load_if_exists=True
+        storage="sqlite:///example.db", study_name="PandaReachSimHash", direction="maximize", load_if_exists=True
     )
     study.optimize(objective, n_trials=10)
     importances = optuna.importance.get_param_importances(study)
