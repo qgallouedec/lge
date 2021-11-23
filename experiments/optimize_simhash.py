@@ -19,23 +19,23 @@ def objective(trial: optuna.Study):
     env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_reward=100)
     env = SimHashWrapper(env, granularity=granularity, beta=beta)
 
-
     action_noise_cls = OrnsteinUhlenbeckActionNoise
     action_noise = action_noise_cls(mean=np.zeros(env.action_space.shape), sigma=np.ones(env.action_space.shape) * 0.5)
 
     rewards = []
-    for _ in range(5):
-
+    for _ in range(3):
         model = TD3("MlpPolicy", env, action_noise=action_noise, verbose=0)
         model.learn(50000)
 
+        eval_env = DummyVecEnv([lambda: gym.make("MountainCarContinuous-v0")])
+        eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_reward=100)
         sum_reward = 0
         for _ in range(50):
-            obs = env.reset()
+            obs = eval_env.reset()
             done = False
             while not done:
                 action = model.predict(obs)[0]
-                obs, reward, done, info = env.step(action)
+                obs, reward, done, info = eval_env.step(action)
                 sum_reward += reward
         rewards.append(sum_reward)
     return np.median(rewards)
