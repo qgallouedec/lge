@@ -29,7 +29,6 @@ class SimHash:
         return np.sign(np.matmul(self.A, obs))
 
 
-
 class SimHashWrapper(IntrinsicMotivationWrapper):
     """
     SimHash motivation.

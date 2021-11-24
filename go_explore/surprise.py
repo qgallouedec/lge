@@ -4,24 +4,14 @@ import gym
 import numpy as np
 import panda_gym
 import torch
+import torch.nn.functional
 from stable_baselines3.common.buffers import BaseBuffer
 from stable_baselines3.common.callbacks import BaseCallback, EveryNTimesteps
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvObs, VecEnvStepReturn
-import torch.nn.functional
+from torch import nn
+from torch.distributions import Normal
+
 from go_explore.wrapper import IntrinsicMotivationWrapper
-
-
-def compute_log_likelyhood(x, mean, log_std):
-    """
-    f(x) = prod(1/std sqrt(2*pi)) * exp(sum(-(x-mean)^2/(2*std^2)))
-    log(f(x)) = sum(1/std*sqrt(2*pi)) + sum(-(x-mean)^2/(2*std^2))
-    log(f(x)) = sum(1/std*sqrt(2*pi)) - sum((x-mean)^2/(2*std^2))
-    log(f(x)) = sum(1/exp(log_std)*sqrt(2*pi)) - sum((x-mean)^2/(2*exp(2*log_std)))
-    """
-    result = torch.sum(1 / (torch.exp(log_std) * np.sqrt(2 * np.pi))) - torch.sum(
-        (torch.square(x - mean)) / (2 * torch.exp(2 * log_std)), dim=-1
-    )
-    return result
 
 
 class SurpriseWrapper(IntrinsicMotivationWrapper):
@@ -48,16 +38,47 @@ class SurpriseWrapper(IntrinsicMotivationWrapper):
         return obs, reward, done, info
 
     def intrinsic_reward(self, obs: np.ndarray, action: np.ndarray) -> float:
-        input = np.concatenate((self._last_obs, action), axis=1)
-        input = torch.from_numpy(input).to(torch.float)
-        obs = torch.from_numpy(obs).to(torch.float)
+        next_obs = torch.from_numpy(obs).to(torch.float)
+        obs = torch.from_numpy(self._last_obs).to(torch.float)
+        action = torch.from_numpy(action).to(torch.float)
+        
         with torch.no_grad():
-            mean, log_std = self.transition_model(input)
-        log_likelyhood = torch.nn.functional.gaussian_nll_loss(obs, mean, log_std)
-        return -self.eta * log_likelyhood.item()
+            log_prob = self.transition_model(obs, action, next_obs)
+
+        return -self.eta * log_prob.item()
 
 
-class TransitionModel(torch.nn.Module):
+LOG_SIG_MAX = 2
+LOG_SIG_MIN = -20
+
+
+class TransitionModel(nn.Module):
+    def __init__(self, obs_shape, action_shape, hidden_dim=64):
+        super().__init__()
+
+        self.net = nn.Sequential(
+            nn.Linear(obs_shape + action_shape, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+        )
+        self.mean_net = nn.Linear(hidden_dim, obs_shape)
+        self.log_std_net = nn.Linear(hidden_dim, obs_shape)
+
+    def forward(self, obs, action, next_obs):
+        x = torch.concat((obs, action), dim=-1)
+        x = self.net(x)
+        mean = self.mean_net(x)
+        log_std = self.log_std_net(x)
+        log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
+        std = log_std.exp()
+        normal = Normal(mean, std)
+        log_prob = torch.sum(normal.log_prob(next_obs), dim=-1)
+        return log_prob
+
+
+
+class _TransitionModel(torch.nn.Module):
     def __init__(self, env: gym.Env):
         super().__init__()
         input_size = env.observation_space.shape[0] + env.action_space.shape[0]
@@ -87,7 +108,6 @@ class _TransitionModelLearner(BaseCallback):
         super().__init__(verbose=verbose)
         self.buffer = buffer
         self.transition_model = transition_model
-        self.criterion = torch.nn.GaussianNLLLoss()
         self.optimizer = torch.optim.Adam(self.transition_model.parameters(), lr=1e-4, weight_decay=1e-5)
 
     def _on_step(self):
@@ -95,9 +115,8 @@ class _TransitionModelLearner(BaseCallback):
             # φ_{i+1} = argmin_φ  −1/|D| sum_{(s,a,s')∈D} logPφ(s′|s,a) + α∥φ∥^2
             # D ̄KL(Pφ||Pφi)≤κ
             batch = self.buffer.sample(64)  # (s,a,s')∈D
-            input = torch.cat((batch.observations, batch.actions), dim=1)
-            mean, log_std = self.transition_model(input)
-            loss = self.criterion(batch.next_observations, mean, log_std)  # −1/|D| sum_{(s,a,s')∈D} logPφ(s′|s,a)
+            log_prob = self.transition_model(batch.observations, batch.actions, batch.next_observations)
+            loss = -torch.mean(log_prob)  # −1/|D| sum_{(s,a,s')∈D} logPφ(s′|s,a)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
