@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvStepReturn, VecEnvWrapper
 
+from go_explore.wrapper import IntrinsicMotivationWrapper
+
 
 class SimHash:
     """
@@ -26,35 +28,6 @@ class SimHash:
     def __call__(self, obs):
         return np.sign(np.matmul(self.A, obs))
 
-
-class IntrinsicMotivationWrapper(VecEnvWrapper, ABC):
-    """
-    A vectorized wrapper for intrinsic motivation.
-
-    :param venv: The vectorized environment.
-    """
-
-    def reset(self) -> np.ndarray:
-        obs = self.venv.reset()
-        return obs
-
-    def step_async(self, actions: np.ndarray) -> None:
-        self.venv.step_async(actions)
-
-    def step_wait(self) -> VecEnvStepReturn:
-        obs, reward, done, info = self.venv.step_wait()
-        reward += self.intrinsic_reward(obs)
-        return obs, reward, done, info
-
-    @abstractmethod
-    def intrinsic_reward(self, obs: np.ndarray) -> float:
-        """Intrinsic reward
-
-        :param obs: The current observation
-        :type obs: np.ndarray
-        :return: The intrinsic reward.
-        :rtype: float
-        """
 
 
 class SimHashWrapper(IntrinsicMotivationWrapper):
@@ -81,7 +54,7 @@ class SimHashWrapper(IntrinsicMotivationWrapper):
         self.counts = []
         self.beta = beta
 
-    def intrinsic_reward(self, obs: np.ndarray) -> float:
+    def intrinsic_reward(self, obs: np.ndarray, action: np.ndarray) -> float:
         obs_hash = list(self.hasher(obs[0]))
         if obs_hash not in self.encountered_hashes:
             self.encountered_hashes.append(obs_hash)

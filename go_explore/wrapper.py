@@ -6,6 +6,8 @@ import gym
 import gym.spaces
 import numpy as np
 from gym.wrappers.time_limit import TimeLimit
+from stable_baselines3.common.buffers import ReplayBuffer
+from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvObs, VecEnvStepReturn, VecEnvWrapper
 
 from go_explore.buffer import PathfinderBuffer
 from go_explore.cell_computers import CellComputer
@@ -382,3 +384,55 @@ class GoalBufferTrajcetorySetterWrapper(GoalTrajcetorySetterWrapper):
     def sample_trajectory(self, from_obs: np.ndarray) -> List[np.ndarray]:
         goal_trajectory = self.goal_buffer.sample_trajectory(from_obs)
         return goal_trajectory
+
+
+class IntrinsicMotivationWrapper(VecEnvWrapper, ABC):
+    """
+    A vectorized wrapper for intrinsic motivation.
+
+    :param venv: The vectorized environment.
+    """
+
+    def reset(self) -> np.ndarray:
+        obs = self.venv.reset()
+        return obs
+
+    def step_async(self, actions: np.ndarray) -> None:
+        self.action = actions
+        self.venv.step_async(actions)
+
+    def step_wait(self) -> VecEnvStepReturn:
+        obs, reward, done, info = self.venv.step_wait()
+        intrinsic_reward = self.intrinsic_reward(obs, self.action)
+        reward += intrinsic_reward
+        return obs, reward, done, info
+
+    @abstractmethod
+    def intrinsic_reward(self, obs: np.ndarray, action: np.ndarray) -> float:
+        """Intrinsic reward
+
+        :param obs: The current observation
+        :type obs: np.ndarray
+        :return: The intrinsic reward.
+        :rtype: float
+        """
+
+
+class StoreTransitionsWrapper(VecEnvWrapper):
+    def __init__(self, venv: VecEnv, buffer_size: int = 1000000):
+        super().__init__(venv)
+        self.replay_buffer = ReplayBuffer(buffer_size, venv.observation_space, venv.action_space)
+
+    def reset(self) -> VecEnvObs:
+        self._last_obs = self.venv.reset()
+        return self._last_obs
+
+    def step_async(self, actions: np.ndarray) -> None:
+        self._action = actions
+        self.venv.step_async(actions)
+
+    def step_wait(self) -> VecEnvStepReturn:
+        obs, reward, done, info = self.venv.step_wait()
+        self.replay_buffer.add(obs=self._last_obs, next_obs=obs, action=self._action, reward=reward, done=done, infos=info)
+        self._last_obs = obs
+        return obs, reward, done, info
