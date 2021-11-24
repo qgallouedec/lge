@@ -18,7 +18,7 @@ def objective(trial: optuna.Study):
         env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
         env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_reward=100)
         env = StoreTransitionsWrapper(env)
-        transition_model = TransitionModel(env)
+        transition_model = TransitionModel(env.observation_space.shape[0], env.action_space.shape[0])
         env = SurpriseWrapper(env, transition_model, eta=eta)
 
         action_noise_cls = OrnsteinUhlenbeckActionNoise
