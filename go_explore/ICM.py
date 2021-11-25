@@ -1,3 +1,6 @@
+from itertools import chain
+from typing import Iterator
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -5,6 +8,7 @@ from stable_baselines3.common.surgeon import ActorLossModifier, RewardModifier
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.common.utils import get_device
 from torch import nn
+from torch.nn.parameter import Parameter
 
 
 class InverseModel(nn.Module):
@@ -127,6 +131,9 @@ class ICM(ActorLossModifier, RewardModifier):
         self.inverse_model = InverseModel(feature_dim, action_dim, hidden_dim)
         self.feature_extractor = FeatureExtractor(obs_dim, feature_dim, hidden_dim)
         self.device = get_device("auto")
+
+    def parameters(self) -> Iterator[Parameter]:
+        return chain(self.forward_model.parameters(), self.inverse_model.parameters(), self.feature_extractor.parameters())
 
     def modify_loss(self, actor_loss: torch.Tensor, replay_data: ReplayBufferSamples) -> torch.Tensor:
         obs_feature = self.feature_extractor(replay_data.observations)
