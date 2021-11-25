@@ -1,9 +1,5 @@
-from abc import ABC, abstractmethod
-
 import numpy as np
-from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvStepReturn, VecEnvWrapper
-
-from go_explore.wrapper import IntrinsicMotivationWrapper
+from stable_baselines3.common.surgeon import RewardModifier
 
 
 class SimHash:
@@ -25,40 +21,42 @@ class SimHash:
     def __init__(self, obs_size: int, granularity: int) -> None:
         self.A = np.random.uniform(size=(granularity, obs_size))
 
-    def __call__(self, obs):
+    def __call__(self, obs: np.ndarray) -> np.ndarray:
         return np.sign(np.matmul(self.A, obs))
 
 
-class SimHashWrapper(IntrinsicMotivationWrapper):
+class SimHashMotivation(RewardModifier):
     """
     SimHash motivation.
 
-        reward += β / √n(φ(obs))
+        intrinsic_reward += β / √n(φ(obs))
 
     where β>0 is the bonus coefficient, φ the hash function and n the count.
+    Paper: https://arxiv.org/abs/1611.04717
 
-    :param venv: The vectorized environment.
-    :type venv: VecEnv
-    :param granularity: Granularity. Higher value lead to fewer collisions
-        and are thus more likely to distinguish states.
+    :param obs_dim: observation dimension
+    :type obs_dim: int
+    :param granularity: granularity; higher value lead to fewer collisions
+        and are thus more likely to distinguish states
     :type granularity: int
-    :param beta: The bonus coefficient.
+    :param beta: the bonus coefficient
     :type beta: float
     """
 
-    def __init__(self, venv: VecEnv, granularity: int, beta: float) -> None:
-        super().__init__(venv=venv)
-        self.hasher = SimHash(venv.observation_space.shape[0], granularity)
+    def __init__(self, obs_dim: int, granularity: int, beta: float) -> None:
+        self.hasher = SimHash(obs_dim, granularity)
         self.encountered_hashes = []
         self.counts = []
         self.beta = beta
 
-    def intrinsic_reward(self, obs: np.ndarray, action: np.ndarray) -> float:
-        obs_hash = list(self.hasher(obs[0]))
-        if obs_hash not in self.encountered_hashes:
-            self.encountered_hashes.append(obs_hash)
+    def modify_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray, reward: float) -> float:
+        next_obs_hash = list(self.hasher(next_obs[0]))
+        if next_obs_hash not in self.encountered_hashes:  # hash is new
+            self.encountered_hashes.append(next_obs_hash)
             self.counts.append(1)
-        else:
-            self.counts[self.encountered_hashes.index(obs_hash)] += 1
-        intrinsic_reward = self.beta / np.sqrt(self.counts[self.encountered_hashes.index(obs_hash)])
-        return intrinsic_reward
+        else:  # hash has already been encountered
+            self.counts[self.encountered_hashes.index(next_obs_hash)] += 1
+        count = self.counts[self.encountered_hashes.index(next_obs_hash)]
+        intrinsic_reward = self.beta / np.sqrt(count)
+        new_reward = reward + intrinsic_reward
+        return new_reward
