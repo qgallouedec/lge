@@ -126,6 +126,7 @@ class ICM(ActorLossModifier, RewardModifier):
         self.forward_model = ForwardModel(feature_dim, action_dim, hidden_dim)
         self.inverse_model = InverseModel(feature_dim, action_dim, hidden_dim)
         self.feature_extractor = FeatureExtractor(obs_dim, feature_dim, hidden_dim)
+        self.device = get_device("auto")
 
     def modify_loss(self, actor_loss: torch.Tensor, replay_data: ReplayBufferSamples) -> torch.Tensor:
         obs_feature = self.feature_extractor(replay_data.observations)
@@ -142,9 +143,9 @@ class ICM(ActorLossModifier, RewardModifier):
         return new_actor_loss
 
     def modify_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray, reward: float) -> float:
-        obs = torch.from_numpy(obs).to(torch.float)
-        action = torch.from_numpy(action).to(torch.float)
-        next_obs = torch.from_numpy(next_obs).to(torch.float)
+        obs = torch.from_numpy(obs).to(torch.float).to(self.device)
+        action = torch.from_numpy(action).to(torch.float).to(self.device)
+        next_obs = torch.from_numpy(next_obs).to(torch.float).to(self.device)
         obs_feature = self.feature_extractor(obs)
         next_obs_feature = self.feature_extractor(next_obs)
         pred_next_obs_feature = self.forward_model(action, obs_feature)
