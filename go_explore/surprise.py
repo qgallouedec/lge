@@ -28,20 +28,11 @@ class SurpriseWrapper(IntrinsicMotivationWrapper):
         self.transition_model = transition_model
         self.criterion = torch.nn.MSELoss()
 
-    def reset(self) -> VecEnvObs:
-        self._last_obs = self.venv.reset()
-        return self._last_obs
-
-    def step_wait(self) -> VecEnvStepReturn:
-        obs, reward, done, info = super().step_wait()
-        self._last_obs = obs
-        return obs, reward, done, info
-
-    def intrinsic_reward(self, obs: np.ndarray, action: np.ndarray) -> float:
-        next_obs = torch.from_numpy(obs).to(torch.float)
-        obs = torch.from_numpy(self._last_obs).to(torch.float)
+    def intrinsic_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray) -> float:
+        obs = torch.from_numpy(obs).to(torch.float)
         action = torch.from_numpy(action).to(torch.float)
-        
+        next_obs = torch.from_numpy(next_obs).to(torch.float)
+
         with torch.no_grad():
             log_prob = self.transition_model(obs, action, next_obs)
 
@@ -75,7 +66,6 @@ class TransitionModel(nn.Module):
         normal = Normal(mean, std)
         log_prob = torch.sum(normal.log_prob(next_obs), dim=-1)
         return log_prob
-
 
 
 class _TransitionModel(torch.nn.Module):
