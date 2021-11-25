@@ -39,7 +39,7 @@ def train():
         i += 1
         path = "./results/" + str(i)
     os.mkdir(path)
-    model.learn(30000, eval_freq=2000, n_eval_episodes=10, eval_log_path=path)
+    model.learn(30000, eval_env=env, eval_freq=2000, n_eval_episodes=10, eval_log_path=path)
 
 
 if __name__ == "__main__":
