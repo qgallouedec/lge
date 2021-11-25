@@ -1,9 +1,10 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 from stable_baselines3.common.surgeon import ActorLossModifier, RewardModifier
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
+from stable_baselines3.common.utils import get_device
 from torch import nn
-import numpy as np
 
 
 class InverseModel(nn.Module):
@@ -19,13 +20,14 @@ class InverseModel(nn.Module):
 
     def __init__(self, feature_dim: int, action_dim: int, hidden_dim: int) -> None:
         super().__init__()
+        device = get_device("auto")
         self.net = nn.Sequential(
             nn.Linear(feature_dim + feature_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
-        )
+        ).to(device)
 
     def forward(self, obs_feature, next_obs_feature):
         x = torch.concat((obs_feature, next_obs_feature), dim=-1)
@@ -46,13 +48,14 @@ class ForwardModel(nn.Module):
 
     def __init__(self, feature_dim: int, action_dim: int, hidden_dim: int) -> None:
         super().__init__()
+        device = get_device("auto")
         self.net = nn.Sequential(
             nn.Linear(feature_dim + action_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, feature_dim),
-        )
+        ).to(device)
 
     def forward(self, action: torch.Tensor, obs_feature: torch.Tensor) -> torch.Tensor:
         x = torch.concat((action, obs_feature), dim=-1)
@@ -74,13 +77,14 @@ class FeatureExtractor(nn.Module):
     def __init__(self, obs_dim: int, feature_dim: int, hidden_dim: int) -> None:
 
         super().__init__()
+        device = get_device("auto")
         self.net = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, feature_dim),
-        )
+        ).to(device)
 
     def forward(self, obs: torch.Tensor) -> torch.Tensor:
         obs_feature = self.net(obs)
