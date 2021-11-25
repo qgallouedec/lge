@@ -11,8 +11,8 @@ from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 
 
 def train():
-    granularity = 128
-    beta = 1
+    granularity = 1024
+    beta = 10
 
     env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
     env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_reward=100)
