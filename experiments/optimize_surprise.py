@@ -39,15 +39,13 @@ def objective(trial: optuna.Study):
 
         model.learn(8000, callback=cb)
 
-        eval_env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
-        eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_reward=100)
         sum_reward = 0
         for _ in range(50):
-            obs = eval_env.reset()
+            obs = env.reset()
             done = False
             while not done:
                 action = model.predict(obs)[0]
-                obs, reward, done, info = eval_env.step(action)
+                obs, reward, done, info = env.step(action)
                 sum_reward += reward
         rewards.append(sum_reward)
     return np.median(rewards)
