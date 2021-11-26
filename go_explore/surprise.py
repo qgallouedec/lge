@@ -1,64 +1,32 @@
-from typing import Optional
-
-import gym
 import numpy as np
 import panda_gym
 import torch
 import torch.nn.functional
 from stable_baselines3.common.buffers import BaseBuffer
-from stable_baselines3.common.callbacks import BaseCallback, EveryNTimesteps
-from stable_baselines3.common.vec_env.base_vec_env import VecEnv, VecEnvObs, VecEnvStepReturn
-from torch import nn
+from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.surgeon import RewardModifier
 from torch.distributions import Normal
-
-from go_explore.wrapper import IntrinsicMotivationWrapper
-
-
-class SurpriseWrapper(IntrinsicMotivationWrapper):
-    def __init__(
-        self,
-        venv: VecEnv,
-        transition_model: torch.nn.Module,
-        eta: float,
-        observation_space: Optional[gym.spaces.Space] = None,
-        action_space: Optional[gym.spaces.Space] = None,
-    ):
-        super().__init__(venv, observation_space=observation_space, action_space=action_space)
-        self.eta = eta
-        self.transition_model = transition_model
-        self.criterion = torch.nn.MSELoss()
-
-    def intrinsic_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray) -> float:
-        obs = torch.from_numpy(obs).to(torch.float)
-        action = torch.from_numpy(action).to(torch.float)
-        next_obs = torch.from_numpy(next_obs).to(torch.float)
-
-        with torch.no_grad():
-            log_prob = self.transition_model(obs, action, next_obs)
-
-        return -self.eta * log_prob.item()
-
 
 LOG_SIG_MAX = 2
 LOG_SIG_MIN = -20
 
 
-class TransitionModel(nn.Module):
-    def __init__(self, obs_shape, action_shape, hidden_dim=64):
+class TransitionModel(torch.nn.Module):
+    def __init__(self, obs_dim: int, action_dim: int, hidden_size: int) -> None:
         super().__init__()
-
-        self.net = nn.Sequential(
-            nn.Linear(obs_shape + action_shape, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+        input_size = obs_dim + action_dim
+        self.net = torch.nn.Sequential(
+            torch.nn.Linear(input_size, hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, hidden_size),
+            torch.nn.ReLU(),
         )
-        self.mean_net = nn.Linear(hidden_dim, obs_shape)
-        self.log_std_net = nn.Linear(hidden_dim, obs_shape)
+        self.mean_net = torch.nn.Linear(hidden_size, obs_dim)
+        self.log_std_net = torch.nn.Linear(hidden_size, obs_dim)
 
-    def forward(self, obs, action, next_obs):
-        x = torch.concat((obs, action), dim=-1)
-        x = self.net(x)
+    def forward(self, obs: torch.Tensor, action: torch.Tensor, next_obs: torch.Tensor) -> torch.Tensor:
+        obs_action = torch.concat((obs, action), dim=-1)
+        x = self.net(obs_action)
         mean = self.mean_net(x)
         log_std = self.log_std_net(x)
         log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
@@ -68,51 +36,55 @@ class TransitionModel(nn.Module):
         return log_prob
 
 
-class _TransitionModel(torch.nn.Module):
-    def __init__(self, env: gym.Env):
-        super().__init__()
-        input_size = env.observation_space.shape[0] + env.action_space.shape[0]
-        output_size = env.observation_space.shape[0] + env.observation_space.shape[0]  # mean and std
-        self.obs_size = env.observation_space.shape[0]
-        self.net = torch.nn.Sequential(
-            torch.nn.Linear(input_size, 64),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, 64),
-            torch.nn.ReLU(),
-        )
-        self.mean_net = torch.nn.Linear(64, env.observation_space.shape[0])
-        self.std_net = torch.nn.Sequential(
-            torch.nn.Linear(64, env.observation_space.shape[0]),
-            torch.nn.Softmax(1),
-        )
+class SurpriseMotivation(RewardModifier):
+    def __init__(self, obs_dim: int, action_dim: int, eta: float, hidden_size: int) -> None:
+        self.eta = eta
+        self.transition_model = TransitionModel(obs_dim=obs_dim, action_dim=action_dim, hidden_size=hidden_size)
 
-    def forward(self, x):
-        y = self.net(x)
-        mean = self.mean_net(y)
-        log_std = self.std_net(y)
-        return mean, log_std
+    def modify_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray, reward: float) -> float:
+        obs = torch.from_numpy(obs).to(torch.float)
+        action = torch.from_numpy(action).to(torch.float)
+        next_obs = torch.from_numpy(next_obs).to(torch.float)
+
+        with torch.no_grad():
+            log_prob = self.transition_model(obs, action, next_obs)
+        intrinsic_reward = -self.eta * log_prob.item()
+        return reward + intrinsic_reward
 
 
-class _TransitionModelLearner(BaseCallback):
-    def __init__(self, transition_model: torch.nn.Module, buffer: BaseBuffer, verbose: int = 0):
-        super().__init__(verbose=verbose)
-        self.buffer = buffer
+class TransitionModelLearner(BaseCallback):
+    def __init__(
+        self,
+        transition_model: torch.nn.Module,
+        buffer: BaseBuffer,
+        train_freq: int,
+        grad_step: int,
+        weight_decay: float,
+        lr: float,
+        batch_size: int,
+    ) -> None:
+        super(TransitionModelLearner, self).__init__()
         self.transition_model = transition_model
-        self.optimizer = torch.optim.Adam(self.transition_model.parameters(), lr=1e-4, weight_decay=1e-5)
+        self.buffer = buffer
+        self.train_freq = train_freq
+        self.grad_step = grad_step
+        self.batch_size = batch_size
+        self.optimizer = torch.optim.Adam(self.transition_model.parameters(), lr=lr, weight_decay=weight_decay)
+        self.last_time_trigger = 0
 
-    def _on_step(self):
-        for _ in range(10):
+    def _on_step(self) -> bool:
+        if (self.num_timesteps - self.last_time_trigger) >= self.train_freq:
+            self.last_time_trigger = self.num_timesteps
+            self.train_once()
+        return True
+
+    def train_once(self):
+        for _ in range(self.grad_step):
             # φ_{i+1} = argmin_φ  −1/|D| sum_{(s,a,s')∈D} logPφ(s′|s,a) + α∥φ∥^2
             # D ̄KL(Pφ||Pφi)≤κ
-            batch = self.buffer.sample(64)  # (s,a,s')∈D
+            batch = self.buffer.sample(self.batch_size)  # (s,a,s')∈D
             log_prob = self.transition_model(batch.observations, batch.actions, batch.next_observations)
             loss = -torch.mean(log_prob)  # −1/|D| sum_{(s,a,s')∈D} logPφ(s′|s,a)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-
-
-class TransitionModelLearner(EveryNTimesteps):
-    def __init__(self, transition_model: torch.nn.Module, buffer: BaseBuffer, train_freq: int, verbose: int = 0):
-        callback = _TransitionModelLearner(transition_model=transition_model, buffer=buffer, verbose=verbose)
-        super().__init__(n_steps=train_freq, callback=callback)

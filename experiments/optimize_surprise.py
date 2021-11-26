@@ -1,33 +1,43 @@
 import gym
 import numpy as np
 import optuna
-from go_explore.surprise import SurpriseWrapper, TransitionModel, TransitionModelLearner
-from go_explore.wrapper import StoreTransitionsWrapper, UnGoalWrapper
+from go_explore.surprise import SurpriseMotivation, TransitionModelLearner
+from go_explore.wrapper import UnGoalWrapper
 from stable_baselines3 import SAC
-from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.vec_env.dummy_vec_env import DummyVecEnv
 from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 
 
 # Define an objective function to be minimized.
 def objective(trial: optuna.Study):
-    eta = trial.suggest_loguniform("eta", 1e-3, 1e2)
+    eta = trial.suggest_loguniform("eta", 1e-3, 1e6)
+    hidden_size = trial.suggest_categorical("hidden_size", [32, 64, 128, 256, 512])
+    train_freq = trial.suggest_categorical("train_freq", [1, 5, 10, 50, 100, 500, 1000])
+    grad_step = trial.suggest_categorical("grad_step", [1, 5, 10, 50, 100, 500, 1000])
+    weight_decay = trial.suggest_loguniform("weight_decay", 1e-7, 1e-2)
+    lr = trial.suggest_loguniform("lr", 1e-5, 1e-2)
+    batch_size = trial.suggest_categorical("batch_size", [32, 64, 128, 256, 512])
 
     rewards = []
     for _ in range(3):
         env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
         env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_reward=100)
-        env = StoreTransitionsWrapper(env)
-        transition_model = TransitionModel(env.observation_space.shape[0], env.action_space.shape[0])
-        env = SurpriseWrapper(env, transition_model, eta=eta)
+        surprise_motivation = SurpriseMotivation(
+            obs_dim=env.observation_space.shape[0], action_dim=env.action_space.shape[0], eta=eta, hidden_size=hidden_size
+        )
 
-        action_noise_cls = OrnsteinUhlenbeckActionNoise
-        action_noise = action_noise_cls(mean=np.zeros(env.action_space.shape), sigma=np.ones(env.action_space.shape) * 0.5)
+        model = SAC("MlpPolicy", env, reward_modifier=surprise_motivation, verbose=1)
+        cb = TransitionModelLearner(
+            transition_model=surprise_motivation.transition_model,
+            buffer=model.replay_buffer,
+            train_freq=train_freq,
+            grad_step=grad_step,
+            weight_decay=weight_decay,
+            lr=lr,
+            batch_size=batch_size,
+        )
 
-        model = SAC("MlpPolicy", env, action_noise=action_noise, verbose=1)
-        cb = TransitionModelLearner(transition_model=transition_model, buffer=env.replay_buffer, train_freq=10)
-
-        model.learn(20000, callback=cb)
+        model.learn(8000, callback=cb)
 
         eval_env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
         eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, clip_reward=100)
