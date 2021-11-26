@@ -5,6 +5,7 @@ import torch.nn.functional
 from stable_baselines3.common.buffers import BaseBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.surgeon import RewardModifier
+from stable_baselines3.common.utils import get_device
 from torch.distributions import Normal
 
 LOG_SIG_MAX = 2
@@ -15,12 +16,13 @@ class TransitionModel(torch.nn.Module):
     def __init__(self, obs_dim: int, action_dim: int, hidden_size: int) -> None:
         super().__init__()
         input_size = obs_dim + action_dim
+        device = get_device("auto")
         self.net = torch.nn.Sequential(
             torch.nn.Linear(input_size, hidden_size),
             torch.nn.ReLU(),
             torch.nn.Linear(hidden_size, hidden_size),
             torch.nn.ReLU(),
-        )
+        ).to(device)
         self.mean_net = torch.nn.Linear(hidden_size, obs_dim)
         self.log_std_net = torch.nn.Linear(hidden_size, obs_dim)
 
