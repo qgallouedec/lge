@@ -42,11 +42,12 @@ class SurpriseMotivation(RewardModifier):
     def __init__(self, obs_dim: int, action_dim: int, eta: float, hidden_size: int) -> None:
         self.eta = eta
         self.transition_model = TransitionModel(obs_dim=obs_dim, action_dim=action_dim, hidden_size=hidden_size)
+        self.device = get_device("auto")
 
     def modify_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray, reward: float) -> float:
-        obs = torch.from_numpy(obs).to(torch.float)
-        action = torch.from_numpy(action).to(torch.float)
-        next_obs = torch.from_numpy(next_obs).to(torch.float)
+        obs = torch.from_numpy(obs).to(torch.float).to(self.device)
+        action = torch.from_numpy(action).to(torch.float).to(self.device)
+        next_obs = torch.from_numpy(next_obs).to(torch.float).to(self.device)
 
         with torch.no_grad():
             log_prob = self.transition_model(obs, action, next_obs)
