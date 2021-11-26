@@ -4,8 +4,7 @@ import optuna
 from go_explore.surprise import SurpriseMotivation, TransitionModelLearner
 from go_explore.wrapper import UnGoalWrapper
 from stable_baselines3 import SAC
-from stable_baselines3.common.vec_env.dummy_vec_env import DummyVecEnv
-from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 # Define an objective function to be minimized.
