@@ -23,8 +23,8 @@ class TransitionModel(torch.nn.Module):
             torch.nn.Linear(hidden_size, hidden_size),
             torch.nn.ReLU(),
         ).to(device)
-        self.mean_net = torch.nn.Linear(hidden_size, obs_dim)
-        self.log_std_net = torch.nn.Linear(hidden_size, obs_dim)
+        self.mean_net = torch.nn.Linear(hidden_size, obs_dim).to(device)
+        self.log_std_net = torch.nn.Linear(hidden_size, obs_dim).to(device)
 
     def forward(self, obs: torch.Tensor, action: torch.Tensor, next_obs: torch.Tensor) -> torch.Tensor:
         obs_action = torch.concat((obs, action), dim=-1)
