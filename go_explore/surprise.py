@@ -85,7 +85,10 @@ class TransitionModelLearner(BaseCallback):
         for _ in range(self.grad_step):
             # φ_{i+1} = argmin_φ  −1/|D| sum_{(s,a,s')∈D} logPφ(s′|s,a) + α∥φ∥^2
             # D ̄KL(Pφ||Pφi)≤κ
-            batch = self.buffer.sample(self.batch_size)  # (s,a,s')∈D
+            try:
+                batch = self.buffer.sample(self.batch_size)  # (s,a,s')∈D
+            except ValueError:
+                return
             log_prob = self.transition_model(batch.observations, batch.actions, batch.next_observations)
             loss = -torch.mean(log_prob)  # −1/|D| sum_{(s,a,s')∈D} logPφ(s′|s,a)
             self.optimizer.zero_grad()
