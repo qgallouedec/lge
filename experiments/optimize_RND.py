@@ -10,7 +10,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 # Define an objective function to be minimized.
 def objective(trial: optuna.Study):
-    scaling_factor = trial.suggest_categorical("scaling_factor", [0.1, 1, 10, 100, 1000, 10000, 100000])
+    scaling_factor = trial.suggest_categorical("scaling_factor", [1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1, 1e2])
     hidden_size = trial.suggest_categorical("hidden_size", [32, 64, 128, 256, 512])
     train_freq = trial.suggest_categorical("train_freq", [1, 5, 10, 50, 100, 500, 1000])
     grad_step = trial.suggest_categorical("grad_step", [1, 5, 10, 50, 100, 500, 1000])
