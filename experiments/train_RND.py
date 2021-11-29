@@ -11,12 +11,12 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 def train():
     scaling_factor = 0.1
     out_dim = 64
-    hidden_dim = 32
+    hidden_dim = 128
     train_freq = 10
-    grad_step = 1000
-    weight_decay = 1e-6
+    grad_step = 100
+    weight_decay = 1e-2
     lr = 1e-5
-    batch_size = 64
+    batch_size = 512
 
     env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
     env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_reward=100)
@@ -42,7 +42,7 @@ def train():
         i += 1
         path = "./results/" + str(i)
     os.mkdir(path)
-    model.learn(10000, callback=cb, eval_env=env, eval_freq=2000, n_eval_episodes=10, eval_log_path=path)
+    model.learn(20000, callback=cb, eval_env=env, eval_freq=2000, n_eval_episodes=10, eval_log_path=path)
 
 
 if __name__ == "__main__":
