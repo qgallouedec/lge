@@ -76,5 +76,4 @@ class ICM(ActorLossModifier, RewardModifier):
         # r^i = η/2*||φˆ(st+1)−φ(st+1)||
         intrinsic_reward = self.scaling_factor * F.mse_loss(pred_next_obs_feature, next_obs_feature)
         new_reward = reward + intrinsic_reward.item()
-        print(intrinsic_reward)
         return new_reward
