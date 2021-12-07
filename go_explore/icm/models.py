@@ -1,6 +1,6 @@
-from torch import nn
 import torch
 from stable_baselines3.common.utils import get_device
+from torch import nn
 
 
 class InverseModel(nn.Module):

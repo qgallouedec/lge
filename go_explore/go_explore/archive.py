@@ -5,7 +5,7 @@ import numpy as np
 import torch as th
 from gym import spaces
 from scipy.sparse.csgraph import shortest_path
-from stable_baselines3.common.buffers import DictReplayBuffer, ReplayBuffer
+from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 

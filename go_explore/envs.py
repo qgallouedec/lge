@@ -9,7 +9,7 @@ from gym import register, spaces
 
 from go_explore.common.wrappers import EpisodeStartWrapper
 from go_explore.go_explore.archive import ArchiveBuffer
-from go_explore.go_explore.cell_computers import CellComputer, PandaCellComputer, PandaObjectCellComputer
+from go_explore.go_explore.cell_computers import PandaCellComputer, PandaObjectCellComputer
 
 
 class _ContinuousMinigrid(gym.Env):

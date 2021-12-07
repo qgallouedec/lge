@@ -4,13 +4,11 @@ from typing import Iterator
 import numpy as np
 import torch
 import torch.nn.functional as F
+from go_explore.icm.models import FeatureExtractor, ForwardModel, InverseModel
 from stable_baselines3.common.surgeon import ActorLossModifier, RewardModifier
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.common.utils import get_device
-from torch import nn
 from torch.nn.parameter import Parameter
-
-from go_explore.icm.models import FeatureExtractor, ForwardModel, InverseModel
 
 
 class ICM(ActorLossModifier, RewardModifier):
