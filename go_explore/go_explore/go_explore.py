@@ -6,7 +6,6 @@ from stable_baselines3.ddpg.ddpg import DDPG
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
 
 from go_explore.common.callbacks import LogNbCellsCallback, SaveNbCellsCallback
-from go_explore.envs import PandaSubgoal
 
 
 class GoExplore:
@@ -16,7 +15,7 @@ class GoExplore:
     :param env: The environment to learn from (if registered in Gym, can be str)
     """
 
-    def __init__(self, env: PandaSubgoal) -> None:
+    def __init__(self, env) -> None:
         self.explore_model = DDPG("MultiInputPolicy", env, replay_buffer_class=HerReplayBuffer, verbose=1)
         self.explore_model.replay_buffer.child_buffer = env.archive
         self.cell_logger = LogNbCellsCallback(env.archive)
