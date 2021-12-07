@@ -1,5 +1,4 @@
 import numpy as np
-import panda_gym
 import torch
 import torch.nn.functional
 from stable_baselines3.common.buffers import BaseBuffer

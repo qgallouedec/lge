@@ -9,7 +9,8 @@ from torch import nn
 
 
 class Network(nn.Module):
-    """Network. Used for predictor and target.
+    """
+    Network. Used for predictor and target.
 
     :param obs_dim: feature dimension
     :type feature_dim: int
@@ -36,7 +37,8 @@ class Network(nn.Module):
 
 
 class RND(RewardModifier):
-    """Random Distillation Network
+    """
+    Random Distillation Network.
 
     :param scaling_factor: scaling factor for the intrinsic reward
     :type scaling_factor: float

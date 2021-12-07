@@ -2,12 +2,13 @@ from abc import ABC, abstractmethod
 from typing import Any, List
 
 import numpy as np
-from numpy.core.fromnumeric import squeeze
 
 
 class Cell:
     """
     Cells is used as dict key, thus it must be hashable.
+
+    :param arr: array
     """
 
     def __init__(self, arr: np.ndarray) -> None:
@@ -106,7 +107,7 @@ class PandaCellComputer(CellComputer):
         super().__init__()
 
     def _process(self, observations: np.ndarray) -> np.ndarray:
-        reduced_obs = observations[..., [3, 4, 5]]  # x, y, z
+        reduced_obs = observations[..., [0, 1, 2]]  # x, y, z
         downsampled_obs = np.floor(reduced_obs / self.std, dtype=np.float32)
         return downsampled_obs
 
@@ -121,22 +122,6 @@ class PandaObjectCellComputer(CellComputer):
         super().__init__()
 
     def _process(self, observations: np.ndarray) -> np.ndarray:
-        reduced_obs = observations[..., [3, 4, 5, 10, 11, 12]]  # x, y, z object
+        reduced_obs = observations[..., [0, 1, 2, 7, 8, 9]]  # x, y, z object
         downsampled_obs = np.floor(reduced_obs / self.std, dtype=np.float32)
-        return downsampled_obs
-
-
-class MountainCarCellComputer(CellComputer):
-    """
-    Cell computer for MountainCarContinuous-v0. A cell is computed based on the ee position.
-    """
-
-    def __init__(self) -> None:
-        self.std = np.array([1.0])
-        self.coef = 10.0
-        super().__init__()
-
-    def _process(self, observations: np.ndarray) -> np.ndarray:
-        reduced_obs = observations[..., [0]]  # take only the position
-        downsampled_obs = np.floor(self.coef * reduced_obs / self.std)
         return downsampled_obs

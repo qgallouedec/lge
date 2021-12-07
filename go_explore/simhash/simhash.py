@@ -19,7 +19,7 @@ class SimHash:
     """
 
     def __init__(self, obs_size: int, granularity: int) -> None:
-        self.A = np.random.uniform(size=(granularity, obs_size))
+        self.A = np.random.normal(size=(granularity, obs_size))
 
     def __call__(self, obs: np.ndarray) -> np.ndarray:
         return np.sign(np.matmul(self.A, obs))
@@ -43,11 +43,12 @@ class SimHashMotivation(RewardModifier):
     :type beta: float
     """
 
-    def __init__(self, obs_dim: int, granularity: int, beta: float) -> None:
+    def __init__(self, obs_dim: int, granularity: int, beta: float, pure_exploration: bool = False) -> None:
         self.hasher = SimHash(obs_dim, granularity)
         self.encountered_hashes = []
         self.counts = []
         self.beta = beta
+        self.pure_exploration = pure_exploration
 
     def modify_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray, reward: float) -> float:
         next_obs_hash = list(self.hasher(next_obs[0]))
@@ -58,5 +59,5 @@ class SimHashMotivation(RewardModifier):
             self.counts[self.encountered_hashes.index(next_obs_hash)] += 1
         count = self.counts[self.encountered_hashes.index(next_obs_hash)]
         intrinsic_reward = self.beta / np.sqrt(count)
-        new_reward = reward + intrinsic_reward
+        new_reward = (1 - self.pure_exploration) * reward + intrinsic_reward
         return new_reward
