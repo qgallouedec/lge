@@ -7,7 +7,7 @@ import numpy as np
 import panda_gym
 from gym import register, spaces
 
-from go_explore.common.wrappers import EpisodeStartWrapper
+from go_explore.common.wrappers import EpisodeStartWrapper, UnGoalWrapper
 from go_explore.go_explore.archive import ArchiveBuffer
 from go_explore.go_explore.cell_computers import PandaCellComputer, PandaObjectCellComputer
 
@@ -286,5 +286,18 @@ def PandaSubgoalArchive(**kwargs):
 register(
     id="PandaSubgoalArchive-v0",
     entry_point="go_explore.envs:PandaSubgoalArchive",
+    max_episode_steps=50,
+)
+
+
+def PandaReachFlat(**kwargs):
+    env = gym.make("PandaReach-v2", **kwargs)
+    env = UnGoalWrapper(env)  # needed to store properly in archive
+    return env
+
+
+register(
+    id="PandaReachFlat-v0",
+    entry_point="go_explore.envs:PandaReachFlat",
     max_episode_steps=50,
 )
