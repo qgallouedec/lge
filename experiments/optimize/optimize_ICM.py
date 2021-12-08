@@ -4,6 +4,7 @@ import numpy as np
 import optuna
 from go_explore.icm import ICM
 from stable_baselines3 import SAC
+from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 
 
 def objective(trial: optuna.Study):
@@ -16,6 +17,7 @@ def objective(trial: optuna.Study):
     rewards = []
     for _ in range(3):
         env = gym.make("PandaReachFlat-v0")
+        env = VecNormalize(env)
         icm = ICM(
             beta=beta,
             scaling_factor=scaling_factor,
