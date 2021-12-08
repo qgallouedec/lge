@@ -1,3 +1,4 @@
+from stable_baselines3.common.vec_env.dummy_vec_env import DummyVecEnv
 import go_explore.envs
 import gym
 import numpy as np
@@ -16,7 +17,7 @@ def objective(trial: optuna.Study):
 
     rewards = []
     for _ in range(3):
-        env = gym.make("PandaReachFlat-v0")
+        env = DummyVecEnv([lambda: gym.make("PandaReachFlat-v0")])
         env = VecNormalize(env)
         icm = ICM(
             beta=beta,
