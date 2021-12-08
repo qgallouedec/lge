@@ -1,9 +1,9 @@
-import go_explore.envs
-import gym
 import numpy as np
 import optuna
+from go_explore.envs import PandaReachFlat
 from go_explore.simhash import SimHashMotivation
 from stable_baselines3 import SAC
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 def objective(trial: optuna.Study):
@@ -12,8 +12,8 @@ def objective(trial: optuna.Study):
 
     rewards = []
     for _ in range(3):
-        env = gym.make("PandaReachFlat-v0")
-
+        env = DummyVecEnv([PandaReachFlat])
+        env = VecNormalize(env, norm_reward=False)
         simhash = SimHashMotivation(obs_dim=env.observation_space.shape[0], granularity=granularity, beta=beta)
         model = SAC("MlpPolicy", env, reward_modifier=simhash, verbose=1)
         model.learn(8000)

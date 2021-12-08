@@ -292,12 +292,11 @@ register(
 
 def PandaReachFlat(**kwargs):
     env = gym.make("PandaReach-v2", **kwargs)
-    env = UnGoalWrapper(env)  # needed to store properly in archive
+    env = UnGoalWrapper(env)
     return env
 
-
-register(
-    id="PandaReachFlat-v0",
-    entry_point="go_explore.envs:PandaReachFlat",
-    max_episode_steps=50,
-)
+# For some reason, registering the env causes great diminution of performances
+# register(
+#     id="PandaReachFlat-v0",
+#     entry_point="go_explore.envs:PandaReachFlat",
+# )

@@ -1,11 +1,9 @@
-from stable_baselines3.common.vec_env.dummy_vec_env import DummyVecEnv
-import go_explore.envs
-import gym
 import numpy as np
 import optuna
+from go_explore.envs import PandaReachFlat
 from go_explore.icm import ICM
 from stable_baselines3 import SAC
-from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 def objective(trial: optuna.Study):
@@ -17,8 +15,8 @@ def objective(trial: optuna.Study):
 
     rewards = []
     for _ in range(3):
-        env = DummyVecEnv([lambda: gym.make("PandaReachFlat-v0")])
-        env = VecNormalize(env)
+        env = DummyVecEnv([PandaReachFlat])
+        env = VecNormalize(env, norm_reward=False)
         icm = ICM(
             beta=beta,
             scaling_factor=scaling_factor,
@@ -29,7 +27,7 @@ def objective(trial: optuna.Study):
             hidden_dim=hidden_dim,
         )
         model = SAC("MlpPolicy", env, actor_loss_modifier=icm, reward_modifier=icm, verbose=1)
-        model.learn(8000)
+        model.learn(7000)
 
         sum_reward = 0
         for _ in range(50):

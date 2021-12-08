@@ -1,9 +1,9 @@
-import go_explore.envs
-import gym
 import numpy as np
 import optuna
+from go_explore.envs import PandaReachFlat
 from go_explore.rnd import RND, PredictorLearner
 from stable_baselines3 import SAC
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 # Define an objective function to be minimized.
@@ -19,7 +19,8 @@ def objective(trial: optuna.Study):
 
     rewards = []
     for _ in range(3):
-        env = gym.make("PandaReachFlat-v0")
+        env = DummyVecEnv([PandaReachFlat])
+        env = VecNormalize(env, norm_reward=False)
         rnd = RND(
             scaling_factor=scaling_factor, obs_dim=env.observation_space.shape[0], out_dim=out_dim, hidden_dim=hidden_size
         )
