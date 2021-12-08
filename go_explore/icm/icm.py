@@ -65,15 +65,20 @@ class ICM(ActorLossModifier, RewardModifier):
         new_actor_loss = self.lmbda * actor_loss + (1 - self.beta) * inverse_loss + self.beta * forward_loss
         return new_actor_loss
 
-    def modify_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray, reward: float) -> float:
-        obs = torch.from_numpy(obs).to(torch.float).to(self.device)
-        action = torch.from_numpy(action).to(torch.float).to(self.device)
-        next_obs = torch.from_numpy(next_obs).to(torch.float).to(self.device)
-        obs_feature = self.feature_extractor(obs)
-        next_obs_feature = self.feature_extractor(next_obs)
-        pred_next_obs_feature = self.forward_model(action, obs_feature)
+    def modify_reward(
+        self, observations: torch.Tensor, actions: torch.Tensor, next_observations: torch.Tensor, rewards: torch.Tensor
+    ) -> torch.Tensor:
+        # obs = torch.from_numpy(obs).to(torch.float).to(self.device)
+        # action = torch.from_numpy(action).to(torch.float).to(self.device)
+        # next_obs = torch.from_numpy(next_obs).to(torch.float).to(self.device)
+        obs_feature = self.feature_extractor(observations)
+        next_obs_feature = self.feature_extractor(next_observations)
+        pred_next_obs_feature = self.forward_model(actions, obs_feature)
         # Equation (6) of the original paper
         # r^i = η/2*||φˆ(st+1)−φ(st+1)||
-        intrinsic_reward = self.scaling_factor * F.mse_loss(pred_next_obs_feature, next_obs_feature)
-        new_reward = reward + intrinsic_reward.item()
+        intrinsic_reward = (
+            self.scaling_factor
+            * torch.sum(F.mse_loss(pred_next_obs_feature, next_obs_feature, reduction="none"), dim=1).unsqueeze(1).detach()
+        )
+        new_reward = rewards + intrinsic_reward
         return new_reward

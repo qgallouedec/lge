@@ -295,6 +295,7 @@ def PandaReachFlat(**kwargs):
     env = UnGoalWrapper(env)
     return env
 
+
 # For some reason, registering the env causes great diminution of performances
 # register(
 #     id="PandaReachFlat-v0",
