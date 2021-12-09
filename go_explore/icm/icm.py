@@ -77,5 +77,5 @@ class ICM(ActorLossModifier, RewardModifier):
             self.scaling_factor
             * torch.sum(F.mse_loss(pred_next_obs_feature, next_obs_feature, reduction="none"), dim=1).unsqueeze(1).detach()
         )
-        new_reward = rewards + intrinsic_reward
+        new_reward = rewards.to(self.device) + intrinsic_reward
         return new_reward
