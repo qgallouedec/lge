@@ -68,9 +68,9 @@ class ICM(ActorLossModifier, RewardModifier):
     def modify_reward(
         self, observations: torch.Tensor, actions: torch.Tensor, next_observations: torch.Tensor, rewards: torch.Tensor
     ) -> torch.Tensor:
-        obs_feature = self.feature_extractor(observations)
-        next_obs_feature = self.feature_extractor(next_observations)
-        pred_next_obs_feature = self.forward_model(actions, obs_feature)
+        obs_feature = self.feature_extractor(observations.to(self.device))
+        next_obs_feature = self.feature_extractor(next_observations.to(self.device))
+        pred_next_obs_feature = self.forward_model(actions, obs_feature.to(self.device))
         # Equation (6) of the original paper
         # r^i = η/2*||φˆ(st+1)−φ(st+1)||
         intrinsic_reward = (
