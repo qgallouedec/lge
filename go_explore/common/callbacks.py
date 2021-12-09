@@ -18,14 +18,7 @@ class LogNbCellsCallback(BaseCallback):
         self.goal_reached = []
 
     def _on_step(self) -> bool:
-        infos = self.locals["infos"]
-        if infos[0].get("subgoal_reached") is not None:
-            self.subgoal_reached.append(infos[0].get("subgoal_reached"))
-        if infos[0].get("goal_reached") is not None:
-            self.goal_reached.append(infos[0].get("goal_reached"))
         self.logger.record("cells/number", int(self.archive.nb_cells))
-        self.logger.record("rollout/subgoal_reached", np.mean(self.subgoal_reached[-100:]))
-        self.logger.record("rollout/goal_reached", np.mean(self.goal_reached[-100:]))
         return super()._on_step()
 
 

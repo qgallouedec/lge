@@ -108,7 +108,6 @@ class ArchiveBuffer(ReplayBuffer):
         reward: np.ndarray,
         done: np.ndarray,
         infos: List[Dict[str, Any]],
-        episode_start: bool = False,
     ) -> None:
         """Add an element to the buffer.
 
@@ -152,7 +151,7 @@ class ArchiveBuffer(ReplayBuffer):
 
         # we consider the current cell only if the episode starts
         # if not, it means that the current has already been processed
-        if episode_start:
+        if infos[0].get("episode_start", False):
             process_cell(obs, current_cell)
         process_cell(next_obs, next_cell)
         self._update_csgraph(current_cell, next_cell)

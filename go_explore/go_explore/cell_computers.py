@@ -94,7 +94,7 @@ class CellIsObs(CellComputer):
     """
 
     def _process(self, observations: np.ndarray) -> np.ndarray:
-        return observations
+        return observations.round(6)  # fix rounding error
 
 
 class PandaCellComputer(CellComputer):

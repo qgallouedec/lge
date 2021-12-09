@@ -68,9 +68,6 @@ class ICM(ActorLossModifier, RewardModifier):
     def modify_reward(
         self, observations: torch.Tensor, actions: torch.Tensor, next_observations: torch.Tensor, rewards: torch.Tensor
     ) -> torch.Tensor:
-        # obs = torch.from_numpy(obs).to(torch.float).to(self.device)
-        # action = torch.from_numpy(action).to(torch.float).to(self.device)
-        # next_obs = torch.from_numpy(next_obs).to(torch.float).to(self.device)
         obs_feature = self.feature_extractor(observations)
         next_obs_feature = self.feature_extractor(next_observations)
         pred_next_obs_feature = self.forward_model(actions, obs_feature)
