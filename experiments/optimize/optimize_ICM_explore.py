@@ -30,7 +30,7 @@ def objective(trial: optuna.Study):
             hidden_dim=hidden_dim,
         )
         model = SAC("MlpPolicy", env, reward_modifier=icm, actor_loss_modifier=icm)
-        model.replay_buffer = ArchiveBuffer(1000000, env.observation_space, env.action_space, CellIsObs())
+        model.replay_buffer = ArchiveBuffer(1000000, env.observation_space, env.action_space, CellIsObs(), device=model.device)
         model.learn(10000)
         results.append(model.replay_buffer.nb_cells)
 

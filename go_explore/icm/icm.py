@@ -1,7 +1,6 @@
 from itertools import chain
 from typing import Iterator
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from go_explore.icm.models import FeatureExtractor, ForwardModel, InverseModel
@@ -68,14 +67,14 @@ class ICM(ActorLossModifier, RewardModifier):
     def modify_reward(
         self, observations: torch.Tensor, actions: torch.Tensor, next_observations: torch.Tensor, rewards: torch.Tensor
     ) -> torch.Tensor:
-        obs_feature = self.feature_extractor(observations.to(self.device))
-        next_obs_feature = self.feature_extractor(next_observations.to(self.device))
-        pred_next_obs_feature = self.forward_model(actions.to(self.device), obs_feature)
+        obs_feature = self.feature_extractor(observations)
+        next_obs_feature = self.feature_extractor(next_observations)
+        pred_next_obs_feature = self.forward_model(actions, obs_feature)
         # Equation (6) of the original paper
         # r^i = η/2*||φˆ(st+1)−φ(st+1)||
         intrinsic_reward = (
             self.scaling_factor
             * torch.sum(F.mse_loss(pred_next_obs_feature, next_obs_feature, reduction="none"), dim=1).unsqueeze(1).detach()
         )
-        new_reward = rewards.to(self.device) + intrinsic_reward
+        new_reward = rewards + intrinsic_reward
         return new_reward
