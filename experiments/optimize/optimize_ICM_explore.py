@@ -1,3 +1,4 @@
+import go_explore.envs
 import gym
 import numpy as np
 import optuna
