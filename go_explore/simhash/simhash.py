@@ -3,6 +3,7 @@ import numpy as np
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.surgeon import RewardModifier
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
+from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 import torch
 
@@ -25,7 +26,7 @@ class SimHash:
 
     def __init__(self, obs_size: int, granularity: int) -> None:
         size = (granularity, obs_size)
-        self.A = torch.normal(mean=torch.zeros(size), std=torch.ones(size))
+        self.A = torch.normal(mean=torch.zeros(size), std=torch.ones(size)).to(get_device("auto"))
 
     def __call__(self, obs: torch.Tensor) -> torch.Tensor:
         return torch.sign(torch.matmul(self.A, obs.T)).T
