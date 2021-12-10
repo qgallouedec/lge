@@ -53,23 +53,22 @@ class SimHashMotivation(RewardModifier):
         self.buffer = buffer
         self.env = env
         self.hasher = SimHash(buffer.obs_shape[0], granularity)
-        self.encountered_hashes = []
-        self.counts = []
         self.beta = beta
         self.pure_exploration = pure_exploration
 
     def modify_reward(self, replay_data: ReplayBufferSamples) -> ReplayBufferSamples:
         next_obs_hash = self.hasher(replay_data.next_observations)
         pos = self.buffer.buffer_size if self.buffer.full else self.buffer.pos
-        all_data = self.buffer._get_samples(np.arange(pos), self.env)
-        all_hashes = self.hasher(all_data.next_observations)
+        all_next_observations = torch.from_numpy(self.buffer._normalize_obs(self.buffer.next_observations[:pos], self.env))
+        all_next_observations = all_next_observations.view(-1, self.buffer.obs_shape[0])
+        all_hashes = self.hasher(all_next_observations)
         unique, all_counts = torch.unique(all_hashes, dim=0, return_counts=True)
         count = torch.zeros(next_obs_hash.shape[0])
         for k, hash in enumerate(next_obs_hash):
             idx = (unique == hash).all(1)
             count[k] = all_counts[idx]
         intrinsic_reward = self.beta / torch.sqrt(count)
-        new_rewards = (1 - self.pure_exploration) * replay_data.rewards + intrinsic_reward
+        new_rewards = (1 - self.pure_exploration) * replay_data.rewards + intrinsic_reward.unsqueeze(1)
         new_replay_data = ReplayBufferSamples(
             replay_data.observations, replay_data.actions, replay_data.next_observations, replay_data.dones, new_rewards
         )
