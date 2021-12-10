@@ -4,14 +4,12 @@ from torch import nn
 
 
 class InverseModel(nn.Module):
-    """Inverse model, used to predict action based on obs and next_obs.
+    """
+    Inverse model, used to predict action based on obs and next_obs.
 
     :param feature_dim: feature dimension
-    :type feature_dim: int
     :param action_dim: action dimension
-    :type action_dim: int
     :param hidden_dim: hidden dimension
-    :type hidden_dim: int
     """
 
     def __init__(self, feature_dim: int, action_dim: int, hidden_dim: int) -> None:
@@ -32,7 +30,8 @@ class InverseModel(nn.Module):
 
 
 class ForwardModel(nn.Module):
-    """The forward model takes as inputs φ(st) and at and predicts the feature representation φˆ(st+1).
+    """
+    The forward model takes as inputs φ(st) and at and predicts the feature representation φˆ(st+1).
 
     :param feature_dim: The feature dimension
     :type feature_dim: int
@@ -60,7 +59,8 @@ class ForwardModel(nn.Module):
 
 
 class FeatureExtractor(nn.Module):
-    """Feature extractor.
+    """
+    Feature extractor.
 
     :param obs_dim: observation dimension
     :type obs_dim: int

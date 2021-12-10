@@ -13,35 +13,30 @@ from torch.nn.parameter import Parameter
 class ICM(ActorLossModifier, RewardModifier):
     def __init__(
         self,
-        beta: float,
         scaling_factor: float,
-        lmbda: float,
+        actor_loss_coef: float,
+        inverse_loss_coef: float,
+        forward_loss_coef: float,
         obs_dim: int,
         action_dim: int,
-        feature_dim: int = 3,
+        feature_dim: int = 16,
         hidden_dim: int = 64,
     ):
         """Intrinsic curiosity module.
 
-        :param beta: scalar in [0, 1] that weighs the inverse model loss against the forward model loss
-        :type beta: float
-        :param scaling_factor: scaling factor for the intrinsic reward
-        :type scaling_factor: float
-        :param lmbda: scalar that weighs the importance of the policy gradient loss against the importance of
-            learning the intrinsic reward signal
-        :type lmbda: float
+        :param scaling_factor: scalar weights the intrinsic motivation
+        :param actor_loss_coef: coef for the actor loss in the loss computation
+        :param inverse_loss_coef: coef for the inverse loss in the loss computation
+        :param forward_loss_coef: coef for the forward loss in the loss computation
         :param obs_dim: observation dimension
-        :type obs_dim: int
         :param action_dim: action dimension
-        :type action_dim: int
-        :param feature_dim: feature dimension, defaults to 3
-        :type feature_dim: int, optional
+        :param feature_dim: feature dimension, defaults to 16
         :param hidden_dim: hidden dimension, defaults to 64
-        :type hidden_dim: int, optional
         """
-        self.beta = beta
         self.scaling_factor = scaling_factor
-        self.lmbda = lmbda
+        self.actor_loss_coef = actor_loss_coef
+        self.inverse_loss_coef = inverse_loss_coef
+        self.forward_loss_coef = forward_loss_coef
         self.forward_model = ForwardModel(feature_dim, action_dim, hidden_dim)
         self.inverse_model = InverseModel(feature_dim, action_dim, hidden_dim)
         self.feature_extractor = FeatureExtractor(obs_dim, feature_dim, hidden_dim)
@@ -61,20 +56,23 @@ class ICM(ActorLossModifier, RewardModifier):
         inverse_loss = F.mse_loss(pred_action, replay_data.actions)
         # equation (7) of the original paper
         # − λEπ(st;θP )[Σtrt] + (1 − β)LI + βLF
-        new_actor_loss = self.lmbda * actor_loss + (1 - self.beta) * inverse_loss + self.beta * forward_loss
+        new_actor_loss = (
+            self.actor_loss_coef * actor_loss + self.inverse_loss_coef * inverse_loss + self.forward_loss_coef * forward_loss
+        )
         return new_actor_loss
 
-    def modify_reward(
-        self, observations: torch.Tensor, actions: torch.Tensor, next_observations: torch.Tensor, rewards: torch.Tensor
-    ) -> torch.Tensor:
-        obs_feature = self.feature_extractor(observations)
-        next_obs_feature = self.feature_extractor(next_observations)
-        pred_next_obs_feature = self.forward_model(actions, obs_feature)
+    def modify_reward(self, replay_data: ReplayBufferSamples) -> ReplayBufferSamples:
+        obs_feature = self.feature_extractor(replay_data.observations)
+        next_obs_feature = self.feature_extractor(replay_data.next_observations)
+        pred_next_obs_feature = self.forward_model(replay_data.actions, obs_feature)
         # Equation (6) of the original paper
         # r^i = η/2*||φˆ(st+1)−φ(st+1)||
         intrinsic_reward = (
             self.scaling_factor
             * torch.sum(F.mse_loss(pred_next_obs_feature, next_obs_feature, reduction="none"), dim=1).unsqueeze(1).detach()
         )
-        new_reward = rewards + intrinsic_reward
-        return new_reward
+        new_rewards = replay_data.rewards + intrinsic_reward
+        new_replay_data = ReplayBufferSamples(
+            replay_data.observations, replay_data.actions, replay_data.next_observations, replay_data.dones, new_rewards
+        )
+        return new_replay_data

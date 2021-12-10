@@ -4,6 +4,7 @@ import torch.nn.functional
 from stable_baselines3.common.buffers import BaseBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.surgeon import RewardModifier
+from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.common.utils import get_device
 from torch.distributions import Normal
 
@@ -43,15 +44,14 @@ class SurpriseMotivation(RewardModifier):
         self.transition_model = TransitionModel(obs_dim=obs_dim, action_dim=action_dim, hidden_size=hidden_size)
         self.device = get_device("auto")
 
-    def modify_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray, reward: float) -> float:
-        obs = torch.from_numpy(obs).to(torch.float).to(self.device)
-        action = torch.from_numpy(action).to(torch.float).to(self.device)
-        next_obs = torch.from_numpy(next_obs).to(torch.float).to(self.device)
-
-        with torch.no_grad():
-            log_prob = self.transition_model(obs, action, next_obs)
-        intrinsic_reward = -self.eta * log_prob.item()
-        return reward + intrinsic_reward
+    def modify_reward(self, replay_data: ReplayBufferSamples) -> ReplayBufferSamples:
+        log_prob = self.transition_model(replay_data.observations, replay_data.actions, replay_data.next_observations)
+        intrinsic_rewards = -self.eta * log_prob
+        new_rewards = replay_data.rewards + intrinsic_rewards.unsqueeze(1)
+        new_replay_data = ReplayBufferSamples(
+            replay_data.observations, replay_data.actions, replay_data.next_observations, replay_data.dones, new_rewards
+        )
+        return new_replay_data
 
 
 class TransitionModelLearner(BaseCallback):

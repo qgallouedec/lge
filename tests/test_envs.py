@@ -143,7 +143,8 @@ def test_panda_subgoal_archive():
     for fake_episode in [fake_episode1, fake_episode2]:
         episode_start = True
         for i in range(len(fake_episode) - 1):
-            archive.add(fake_episode[i], fake_episode[i + 1], np.zeros(4), 0.0, False, [{}], episode_start)
+            archive.add(fake_episode[i], fake_episode[i + 1], np.zeros(4), 0.0, False, [{"episode_start": episode_start}])
+            episode_start = False
 
     obs = env.reset()
     for _ in range(50):

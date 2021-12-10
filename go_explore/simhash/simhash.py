@@ -1,5 +1,10 @@
+from typing import Optional
 import numpy as np
+from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.surgeon import RewardModifier
+from stable_baselines3.common.type_aliases import ReplayBufferSamples
+from stable_baselines3.common.vec_env.base_vec_env import VecEnv
+import torch
 
 
 class SimHash:
@@ -19,10 +24,11 @@ class SimHash:
     """
 
     def __init__(self, obs_size: int, granularity: int) -> None:
-        self.A = np.random.normal(size=(granularity, obs_size))
+        size = (granularity, obs_size)
+        self.A = torch.normal(mean=torch.zeros(size), std=torch.ones(size))
 
-    def __call__(self, obs: np.ndarray) -> np.ndarray:
-        return np.sign(np.matmul(self.A, obs))
+    def __call__(self, obs: torch.Tensor) -> torch.Tensor:
+        return torch.sign(torch.matmul(self.A, obs.T)).T
 
 
 class SimHashMotivation(RewardModifier):
@@ -34,8 +40,6 @@ class SimHashMotivation(RewardModifier):
     where β>0 is the bonus coefficient, φ the hash function and n the count.
     Paper: https://arxiv.org/abs/1611.04717
 
-    :param obs_dim: observation dimension
-    :type obs_dim: int
     :param granularity: granularity; higher value lead to fewer collisions
         and are thus more likely to distinguish states
     :type granularity: int
@@ -43,21 +47,30 @@ class SimHashMotivation(RewardModifier):
     :type beta: float
     """
 
-    def __init__(self, obs_dim: int, granularity: int, beta: float, pure_exploration: bool = False) -> None:
-        self.hasher = SimHash(obs_dim, granularity)
+    def __init__(
+        self, buffer: ReplayBuffer, env: Optional[VecEnv], granularity: int, beta: float, pure_exploration: bool = False
+    ) -> None:
+        self.buffer = buffer
+        self.env = env
+        self.hasher = SimHash(buffer.obs_shape[0], granularity)
         self.encountered_hashes = []
         self.counts = []
         self.beta = beta
         self.pure_exploration = pure_exploration
 
-    def modify_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray, reward: float) -> float:
-        next_obs_hash = list(self.hasher(next_obs[0]))
-        if next_obs_hash not in self.encountered_hashes:  # hash is new
-            self.encountered_hashes.append(next_obs_hash)
-            self.counts.append(1)
-        else:  # hash has already been encountered
-            self.counts[self.encountered_hashes.index(next_obs_hash)] += 1
-        count = self.counts[self.encountered_hashes.index(next_obs_hash)]
-        intrinsic_reward = self.beta / np.sqrt(count)
-        new_reward = (1 - self.pure_exploration) * reward + intrinsic_reward
-        return new_reward
+    def modify_reward(self, replay_data: ReplayBufferSamples) -> ReplayBufferSamples:
+        next_obs_hash = self.hasher(replay_data.next_observations)
+        pos = self.buffer.buffer_size if self.buffer.full else self.buffer.pos
+        all_data = self.buffer._get_samples(np.arange(pos), self.env)
+        all_hashes = self.hasher(all_data.next_observations)
+        unique, all_counts = torch.unique(all_hashes, dim=0, return_counts=True)
+        count = torch.zeros(next_obs_hash.shape[0])
+        for k, hash in enumerate(next_obs_hash):
+            idx = (unique == hash).all(1)
+            count[k] = all_counts[idx]
+        intrinsic_reward = self.beta / torch.sqrt(count)
+        new_rewards = (1 - self.pure_exploration) * replay_data.rewards + intrinsic_reward
+        new_replay_data = ReplayBufferSamples(
+            replay_data.observations, replay_data.actions, replay_data.next_observations, replay_data.dones, new_rewards
+        )
+        return new_replay_data

@@ -1,9 +1,9 @@
-import numpy as np
 import torch
 import torch.nn.functional as F
 from stable_baselines3.common.buffers import BaseBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.surgeon import RewardModifier
+from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.common.utils import get_device
 from torch import nn
 
@@ -13,11 +13,8 @@ class Network(nn.Module):
     Network. Used for predictor and target.
 
     :param obs_dim: feature dimension
-    :type feature_dim: int
     :param hidden_dim: hidden dimension
-    :type hidden_dim: int
     :param out_dim: output dimension
-    :type out_dim: int
     """
 
     def __init__(self, obs_dim: int, hidden_dim: int, out_dim: int) -> None:
@@ -41,13 +38,9 @@ class RND(RewardModifier):
     Random Distillation Network.
 
     :param scaling_factor: scaling factor for the intrinsic reward
-    :type scaling_factor: float
     :param obs_dim: observation dimension
-    :type obs_dim: int
     :param out_dim: output dimension
-    :type out_dim: int
     :param hidden_dim: hidden dimension, defaults to 64
-    :type hidden_dim: int, optional
     """
 
     def __init__(
@@ -56,20 +49,21 @@ class RND(RewardModifier):
         obs_dim: int,
         out_dim: int,
         hidden_dim: int = 64,
-    ):
+    ) -> None:
         self.scaling_factor = scaling_factor  # we use here a tuned scaling factor instead of normalization
         self.target = Network(obs_dim, hidden_dim, out_dim)
         self.predictor = Network(obs_dim, hidden_dim, out_dim)
         self.device = get_device("auto")
 
-    def modify_reward(self, obs: np.ndarray, action: np.ndarray, next_obs: np.ndarray, reward: float) -> float:
-        next_obs = torch.from_numpy(next_obs).to(torch.float).to(self.device)
-        with torch.no_grad():
-            target = self.target(next_obs)
-            pred = self.predictor(next_obs)
-            intrinsic_reward = self.scaling_factor * F.mse_loss(pred, target.detach())
-            new_reward = reward + self.scaling_factor * intrinsic_reward.item()
-        return new_reward
+    def modify_reward(self, replay_data: ReplayBufferSamples) -> ReplayBufferSamples:
+        target = self.target(replay_data.next_observations)
+        pred = self.predictor(replay_data.next_observations)
+        intrinsic_reward = self.scaling_factor * F.mse_loss(pred, target.detach(), reduction="none").mean(1).unsqueeze(1)
+        new_rewards = replay_data.rewards + self.scaling_factor * intrinsic_reward.detach()
+        new_replay_data = ReplayBufferSamples(
+            replay_data.observations, replay_data.actions, replay_data.next_observations, replay_data.dones, new_rewards
+        )
+        return new_replay_data
 
 
 class PredictorLearner(BaseCallback):

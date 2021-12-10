@@ -94,7 +94,8 @@ class ArchiveBuffer(ReplayBuffer):
 
         self._cell_to_idx = {}  # A dict mapping cell to a unique idx
         self._idx_to_cell = []  # Same, but the other way. Faster than using .index()
-        self._cell_to_obss = {}  # A dict mapping cell to a list of every encountered observation in that cell
+        # A dict mapping cell to a list of every encountered observation in that cell
+        self._cell_to_obss: Dict[Cell, List[np.ndarray]] = {}
         self.nb_cells = 0  # The number of encountered cells
         # csgraph is a matrix to store idx that are neighboors (csgraph[5][2] == 1 means that 5 can lead to 2)
         self.csgraph = np.zeros(shape=(0, 0))
@@ -119,44 +120,46 @@ class ArchiveBuffer(ReplayBuffer):
         :param infos: infos
         :param episode_start: whether the episode starts, defaults to False
         """
-        if type(obs) is dict:
-            return self.add(obs["observation"], next_obs["observation"], action, reward, done, infos)
         super().add(obs, next_obs, action, reward, done, infos)
-        # safety code for vectorized env
-        obs, next_obs = obs.squeeze(), next_obs.squeeze()
+        for _obs, _next_obs, _infos in zip(obs, next_obs, infos):
+            self._process_transition(_obs, _next_obs, _infos)
+
+    def _process_transition(self, obs: np.ndarray, next_obs: np.ndarray, infos: Dict[str, Any]) -> None:
         # compute cells
         current_cell = self.cell_computer.compute_cell(obs)
         next_cell = self.cell_computer.compute_cell(next_obs)
-
-        def new(cell: Cell):
-            """Need to be called when you encountered a new cell"""
-            idx = len(self._cell_to_idx)
-            self._idx_to_cell.append(cell)
-            self._cell_to_idx[cell] = idx
-            self._cell_to_obss[cell] = []
-            self.nb_cells += 1
-            # expanding arrays
-            self._counts = np.pad(self._counts, (0, 1), constant_values=0)
-            self.csgraph = np.pad(self.csgraph, ((0, 1), (0, 1)), constant_values=np.inf)
-            return idx
-
-        def process_cell(obs, cell):
-            try:  # if KeyError = cell is visited for the first time:
-                idx = self._cell_to_idx[cell]
-            except KeyError:
-                idx = new(cell)
-            # update counts and obs list
-            self._counts[idx] += 1
-            self._cell_to_obss[cell].append(obs)
-
         # we consider the current cell only if the episode starts
         # if not, it means that the current has already been processed
-        if infos[0].get("episode_start", False):
-            process_cell(obs, current_cell)
-        process_cell(next_obs, next_cell)
+        if infos.get("episode_start", False):
+            self._update_counts(obs, current_cell)
+        self._update_counts(next_obs, next_cell)
         self._update_csgraph(current_cell, next_cell)
 
-    def _update_csgraph(self, current_cell, next_cell):
+    def _update_counts(self, obs: np.ndarray, cell: Cell) -> None:
+        if cell not in self._cell_to_idx:
+            self._new_cell_found(cell)
+        idx = self._cell_to_idx[cell]
+        # update counts and obs list
+        self._counts[idx] += 1
+        self._cell_to_obss[cell].append(obs)
+
+    def _new_cell_found(self, cell: Cell) -> None:
+        """
+        Call this when you have found a new cell.
+
+        It expands the csgraph, counts, cell_to_obss, cell_to_idx and idx_to_cell
+        """
+        idx = len(self._cell_to_idx)
+        self._idx_to_cell.append(cell)
+        self._cell_to_idx[cell] = idx
+        self._cell_to_obss[cell] = []
+        self.nb_cells += 1
+        # expanding arrays
+        self._counts = np.pad(self._counts, (0, 1), constant_values=0)
+        self.csgraph = np.pad(self.csgraph, ((0, 1), (0, 1)), constant_values=np.inf)
+
+    def _update_csgraph(self, current_cell: Cell, next_cell: Cell) -> None:
+
         # update csgraph
         current_cell_idx = self._cell_to_idx[current_cell]
         next_cell_idx = self._cell_to_idx[next_cell]

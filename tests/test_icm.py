@@ -200,7 +200,16 @@ def test_learn_feature_extractor():
 
 
 def test_learn_icm():
-    icm = ICM(beta=0.5, scaling_factor=1.0, lmbda=0.5, obs_dim=7, action_dim=3, feature_dim=6, hidden_dim=16)
+    icm = ICM(
+        scaling_factor=1.0,
+        actor_loss_coef=1.0,
+        inverse_loss_coef=0.5,
+        forward_loss_coef=0.5,
+        obs_dim=7,
+        action_dim=3,
+        feature_dim=6,
+        hidden_dim=16,
+    )
     optimizer = torch.optim.Adam(icm.parameters())
     observations = torch.tensor(
         [
@@ -247,9 +256,7 @@ def test_learn_icm():
     dones = torch.tensor([False, False, False, False, False, False, False, False, False, False])
     rewards = torch.tensor([0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0])
     replay_data = ReplayBufferSamples(observations, actions, next_observations, dones, rewards)
-    mean_modified_reward = icm.modify_reward(
-        observations.numpy(), actions.numpy(), next_observations.numpy(), rewards.numpy()
-    ).mean()
+    mean_modified_reward = icm.modify_reward(replay_data).rewards.mean()
     if not mean_modified_reward - rewards.mean() > 0.03:  # if the intrinsic reward is below 0.03, it is really weird
         raise Exception("Modified reward should be geater than reward before training.")
     for _ in range(1000):
@@ -257,12 +264,10 @@ def test_learn_icm():
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    if not abs(loss - 0.5) < 0.01:
+    if not abs(loss - 1.0) < 0.01:
         # loss should converge toward beta * constant_actor_loss
         raise Exception("Learning failed")
-    mean_modified_reward = icm.modify_reward(
-        observations.numpy(), actions.numpy(), next_observations.numpy(), rewards.numpy()
-    ).mean()
+    mean_modified_reward = icm.modify_reward(replay_data).rewards.mean()
     if not abs(mean_modified_reward - rewards.mean()) < 0.001:
         raise Exception("Intrinsic reward should be gone after training ICM")
 
@@ -274,17 +279,21 @@ def test_ICM():
     from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
     env = DummyVecEnv([lambda: UnGoalWrapper(gym.make("PandaReach-v2"))])
-    env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_reward=100)
+    env = VecNormalize(env, norm_reward=False)
 
     icm = ICM(
-        beta=0.5,
         scaling_factor=1.0,
-        lmbda=0.5,
+        actor_loss_coef=1.0,
+        inverse_loss_coef=0.5,
+        forward_loss_coef=0.5,
         obs_dim=env.observation_space.shape[0],
         action_dim=env.action_space.shape[0],
         feature_dim=6,
         hidden_dim=16,
     )
 
-    model = SAC("MlpPolicy", env, actor_loss_modifier=icm, reward_modifier=icm)
-    model.learn(1000, eval_env=env, eval_freq=1000, n_eval_episodes=10)
+    model = SAC("MlpPolicy", env, actor_loss_modifier=icm)
+    model.learn(1000, eval_env=env, eval_freq=1000, n_eval_episodes=10, reward_modifier=icm)
+
+
+test_learn_icm()

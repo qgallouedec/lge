@@ -8,9 +8,6 @@ import numpy as np
 class EpisodeStartWrapper(gym.Wrapper):
     """Add {"episode_start": True} in info when episode starts."""
 
-    def __init__(self, env: gym.Env) -> None:
-        super().__init__(env)
-
     def reset(self) -> Any:
         self.episode_starts = True
         return super().reset()

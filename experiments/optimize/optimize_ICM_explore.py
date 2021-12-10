@@ -10,28 +10,35 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 def objective(trial: optuna.Study):
-    beta = trial.suggest_categorical("beta", [0, 0.001, 0.01, 0.1, 0.2, 0.5, 0.8, 0.9, 0.99, 0.999, 1])
     scaling_factor = trial.suggest_loguniform("scaling_factor", 1e-3, 1e3)
-    lmbda = trial.suggest_loguniform("lmbda", 1e-3, 1e3)
+    actor_loss_coef = trial.suggest_loguniform("actor_loss_coef", 1e-3, 1e3)
+    inverse_loss_coef = trial.suggest_loguniform("inverse_loss_coef", 1e-3, 1e3)
+    forward_loss_coef = trial.suggest_loguniform("forward_loss_coef", 1e-3, 1e3)
     feature_dim = trial.suggest_categorical("feature_dim", [8, 16, 32, 64, 128, 256])
     hidden_dim = trial.suggest_categorical("hidden_dim", [8, 16, 32, 64, 128, 256])
 
     results = []
     for _ in range(3):
-        env = DummyVecEnv([lambda: gym.make("ContinuousMinigrid-v0")])
+        env = DummyVecEnv(8 * [lambda: gym.make("ContinuousMinigrid-v0")])
         env = VecNormalize(env, norm_reward=False)
         icm = ICM(
-            beta=beta,
             scaling_factor=scaling_factor,
-            lmbda=lmbda,
+            actor_loss_coef=actor_loss_coef,
+            inverse_loss_coef=inverse_loss_coef,
+            forward_loss_coef=forward_loss_coef,
             obs_dim=env.observation_space.shape[0],
             action_dim=env.action_space.shape[0],
             feature_dim=feature_dim,
             hidden_dim=hidden_dim,
         )
-        model = SAC("MlpPolicy", env, reward_modifier=icm, actor_loss_modifier=icm)
-        model.replay_buffer = ArchiveBuffer(1000000, env.observation_space, env.action_space, CellIsObs(), device=model.device)
-        model.learn(10000)
+        model = SAC(
+            "MlpPolicy",
+            env,
+            actor_loss_modifier=icm,
+            replay_buffer_class=ArchiveBuffer,
+            replay_buffer_kwargs={"cell_computer": CellIsObs()},
+        )
+        model.learn(10000, reward_modifier=icm)
         results.append(model.replay_buffer.nb_cells)
 
     return np.median(results)

@@ -2,7 +2,7 @@ import gym.spaces
 import numpy as np
 
 from go_explore.go_explore.archive import ArchiveBuffer
-from go_explore.go_explore.cell_computers import Cell, CellIsObs
+from go_explore.go_explore.cell_computers import CellIsObs
 
 OBS_SPACE = gym.spaces.Box(-1, 1, (2,), np.float32)
 ACTION_SPACE = gym.spaces.Box(-1, 1, (2,), np.float32)
@@ -11,14 +11,13 @@ ACTION_SPACE = gym.spaces.Box(-1, 1, (2,), np.float32)
 def test_archive_add():
     cell_computer = CellIsObs()
     archive = ArchiveBuffer(100, OBS_SPACE, ACTION_SPACE, cell_computer)
-    first = True
-    obs = np.array([0.0, 0.0])
-    next_obs = np.array([1.0, 1.0])
-    action = np.array([0.0, 0.0])
-    reward = 0.0
-    done = False
-    info = {}
-    archive.add(obs, next_obs, action, reward, done, [info], first)
+    obs = np.array([[0.0, 0.0]])
+    next_obs = np.array([[1.0, 1.0]])
+    action = np.array([[0.0, 0.0]])
+    reward = np.array([0.0])
+    done = np.array([False])
+    infos = [{"episode_start": True}]
+    archive.add(obs, next_obs, action, reward, done, infos)
 
     current_cell = cell_computer.compute_cell(np.array([0.0, 0.0]))
     next_cell = cell_computer.compute_cell(np.array([1.0, 1.0]))
@@ -37,16 +36,16 @@ def test_archive_reset1():
     archive = ArchiveBuffer(100, OBS_SPACE, ACTION_SPACE, cell_computer)
 
     for _ in range(3):
-        first = True
-        obs = np.array([0.0, 0.0])
+        episode_start = True
+        obs = np.array([[0.0, 0.0]])
         for i in range(1, 4):
-            next_obs = np.array([float(i), float(i)])
-            action = np.array([0.0, 0.0])
-            reward = 0.0
-            done = False
-            info = {}
-            archive.add(obs, next_obs, action, reward, done, [info], first)
-            first = False
+            next_obs = np.array([[float(i), float(i)]])
+            action = np.array([[0.0, 0.0]])
+            reward = np.array([0.0])
+            done = np.array([False])
+            infos = [{"episode_start": episode_start}]
+            archive.add(obs, next_obs, action, reward, done, infos)
+            episode_start = False
             obs = next_obs
 
     cell0 = cell_computer.compute_cell(np.array([0.0, 0.0]))
@@ -89,20 +88,20 @@ def test_archive_reset2():
     cell_computer = CellIsObs()
     archive = ArchiveBuffer(100, OBS_SPACE, ACTION_SPACE, cell_computer)
     trajectories = [
-        [np.array([0.0, 0.0]), np.array([1.0, 0.0]), np.array([1.0, 1.0]), np.array([1.0, 2.0])],
-        [np.array([1.0, 0.0]), np.array([0.0, 0.0]), np.array([0.0, 1.0])],
+        [np.array([[0.0, 0.0]]), np.array([[1.0, 0.0]]), np.array([[1.0, 1.0]]), np.array([[1.0, 2.0]])],
+        [np.array([[1.0, 0.0]]), np.array([[0.0, 0.0]]), np.array([[0.0, 1.0]])],
     ]
     for trajectory in trajectories:
-        first = True
+        episode_start = True
         for i in range(len(trajectory) - 1):
             obs = trajectory[i]
             next_obs = trajectory[i + 1]
-            action = np.array([0.0, 0.0])
-            reward = 0.0
-            done = False
-            info = {}
-            archive.add(obs, next_obs, action, reward, done, [info], first)
-            first = False
+            action = np.array([[0.0, 0.0]])
+            reward = np.array([0.0])
+            done = np.array([False])
+            infos = [{"episode_start": episode_start}]
+            archive.add(obs, next_obs, action, reward, done, infos)
+            episode_start = False
 
     cell0 = cell_computer.compute_cell(np.array([0.0, 0.0]))
     cell1 = cell_computer.compute_cell(np.array([1.0, 0.0]))
@@ -148,20 +147,20 @@ def test_path_sampling():
     cell_computer = CellIsObs()
     archive = ArchiveBuffer(100, OBS_SPACE, ACTION_SPACE, cell_computer)
     trajectories = [
-        [np.array([0.0, 0.0]), np.array([1.0, 0.0]), np.array([1.0, 1.0]), np.array([1.0, 2.0])],
-        [np.array([1.0, 0.0]), np.array([0.0, 0.0]), np.array([0.0, 1.0])],
+        [np.array([[0.0, 0.0]]), np.array([[1.0, 0.0]]), np.array([[1.0, 1.0]]), np.array([[1.0, 2.0]])],
+        [np.array([[1.0, 0.0]]), np.array([[0.0, 0.0]]), np.array([[0.0, 1.0]])],
     ]
     for trajectory in trajectories:
-        first = True
+        episode_start = True
         for i in range(len(trajectory) - 1):
             obs = trajectory[i]
             next_obs = trajectory[i + 1]
-            action = np.array([0.0, 0.0])
-            reward = 0.0
-            done = False
-            info = {}
-            archive.add(obs, next_obs, action, reward, done, [info], first)
-            first = False
+            action = np.array([[0.0, 0.0]])
+            reward = np.array([0.0])
+            done = np.array([False])
+            infos = [{"episode_start": episode_start}]
+            archive.add(obs, next_obs, action, reward, done, infos)
+            episode_start = False
 
     path = archive.sample_subgoal_path(np.array([0.0, 0.0]))
     path = [list(obs) for obs in path]  # convinient to compare
