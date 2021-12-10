@@ -61,7 +61,7 @@ class SimHashMotivation(RewardModifier):
         next_obs_hash = self.hasher(replay_data.next_observations)
         pos = self.buffer.buffer_size if self.buffer.full else self.buffer.pos
         all_next_observations = torch.from_numpy(self.buffer._normalize_obs(self.buffer.next_observations[:pos], self.env))
-        all_next_observations = all_next_observations.view(-1, self.buffer.obs_shape[0])
+        all_next_observations = all_next_observations.view(-1, self.buffer.obs_shape[0]).to(get_device("auto"))
         all_hashes = self.hasher(all_next_observations)
         unique, all_counts = torch.unique(all_hashes, dim=0, return_counts=True)
         count = torch.zeros(next_obs_hash.shape[0])
