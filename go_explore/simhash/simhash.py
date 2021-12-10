@@ -64,7 +64,7 @@ class SimHashMotivation(RewardModifier):
         all_next_observations = all_next_observations.view(-1, self.buffer.obs_shape[0]).to(get_device("auto"))
         all_hashes = self.hasher(all_next_observations)
         unique, all_counts = torch.unique(all_hashes, dim=0, return_counts=True)
-        count = torch.zeros(next_obs_hash.shape[0])
+        count = torch.zeros(next_obs_hash.shape[0]).to(get_device("auto"))
         for k, hash in enumerate(next_obs_hash):
             idx = (unique == hash).all(1)
             count[k] = all_counts[idx]
