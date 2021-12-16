@@ -1,7 +1,7 @@
 import gym
 import numpy as np
 import optuna
-from go_explore.go_explore.cell_computers import PandaCellComputer
+from go_explore.go_explore.cell_computers import CellIsObs
 from go_explore.go_explore.go_explore import GoExplore
 
 
@@ -13,9 +13,9 @@ def objective(trial: optuna.Study):
     results = []
 
     for _ in range(5):
-        env = gym.make("PandaNoTask-v0")
-        ge = GoExplore(env, PandaCellComputer(), subgoal_horizon, done_delay, count_pow)
-        ge.exploration(1000)
+        env = gym.make("ContinuousMinigrid-v0")
+        ge = GoExplore(env, CellIsObs(), subgoal_horizon, done_delay, count_pow)
+        ge.exploration(5000)
         results.append(ge.archive.nb_cells)
 
     return np.median(results)
