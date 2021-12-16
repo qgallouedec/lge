@@ -1,4 +1,4 @@
-import torch
+import torch as th
 from stable_baselines3.common.utils import get_device
 from torch import nn
 
@@ -24,7 +24,7 @@ class InverseModel(nn.Module):
         ).to(device)
 
     def forward(self, obs_feature, next_obs_feature):
-        x = torch.concat((obs_feature, next_obs_feature), dim=-1)
+        x = th.concat((obs_feature, next_obs_feature), dim=-1)
         action = self.net(x)
         return action
 
@@ -52,8 +52,8 @@ class ForwardModel(nn.Module):
             nn.Linear(hidden_dim, feature_dim),
         ).to(device)
 
-    def forward(self, action: torch.Tensor, obs_feature: torch.Tensor) -> torch.Tensor:
-        x = torch.concat((action, obs_feature), dim=-1)
+    def forward(self, action: th.Tensor, obs_feature: th.Tensor) -> th.Tensor:
+        x = th.concat((action, obs_feature), dim=-1)
         next_obs_feature = self.net(x)
         return next_obs_feature
 
@@ -81,6 +81,6 @@ class FeatureExtractor(nn.Module):
             nn.Linear(hidden_dim, feature_dim),
         ).to(device)
 
-    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+    def forward(self, obs: th.Tensor) -> th.Tensor:
         obs_feature = self.net(obs)
         return obs_feature

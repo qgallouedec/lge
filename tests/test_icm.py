@@ -1,45 +1,46 @@
-from stable_baselines3.common.type_aliases import ReplayBufferSamples
-from go_explore.icm.icm import ICM
-import torch
 import gym
+import torch as th
+from go_explore.icm.icm import ICM
+from stable_baselines3.common.type_aliases import ReplayBufferSamples
+from torch import nn, optim
 
 
 def test_inverse_model():
     from go_explore.icm.models import InverseModel
 
     im = InverseModel(feature_dim=6, action_dim=3, hidden_dim=16)
-    obs_feature = torch.tensor([0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
-    next_obs_feature = torch.tensor([0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
+    obs_feature = th.tensor([0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
+    next_obs_feature = th.tensor([0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
     pred_action = im(obs_feature, next_obs_feature)
-    assert pred_action.shape == torch.Size([3])
+    assert pred_action.shape == th.Size([3])
 
 
 def test_forward_model():
     from go_explore.icm.models import ForwardModel
 
     fm = ForwardModel(feature_dim=6, action_dim=3, hidden_dim=16)
-    action = torch.tensor([0.3, 0.4, 0.5])
-    obs_feature = torch.tensor([0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
+    action = th.tensor([0.3, 0.4, 0.5])
+    obs_feature = th.tensor([0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
     pred_next_obs_feature = fm(action, obs_feature)
-    assert pred_next_obs_feature.shape == torch.Size([6])
+    assert pred_next_obs_feature.shape == th.Size([6])
 
 
 def test_feature_extractor():
     from go_explore.icm.models import FeatureExtractor
 
     fe = FeatureExtractor(obs_dim=7, feature_dim=6, hidden_dim=16)
-    obs = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
+    obs = th.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
     obs_feature = fe(obs)
-    assert obs_feature.shape == torch.Size([6])
+    assert obs_feature.shape == th.Size([6])
 
 
 def test_learn_forward_model():
     from go_explore.icm.models import ForwardModel
 
     fm = ForwardModel(feature_dim=6, action_dim=3, hidden_dim=16)
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(fm.parameters())
-    actions = torch.tensor(
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(fm.parameters())
+    actions = th.tensor(
         [
             [0.78, -1.62, -1.42],
             [-0.34, 0.06, -0.33],
@@ -53,7 +54,7 @@ def test_learn_forward_model():
             [0.71, 0.03, 2.28],
         ]
     )
-    obs_features = torch.tensor(
+    obs_features = th.tensor(
         [
             [-0.14, 1.07, -0.85, -0.63, 0.99, 0.13],
             [0.02, -1.35, 1.13, 0.61, 0.26, 1.95],
@@ -67,7 +68,7 @@ def test_learn_forward_model():
             [0.71, -0.54, 0.93, -0.2, -0.07, 1.1],
         ]
     )
-    next_obs_features = torch.tensor(
+    next_obs_features = th.tensor(
         [
             [0.88, 2.07, 1.08, 0.76, -0.76, 0.19],
             [-0.71, -1.84, -0.01, 0.01, 0.27, -2.32],
@@ -97,9 +98,9 @@ def test_learn_inverse_model():
     from go_explore.icm.models import InverseModel
 
     im = InverseModel(feature_dim=6, action_dim=3, hidden_dim=16)
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(im.parameters())
-    obs_features = torch.tensor(
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(im.parameters())
+    obs_features = th.tensor(
         [
             [-0.14, 1.07, -0.85, -0.63, 0.99, 0.13],
             [0.02, -1.35, 1.13, 0.61, 0.26, 1.95],
@@ -113,7 +114,7 @@ def test_learn_inverse_model():
             [0.71, -0.54, 0.93, -0.2, -0.07, 1.1],
         ]
     )
-    next_obs_features = torch.tensor(
+    next_obs_features = th.tensor(
         [
             [0.88, 2.07, 1.08, 0.76, -0.76, 0.19],
             [-0.71, -1.84, -0.01, 0.01, 0.27, -2.32],
@@ -127,7 +128,7 @@ def test_learn_inverse_model():
             [0.13, -0.12, -0.9, 1.19, -0.44, 0.64],
         ]
     )
-    actions = torch.tensor(
+    actions = th.tensor(
         [
             [0.78, -1.62, -1.42],
             [-0.34, 0.06, -0.33],
@@ -157,9 +158,9 @@ def test_learn_feature_extractor():
     from go_explore.icm.models import FeatureExtractor
 
     fe = FeatureExtractor(obs_dim=7, feature_dim=6, hidden_dim=16)
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(fe.parameters())
-    obs = torch.tensor(
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(fe.parameters())
+    obs = th.tensor(
         [
             [0.17, -1.47, 0.99, 0.85, -0.81, -0.82, 0.56],
             [-1.39, -0.0, 0.33, -1.79, 0.84, -0.47, -1.02],
@@ -173,7 +174,7 @@ def test_learn_feature_extractor():
             [0.45, -0.6, 0.76, 0.19, -0.36, 0.38, -1.54],
         ]
     )
-    obs_features = torch.tensor(
+    obs_features = th.tensor(
         [
             [-0.14, 1.07, -0.85, -0.63, 0.99, 0.13],
             [0.02, -1.35, 1.13, 0.61, 0.26, 1.95],
@@ -210,8 +211,8 @@ def test_learn_icm():
         feature_dim=6,
         hidden_dim=16,
     )
-    optimizer = torch.optim.Adam(icm.parameters())
-    observations = torch.tensor(
+    optimizer = optim.Adam(icm.parameters())
+    observations = th.tensor(
         [
             [0.17, -1.47, 0.99, 0.85, -0.81, -0.82, 0.56],
             [-1.39, -0.0, 0.33, -1.79, 0.84, -0.47, -1.02],
@@ -225,7 +226,7 @@ def test_learn_icm():
             [0.45, -0.6, 0.76, 0.19, -0.36, 0.38, -1.54],
         ]
     )
-    actions = torch.tensor(
+    actions = th.tensor(
         [
             [0.78, -1.62, -1.42],
             [-0.34, 0.06, -0.33],
@@ -239,7 +240,7 @@ def test_learn_icm():
             [0.71, 0.03, 2.28],
         ]
     )
-    next_observations = torch.tensor(
+    next_observations = th.tensor(
         [
             [0.79, -1.04, -0.25, -0.16, 0.36, 0.16, 0.0],
             [-0.33, 0.36, -0.21, -0.18, 0.38, 0.56, -0.79],
@@ -253,14 +254,14 @@ def test_learn_icm():
             [-0.64, 1.28, -1.65, 1.15, 0.01, 0.4, -1.03],
         ]
     )
-    dones = torch.tensor([False, False, False, False, False, False, False, False, False, False])
-    rewards = torch.tensor([0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0])
+    dones = th.tensor([False, False, False, False, False, False, False, False, False, False])
+    rewards = th.tensor([0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0])
     replay_data = ReplayBufferSamples(observations, actions, next_observations, dones, rewards)
     mean_modified_reward = icm.modify_reward(replay_data).rewards.mean()
     if not mean_modified_reward - rewards.mean() > 0.03:  # if the intrinsic reward is below 0.03, it is really weird
         raise Exception("Modified reward should be geater than reward before training.")
     for _ in range(1000):
-        loss = icm.modify_loss(torch.tensor(1.0), replay_data)
+        loss = icm.modify_loss(th.tensor(1.0), replay_data)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()

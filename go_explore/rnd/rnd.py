@@ -1,4 +1,4 @@
-import torch
+import torch as th
 import torch.nn.functional as F
 from stable_baselines3.common.buffers import BaseBuffer
 from stable_baselines3.common.callbacks import BaseCallback
@@ -69,8 +69,8 @@ class RND(RewardModifier):
 class PredictorLearner(BaseCallback):
     def __init__(
         self,
-        predictor: torch.nn.Module,
-        target: torch.nn.Module,
+        predictor: nn.Module,
+        target: nn.Module,
         buffer: BaseBuffer,
         train_freq: int,
         grad_step: int,
@@ -85,8 +85,8 @@ class PredictorLearner(BaseCallback):
         self.train_freq = train_freq
         self.grad_step = grad_step
         self.batch_size = batch_size
-        self.optimizer = torch.optim.Adam(self.predictor.parameters(), lr=lr, weight_decay=weight_decay)
-        self.criterion = torch.nn.MSELoss()
+        self.optimizer = th.optim.Adam(self.predictor.parameters(), lr=lr, weight_decay=weight_decay)
+        self.criterion = th.nn.MSELoss()
         self.last_time_trigger = 0
 
     def _on_step(self) -> bool:

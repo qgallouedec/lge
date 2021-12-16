@@ -1,11 +1,11 @@
 from typing import Optional
-import numpy as np
+
+import torch as th
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.surgeon import RewardModifier
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
-import torch
 
 
 class SimHash:
@@ -26,10 +26,10 @@ class SimHash:
 
     def __init__(self, obs_size: int, granularity: int) -> None:
         size = (granularity, obs_size)
-        self.A = torch.normal(mean=torch.zeros(size), std=torch.ones(size)).to(get_device("auto"))
+        self.A = th.normal(mean=th.zeros(size), std=th.ones(size)).to(get_device("auto"))
 
-    def __call__(self, obs: torch.Tensor) -> torch.Tensor:
-        return torch.sign(torch.matmul(self.A, obs.T)).T
+    def __call__(self, obs: th.Tensor) -> th.Tensor:
+        return th.sign(th.matmul(self.A, obs.T)).T
 
 
 class SimHashMotivation(RewardModifier):
@@ -60,15 +60,15 @@ class SimHashMotivation(RewardModifier):
     def modify_reward(self, replay_data: ReplayBufferSamples) -> ReplayBufferSamples:
         next_obs_hash = self.hasher(replay_data.next_observations)
         pos = self.buffer.buffer_size if self.buffer.full else self.buffer.pos
-        all_next_observations = torch.from_numpy(self.buffer._normalize_obs(self.buffer.next_observations[:pos], self.env))
+        all_next_observations = th.from_numpy(self.buffer._normalize_obs(self.buffer.next_observations[:pos], self.env))
         all_next_observations = all_next_observations.view(-1, self.buffer.obs_shape[0]).to(get_device("auto"))
         all_hashes = self.hasher(all_next_observations)
-        unique, all_counts = torch.unique(all_hashes, dim=0, return_counts=True)
-        count = torch.zeros(next_obs_hash.shape[0]).to(get_device("auto"))
+        unique, all_counts = th.unique(all_hashes, dim=0, return_counts=True)
+        count = th.zeros(next_obs_hash.shape[0]).to(get_device("auto"))
         for k, hash in enumerate(next_obs_hash):
             idx = (unique == hash).all(1)
             count[k] = all_counts[idx]
-        intrinsic_reward = self.beta / torch.sqrt(count)
+        intrinsic_reward = self.beta / th.sqrt(count)
         new_rewards = (1 - self.pure_exploration) * replay_data.rewards + intrinsic_reward.unsqueeze(1)
         new_replay_data = ReplayBufferSamples(
             replay_data.observations, replay_data.actions, replay_data.next_observations, replay_data.dones, new_rewards

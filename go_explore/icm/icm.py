@@ -1,7 +1,7 @@
 from itertools import chain
 from typing import Iterator
 
-import torch
+import torch as th
 import torch.nn.functional as F
 from go_explore.icm.models import FeatureExtractor, ForwardModel, InverseModel
 from stable_baselines3.common.surgeon import ActorLossModifier, RewardModifier
@@ -45,7 +45,7 @@ class ICM(ActorLossModifier, RewardModifier):
     def parameters(self) -> Iterator[Parameter]:
         return chain(self.forward_model.parameters(), self.inverse_model.parameters(), self.feature_extractor.parameters())
 
-    def modify_loss(self, actor_loss: torch.Tensor, replay_data: ReplayBufferSamples) -> torch.Tensor:
+    def modify_loss(self, actor_loss: th.Tensor, replay_data: ReplayBufferSamples) -> th.Tensor:
         obs_feature = self.feature_extractor(replay_data.observations)
         next_obs_feature = self.feature_extractor(replay_data.next_observations)
         pred_action = self.inverse_model(obs_feature, next_obs_feature)
@@ -69,7 +69,7 @@ class ICM(ActorLossModifier, RewardModifier):
         # r^i = η/2*||φˆ(st+1)−φ(st+1)||
         intrinsic_reward = (
             self.scaling_factor
-            * torch.sum(F.mse_loss(pred_next_obs_feature, next_obs_feature, reduction="none"), dim=1).unsqueeze(1).detach()
+            * th.sum(F.mse_loss(pred_next_obs_feature, next_obs_feature, reduction="none"), dim=1).unsqueeze(1).detach()
         )
         new_rewards = replay_data.rewards + intrinsic_reward
         new_replay_data = ReplayBufferSamples(

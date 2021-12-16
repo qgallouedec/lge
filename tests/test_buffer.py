@@ -1,6 +1,5 @@
 import gym.spaces
 import numpy as np
-
 from go_explore.go_explore.archive import ArchiveBuffer
 from go_explore.go_explore.cell_computers import CellIsObs
 

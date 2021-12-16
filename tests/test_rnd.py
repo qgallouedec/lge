@@ -1,5 +1,5 @@
 import numpy as np
-import torch
+import torch as th
 import torch.nn.functional as F
 from go_explore.rnd.rnd import Network, PredictorLearner
 from gym.spaces import Box
@@ -42,11 +42,11 @@ def test_train_network():
     for i in range(9):
         buffer.add(obs[i], obs[i + 1], actions[i], 0.0, False, [{}])
 
-    pred = predictor(torch.tensor(obs[0]).float())
-    targ = target(torch.tensor(obs[0]).float())
+    pred = predictor(th.tensor(obs[0]).float())
+    targ = target(th.tensor(obs[0]).float())
     loss_before = F.mse_loss(pred, targ)
     cb.train_once()
-    pred = predictor(torch.tensor(obs[0]).float())
-    targ = target(torch.tensor(obs[0]).float())
+    pred = predictor(th.tensor(obs[0]).float())
+    targ = target(th.tensor(obs[0]).float())
     loss_after = F.mse_loss(pred, targ)
     assert loss_before > loss_after
