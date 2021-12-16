@@ -1,8 +1,10 @@
 from typing import Optional, Tuple, Type
 
 import numpy as np
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3 import DDPG
+from stable_baselines3.common.type_aliases import MaybeCallback
 from stable_baselines3.common.vec_env.dummy_vec_env import DummyVecEnv
 from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
@@ -15,7 +17,7 @@ from go_explore.go_explore.cell_computers import CellComputer
 
 class GoExplore:
     """
-    Go-Explore paradigma, with SAC.
+    Go-Explore paradigma, with DDPG.
 
     :param env: The environment to learn from (if registered in Gym, can be str)
     :param cell_computer: [description]
@@ -42,10 +44,7 @@ class GoExplore:
         self.model.replay_buffer.child_buffer = self.archive
 
     def exploration(
-        self,
-        total_timesteps: int,
-        eval_freq: int = -1,
-        n_eval_episodes: int = 5,
+        self, total_timesteps: int, eval_freq: int = -1, n_eval_episodes: int = 5, callback: MaybeCallback = None
     ) -> None:
         """
         Exploration phase, switch between go and explore.
@@ -54,7 +53,13 @@ class GoExplore:
         :param eval_freq: Evaluate the agent every eval_freq timesteps (this may vary a little)
         :param n_eval_episodes: Number of episode to evaluate the agent
         """
-        callback = LogNbCellsCallback(self.archive)
+        nb_cells_logger = LogNbCellsCallback(self.archive)
+        if isinstance(callback, list):
+            callback = CallbackList(callback + [nb_cells_logger])
+        elif isinstance(callback, BaseCallback):
+            callback = CallbackList([callback, nb_cells_logger])
+        elif callback is None:
+            callback = CallbackList([nb_cells_logger])
         self.model.learn(
             total_timesteps, eval_env=self.env, eval_freq=eval_freq, n_eval_episodes=n_eval_episodes, callback=callback
         )
