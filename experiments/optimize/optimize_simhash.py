@@ -14,9 +14,9 @@ def objective(trial: optuna.Study):
     for _ in range(3):
         env = DummyVecEnv([PandaReachFlat])
         env = VecNormalize(env, norm_reward=False)
-        simhash = SimHashMotivation(obs_dim=env.observation_space.shape[0], granularity=granularity, beta=beta)
-        model = SAC("MlpPolicy", env, reward_modifier=simhash, verbose=1)
-        model.learn(8000)
+        model = SAC("MlpPolicy", env, verbose=1)
+        simhash = SimHashMotivation(model.replay_buffer, env, granularity=granularity, beta=beta)
+        model.learn(8000, reward_modifier=simhash)
 
         sum_reward = 0
         for _ in range(50):

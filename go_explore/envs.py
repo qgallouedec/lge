@@ -1,5 +1,4 @@
 import copy
-from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Tuple, Union
 
 import gym
@@ -9,7 +8,7 @@ from gym import register, spaces
 
 from go_explore.common.wrappers import EpisodeStartWrapper, UnGoalWrapper
 from go_explore.go_explore.archive import ArchiveBuffer
-from go_explore.go_explore.cell_computers import PandaCellComputer, PandaObjectCellComputer
+from go_explore.go_explore.cell_computers import CellComputer
 
 
 class _ContinuousMinigrid(gym.Env):
@@ -29,7 +28,7 @@ class _ContinuousMinigrid(gym.Env):
         # if -1/2 < action <  1/2 , action =    0
         action = np.array(action)
         action = (action > 0.5) * 1.0 + (action < -0.5) * -1.0
-        self.pos = self.pos + action
+        self.pos = np.clip(self.pos + action, -10, 10)
         return np.copy(self.pos), 0.0, False, {}
 
     def reset(self) -> Dict[str, np.ndarray]:
@@ -50,86 +49,25 @@ register(
 )
 
 
-class _SubgoalContinuousMinigrid(gym.GoalEnv):
-    """
-    Simple small gridworld with continuous spaces.
-
-    SubgoalEnv, meaning that goal changes during episode. Done is True when last goal is reached.
-    0.0 reward when subgoal reached, -1.0 otherwise.
-    """
-
-    def __init__(self) -> None:
-        self.observation_space = spaces.Dict(
-            {
-                "observation": spaces.Box(-5, 5, (2,)),
-                "desired_goal": spaces.Box(-5, 5, (2,)),
-                "achieved_goal": spaces.Box(-5, 5, (2,)),
-            }
-        )
-        self.action_space = spaces.Box(-1, 1, (2,))
-        self.subgoal_idx = 0
-
-    def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
-        # if        action < -1/2 , action = -1/2
-        # if  1/2 < action        , action =  1/2
-        # if -1/2 < action <  1/2 , action =    0
-        action = np.array(action)
-        action = (action > 0.5) * 1.0 + (action < -0.5) * -1.0
-        self.pos = np.clip(self.pos + action, -5, 5)
-        obs = self.observation()
-        reward = self.compute_reward(obs["desired_goal"], obs["achieved_goal"], {})
-        if reward == 0.0:
-            info, done = {"is_success": 1.0}, False
-            self.subgoal_idx += 1
-            if self.subgoal_idx == len(self.subgoals):
-                done = True
-            else:
-                obs["desired_goal"] = np.copy(self.subgoals[self.subgoal_idx])
-        else:
-            info, done = {"is_success": 0.0}, False
-        return obs, reward, done, info
-
-    def reset(self) -> Dict[str, np.ndarray]:
-        self.pos = np.array([0.0, 0.0])
-        self.subgoals = np.random.randint(-5, 5, (2, 2)).astype(np.float32)
-        self.subgoal_idx = 0
-        return self.observation()
-
-    def observation(self):
-        return {
-            "observation": np.copy(self.pos),
-            "desired_goal": np.copy(self.subgoals[self.subgoal_idx]),
-            "achieved_goal": np.copy(self.pos),
-        }
-
-    def compute_reward(self, desired_goal, achieved_goal, info):
-        reward = (desired_goal == achieved_goal).all(-1).astype(np.float32) - 1.0
-        return reward
-
-
-def SubgoalContinuousMinigrid():
-    env = _SubgoalContinuousMinigrid()
-    env = EpisodeStartWrapper(env)  # needed to store properly in archive
-    return env
-
-
-register(
-    id="SubgoalContinuousMinigrid-v0",
-    entry_point="go_explore.envs:SubgoalContinuousMinigrid",
-    max_episode_steps=20,
-)
-
-
-class PandaSubgoal(gym.GoalEnv, ABC):
+class SubgoalEnv(gym.GoalEnv):
     """
     Panda environment with subgoal.
 
     Reward is 0.0 when reached observation and desired observation share the same cell. -1.0 otehrwise.
     Inheritance should implement generate_subgoals.
+
+    :param env: the environment
+    :param cell_computer: the cell computer
+    :param subgoal_horizon: the subgoal horizon, defaults to 1
+    :param done_delay: number of random action after the goal is reached, defaults to 0
+    :param count_pow: count pow when sampling goal, defaults to 0
     """
 
-    def __init__(self, done_delay: int = 0, nb_objects: int = 0, render=False) -> None:
-        self.env = gym.make("PandaNoTask-v0", nb_objects=nb_objects, render=render)
+    def __init__(
+        self, env: gym.Env, cell_computer: CellComputer, subgoal_horizon: int = 1, done_delay: int = 0, count_pow: int = 0
+    ) -> None:
+
+        self.env = EpisodeStartWrapper(env)
         self.observation_space = spaces.Dict(
             {
                 "observation": copy.deepcopy(self.env.observation_space),
@@ -138,52 +76,57 @@ class PandaSubgoal(gym.GoalEnv, ABC):
             }
         )
         self.action_space = self.env.action_space
-        if nb_objects == 0:
-            self.cell_computer = PandaCellComputer()
-        elif nb_objects == 1:
-            self.cell_computer = PandaObjectCellComputer()
         self.done_delay = done_delay
+        self.subgoal_horizon = subgoal_horizon
+        self.cell_computer = cell_computer
+        self.archive = ArchiveBuffer(
+            1_000_000, self.env.observation_space, self.env.action_space, self.cell_computer, count_pow
+        )
+        self.subgoal_idx = 0
+
+    @property
+    def spec(self):
+        return self.env.spec
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
-        action = np.array(action)
-        self.obs, _, _, info = self.env.step(action)
-        desired_goal = self.subgoals[self.subgoal_idx]
-        achieved_goal = self.obs
-        reward = self.compute_reward(desired_goal, achieved_goal, {})
+        wrapped_obs, reward, done, info = self.env.step(action)
+        observation = np.copy(wrapped_obs)
+        achieved_goal = np.copy(wrapped_obs)
+        desired_goal = np.copy(self.subgoals[self.subgoal_idx])
+        reward = self.compute_reward(achieved_goal, desired_goal, {})
         if reward == 0.0:
-            info = {"is_success": 1.0}
             if self.subgoal_idx + 1 == len(self.subgoals):  # last goal reached
-                self.done = True
+                self.is_success = True
             else:
                 self.subgoal_idx += 1
-        else:
-            info = {"is_success": 0.0}
-
         obs = {
-            "observation": np.copy(self.obs),
-            "desired_goal": np.copy(self.subgoals[self.subgoal_idx]),
-            "achieved_goal": np.copy(self.obs),
+            "achieved_goal": achieved_goal,
+            "desired_goal": desired_goal,
+            "observation": observation,
         }
-        if self.done and self.done_countdown == 0:
+        if self.is_success and self.done_countdown == 0:
             done = True
-        elif self.done and self.done_countdown != 0:
-            done = False
+            info["is_success"] = 1.0
+        elif self.is_success and self.done_countdown != 0:
             info["done"] = True
+            info["is_success"] = 1.0
             self.done_countdown -= 1
         else:
-            done = False
+            info["is_success"] = 0.0
         return obs, reward, done, info
 
     def reset(self) -> Dict[str, np.ndarray]:
-        self.obs = self.env.reset()
-        self.subgoals = self.generate_subgoals()
+        obs = self.env.reset()
+        self.subgoals = self.generate_subgoals(obs, self.subgoal_horizon)
         self.subgoal_idx = 0
-        self.done = False
+        achieved_goal = np.copy(obs)
+        desired_goal = np.copy(self.subgoals[self.subgoal_idx])
+        self.is_success = False
         self.done_countdown = self.done_delay
         obs = {
-            "observation": np.copy(self.obs),
-            "desired_goal": np.copy(self.subgoals[self.subgoal_idx]),
-            "achieved_goal": np.copy(self.obs),
+            "observation": obs,
+            "desired_goal": desired_goal,
+            "achieved_goal": achieved_goal,
         }
         return obs
 
@@ -223,81 +166,25 @@ class PandaSubgoal(gym.GoalEnv, ABC):
                 in the observation space or an array of elements contained in the observation space."
             )
 
-    @abstractmethod
-    def generate_subgoals(self) -> List[np.ndarray]:
-        """
-        Returns a list of subgoal. The agent wants reach the subgoals until the last one.
-        """
-        ...
-
-
-class PandaSubgoalRandom(PandaSubgoal):
-    def generate_subgoals(self):
-        """
-        Generate 2 random subgoals.
-        """
-        goal_range_low = np.array([-0.15, -0.15, 0.0, 0.0, 0.0, 0.0, 0.0])
-        goal_range_high = np.array([0.15, 0.15, 0.3, 0.0, 0.0, 0.0, 0.0])
-        goals = np.random.uniform(goal_range_low, goal_range_high, size=(2, 7))
-        return goals
-
-
-register(
-    id="PandaSubgoalRandom-v0",
-    entry_point="go_explore.envs:PandaSubgoalRandom",
-    max_episode_steps=50,
-)
-
-
-class _PandaSubgoalArchive(PandaSubgoal):
-    """
-    Panda Subgoal environment. Subgoals are sample for the archive.
-
-    :param archive: archive from which the subgoals are sampled
-    :type archive: ArchiveBuffer
-    :param render: whether rendering is enabled, defaults to False
-    :type render: bool, optional
-    """
-
-    def __init__(self, done_delay: int = 0, nb_objects: int = 0, render: bool = False) -> None:
-        super().__init__(done_delay=done_delay, nb_objects=nb_objects, render=render)
-        self.archive = ArchiveBuffer(1000000, self.observation_space["observation"], self.action_space, self.cell_computer)
-
-    def generate_subgoals(self) -> List[np.ndarray]:
+    def generate_subgoals(self, obs: np.ndarray, subgoal_horizon: int = 1) -> List[np.ndarray]:
         """
         Sample a subgoal path from the archive.
+
+        :param obs: the current observation
+        :param subgoal_horizon: the subgoal horizon, defaults to 1
+        :return: the subgoal path
         """
         try:
             # Sometimes the next line raises an exception, which means that the current cell is not
             # contained in the archive. This can happen at the very beginning, when the archive is
             # still empty, or if this method is called when the agent has just discovered a new cell.
-            goals = self.archive.sample_subgoal_path(self.obs)
+            goals = self.archive.sample_subgoal_path(obs, subgoal_horizon)
         except KeyError:
-            goals = [self.env.observation_space.sample()]
+            goals = [np.zeros(self.observation_space["observation"].shape)]
         return goals
-
-
-def PandaSubgoalArchive(**kwargs):
-    env = _PandaSubgoalArchive(**kwargs)
-    env = EpisodeStartWrapper(env)  # needed to store properly in archive
-    return env
-
-
-register(
-    id="PandaSubgoalArchive-v0",
-    entry_point="go_explore.envs:PandaSubgoalArchive",
-    max_episode_steps=50,
-)
 
 
 def PandaReachFlat(**kwargs):
     env = gym.make("PandaReach-v2", **kwargs)
     env = UnGoalWrapper(env)
     return env
-
-
-# For some reason, registering the env causes great diminution of performances
-# register(
-#     id="PandaReachFlat-v0",
-#     entry_point="go_explore.envs:PandaReachFlat",
-# )

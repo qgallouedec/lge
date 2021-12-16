@@ -24,7 +24,7 @@ def objective(trial: optuna.Study):
         rnd = RND(
             scaling_factor=scaling_factor, obs_dim=env.observation_space.shape[0], out_dim=out_dim, hidden_dim=hidden_size
         )
-        model = SAC("MlpPolicy", env, reward_modifier=rnd, verbose=1)
+        model = SAC("MlpPolicy", env, verbose=1)
         cb = PredictorLearner(
             predictor=rnd.predictor,
             target=rnd.target,
@@ -35,7 +35,7 @@ def objective(trial: optuna.Study):
             lr=lr,
             batch_size=batch_size,
         )
-        model.learn(8000, callback=cb)
+        model.learn(8000, reward_modifier=rnd, callback=cb)
 
         sum_reward = 0
         for _ in range(50):
