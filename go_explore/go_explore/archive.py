@@ -182,7 +182,7 @@ class ArchiveBuffer(ReplayBuffer):
         dist_matrix, predecessors = shortest_path(self.csgraph, return_predecessors=True)
         reachable_idxs = self._get_reachable_idxs(from_idx, dist_matrix)
         if len(reachable_idxs) == 0:  # if there is no reacheable cells
-            return []
+            return [np.copy(from_obs)]
         # compute the weights associated with these reachable cells.
         weights = self._get_weights(reachable_idxs)
         p = weights / weights.sum()
