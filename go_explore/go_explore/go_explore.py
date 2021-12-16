@@ -1,11 +1,16 @@
-from typing import Any, Callable, Optional, Tuple, Type
+from typing import Optional, Tuple, Type
 
 import numpy as np
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
-from stable_baselines3.ddpg.ddpg import DDPG
+from stable_baselines3 import DDPG
+from stable_baselines3.common.vec_env.dummy_vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
+from go_explore.common.callbacks import LogNbCellsCallback
+from go_explore.envs import SubgoalEnv
+import gym
 
-from go_explore.common.callbacks import LogNbCellsCallback, SaveNbCellsCallback
+from go_explore.go_explore.cell_computers import CellComputer
 
 
 class GoExplore:
@@ -13,52 +18,46 @@ class GoExplore:
     Go-Explore paradigma, with SAC.
 
     :param env: The environment to learn from (if registered in Gym, can be str)
+    :param cell_computer: [description]
+    :param subgoal_horizon: [description], defaults to 1
+    :param done_delay: [description], defaults to 0
+    :param count_pow: [description], defaults to 0
+    :param verbose: [description], defaults to 0
     """
 
-    def __init__(self, env) -> None:
-        self.explore_model = DDPG("MultiInputPolicy", env, replay_buffer_class=HerReplayBuffer, verbose=1)
-        self.explore_model.replay_buffer.child_buffer = env.archive
-        self.cell_logger = LogNbCellsCallback(env.archive)
-        self.cell_saver = SaveNbCellsCallback(env.archive, save_fq=1000)
+    def __init__(
+        self,
+        env: gym.Env,
+        cell_computer: CellComputer,
+        subgoal_horizon: int = 1,
+        done_delay: int = 0,
+        count_pow: int = 0,
+        verbose: int = 0,
+    ) -> None:
+        env = SubgoalEnv(env, cell_computer, subgoal_horizon, done_delay, count_pow)
+        self.archive = env.archive
+        env = DummyVecEnv([lambda: env])
+        self.env = VecNormalize(env, norm_reward=False)
+        self.model = DDPG("MultiInputPolicy", self.env, replay_buffer_class=HerReplayBuffer, verbose=verbose)
+        self.model.replay_buffer.child_buffer = self.archive
 
-    def exploration(self, total_timesteps: int) -> None:
+    def exploration(
+        self,
+        total_timesteps: int,
+        eval_freq: int = -1,
+        n_eval_episodes: int = 5,
+    ) -> None:
         """
         Exploration phase, switch between go and explore.
 
-        :param total_timesteps: Total number of timesteps
+        :param total_timesteps: The total number of samples (env steps) to train on
+        :param eval_freq: Evaluate the agent every eval_freq timesteps (this may vary a little)
+        :param n_eval_episodes: Number of episode to evaluate the agent
         """
-        while self.explore_model.num_timesteps < total_timesteps:
-            self.go()
-            # self.explore(50)
-
-    def go(self) -> None:
-        """
-        Go phase. Ends when a trajectory is entirely achieved.
-
-        :param total_timesteps: Max number of timesteps. Learning stops early if a final goal is reached
-        """
-        print("go")
-        callbacks = [self.cell_logger, self.cell_saver]
-        self.explore_model.learn(10000, reset_num_timesteps=False, callback=callbacks)
-
-    def explore(self, explore_timesteps: int) -> None:
-        """
-        Explore phase.
-
-        :param explore_timesteps: Total number of actions used for exploration
-        """
-        print("explore")
-        callbacks = []
-        self.explore_model.learn(explore_timesteps, callback=callbacks, use_random_action=True, reset_num_timesteps=False)
-
-    def set_task(self, compute_success: Callable[[np.ndarray], np.ndarray]) -> None:
-        """
-        Robustify, considering the given task
-
-        :param compute_success: Function used to determine wether an observation is a success under the given task
-        """
-        self.compute_success = compute_success
-        self._goal_trajectory = None
+        callback = LogNbCellsCallback(self.archive)
+        self.model.learn(
+            total_timesteps, eval_env=self.env, eval_freq=eval_freq, n_eval_episodes=n_eval_episodes, callback=callback
+        )
 
     def predict(
         self,

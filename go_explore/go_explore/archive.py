@@ -51,7 +51,6 @@ class ArchiveBuffer(ReplayBuffer):
     :param observation_space: Observation space
     :param action_space: Action space
     :param cell_computer: The cell computer
-    :param subgoal_horizon: Number of cells separating two observations in the goal trajectory
     :param count_pow:
     :param device:
     :param n_envs: Number of parallel environments
@@ -71,7 +70,6 @@ class ArchiveBuffer(ReplayBuffer):
         observation_space: spaces.Space,
         action_space: spaces.Space,
         cell_computer: CellComputer,
-        subgoal_horizon: int = 1,
         count_pow: int = 0,
         device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
@@ -89,7 +87,6 @@ class ArchiveBuffer(ReplayBuffer):
             handle_timeout_termination=handle_timeout_termination,
         )
         self.cell_computer = cell_computer
-        self.subgoal_horizon = subgoal_horizon
         self.count_pow = count_pow
 
         self._cell_to_idx = {}  # A dict mapping cell to a unique idx
@@ -165,7 +162,7 @@ class ArchiveBuffer(ReplayBuffer):
         next_cell_idx = self._cell_to_idx[next_cell]
         self.csgraph[current_cell_idx][next_cell_idx] = min(self.csgraph[current_cell_idx][next_cell_idx], 1)
 
-    def sample_subgoal_path(self, from_obs: np.ndarray) -> List[np.ndarray]:
+    def sample_subgoal_path(self, from_obs: np.ndarray, subgoal_horizon: int = 1) -> List[np.ndarray]:
         """
         Samples a subgoal path that starts from the given observation.
 
@@ -175,6 +172,7 @@ class ArchiveBuffer(ReplayBuffer):
         Third, uses a shortest path algorithm to select intermediate observations for reaching this final observation.
 
         :param from_obs: The observation taken as a starting point
+        :param subgoal_horizon: Number of cells separating two observations in the subgoal path
         :return: The subgoal_path of observations.
         """
         # compute the initial cell
@@ -195,15 +193,18 @@ class ArchiveBuffer(ReplayBuffer):
         # convert cells into observations
         cell_path = [self._idx_to_cell[idx] for idx in subgoal_idx_path]
         subgoal_path = [self._cell_to_obs(cell) for cell in cell_path]
-        subgoal_path = self._lighten_path(subgoal_path)
+        subgoal_path = self._lighten_path(subgoal_path, subgoal_horizon)
         return subgoal_path
 
-    def solve_task(self, from_obs: np.ndarray, task: Callable[[np.ndarray], np.ndarray]) -> List[np.ndarray]:
+    def solve_task(
+        self, from_obs: np.ndarray, task: Callable[[np.ndarray], np.ndarray], subgoal_horizon: int
+    ) -> List[np.ndarray]:
         """
         Plan the shortest path to realise the given task
 
         :param from_obs: The starting observation
         :param task: The function used to determine whether an observation is a success or not
+        :param subgoal_horizon: Number of cells separating two observations in the subgoal path
         :return: A path of subgoals to solve the task
         """
         # compute the initial cell
@@ -230,7 +231,7 @@ class ArchiveBuffer(ReplayBuffer):
         # convert cells into observations
         cell_path = [self._idx_to_cell[idx] for idx in subgoal_idx_path]
         subgoal_path = [self._cell_to_obs(cell) for cell in cell_path]
-        subgoal_path = self._lighten_path(subgoal_path)
+        subgoal_path = self._lighten_path(subgoal_path, subgoal_horizon)
         return subgoal_path
 
     def _get_reachable_idxs(self, from_idx: int, dist_matrix: np.ndarray) -> List[int]:
@@ -261,9 +262,7 @@ class ArchiveBuffer(ReplayBuffer):
         :return: The list of weights associated with the input indexes
         """
         # The more count, the less weight. See go-explore paper formula.
-        # weights = 1 / (self._counts ** self.count_pow * np.sqrt(1 + self._counts))
-        weights = 1 / (np.sqrt(1 + self._counts))
-        # weights = np.ones_like(self._counts)
+        weights = 1 / (self._counts ** self.count_pow)
         # take only the weigts of the reacheable cells
         reachable_weights = weights[reachable_idxs]
         return reachable_weights
@@ -294,18 +293,19 @@ class ArchiveBuffer(ReplayBuffer):
         obs = random.choice(self._cell_to_obss[cell])
         return obs
 
-    def _lighten_path(self, path: List[np.ndarray]) -> List[np.ndarray]:
+    def _lighten_path(self, path: List[np.ndarray], subgoal_horizon: int) -> List[np.ndarray]:
         """
         Pick a list of elements from the list, evenly spaced by a certain number of steps, keeping the last one.
 
         Example:
-        >>> _lighten_path([1, 2, 3, 4, 5, 6], step=3)
+        >>> _lighten_path([1, 2, 3, 4, 5, 6], subgoal_horizon=3)
         [3, 6]
 
         :param path: The path
+        :param subgoal_horizon: Number of cells separating two observations in the subgoal path
         :return: The lightened path
         """
-        path = path[:: -self.subgoal_horizon]
+        path = path[::-subgoal_horizon]
         path.reverse()
         return path
 
