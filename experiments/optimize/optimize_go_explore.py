@@ -15,7 +15,7 @@ def objective(trial: optuna.Study):
     for _ in range(5):
         env = gym.make("ContinuousMinigrid-v0")
         ge = GoExplore(env, CellIsObs(), subgoal_horizon, done_delay, count_pow)
-        ge.exploration(5000)
+        ge.exploration(8000)
         results.append(ge.archive.nb_cells)
 
     return np.median(results)
