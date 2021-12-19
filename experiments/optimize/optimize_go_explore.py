@@ -1,7 +1,7 @@
 import gym
 import numpy as np
 import optuna
-from go_explore.go_explore.cell_computers import CellIsObs
+from go_explore.go_explore.cell_computers import PandaObjectCellComputer
 from go_explore.go_explore.go_explore import GoExplore
 
 
@@ -13,9 +13,9 @@ def objective(trial: optuna.Study):
     results = []
 
     for _ in range(5):
-        env = gym.make("ContinuousMinigrid-v0")
-        ge = GoExplore(env, CellIsObs(), subgoal_horizon, done_delay, count_pow)
-        ge.exploration(8000)
+        env = gym.make("PandaNoTask-v0", nb_objects=1)
+        ge = GoExplore(env, PandaObjectCellComputer(), subgoal_horizon, done_delay, count_pow)
+        ge.exploration(100000)
         results.append(ge.archive.nb_cells)
 
     return np.median(results)
@@ -25,9 +25,9 @@ if __name__ == "__main__":
     study = optuna.create_study(
         storage="sqlite:///example.db",
         direction="maximize",
-        study_name="PandaReachGoexplore",
+        study_name="PandaObjectGoExplore",
         load_if_exists=True,
     )
-    study.optimize(objective, n_trials=10)
+    study.optimize(objective, n_trials=100)
     importances = optuna.importance.get_param_importances(study)
     print(importances)
