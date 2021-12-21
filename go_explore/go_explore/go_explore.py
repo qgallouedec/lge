@@ -1,17 +1,18 @@
 from typing import Optional, Tuple, Type
 
+import gym
 import numpy as np
-from stable_baselines3.common.callbacks import BaseCallback, CallbackList
-from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3 import DDPG
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList
+from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
+from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.type_aliases import MaybeCallback
 from stable_baselines3.common.vec_env.dummy_vec_env import DummyVecEnv
 from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
+
 from go_explore.common.callbacks import LogNbCellsCallback
 from go_explore.envs import SubgoalEnv
-import gym
-
 from go_explore.go_explore.cell_computers import CellComputer
 
 
@@ -34,13 +35,21 @@ class GoExplore:
         subgoal_horizon: int = 1,
         done_delay: int = 0,
         count_pow: int = 0,
+        gradient_steps: int = -1,
         verbose: int = 0,
     ) -> None:
         env = SubgoalEnv(env, cell_computer, subgoal_horizon, done_delay, count_pow)
         self.archive = env.archive
         env = DummyVecEnv([lambda: env])
         self.env = VecNormalize(env, norm_reward=False)
-        self.model = DDPG("MultiInputPolicy", self.env, replay_buffer_class=HerReplayBuffer, verbose=verbose)
+        self.model = DDPG(
+            "MultiInputPolicy",
+            self.env,
+            replay_buffer_class=HerReplayBuffer,
+            action_noise=OrnsteinUhlenbeckActionNoise(np.zeros(env.action_space.shape[0]), np.ones(env.action_space.shape[0])),
+            gradient_steps=gradient_steps,
+            verbose=verbose,
+        )
         self.model.replay_buffer.child_buffer = self.archive
 
     def exploration(
