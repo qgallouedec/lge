@@ -1,12 +1,15 @@
 import random
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from stable_baselines3.common.vec_env.base_vec_env import VecEnv
+from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
+from stable_baselines3.her.her_replay_buffer import HerReplayBuffer
 import torch as th
 from gym import spaces
 from scipy.sparse.csgraph import shortest_path
-from stable_baselines3.common.buffers import ReplayBuffer
-from stable_baselines3.common.type_aliases import ReplayBufferSamples
+from stable_baselines3.common.buffers import DictReplayBuffer, ReplayBuffer
+from stable_baselines3.common.type_aliases import DictReplayBufferSamples, ReplayBufferSamples
 from stable_baselines3.common.vec_env.vec_normalize import VecNormalize
 
 from go_explore.go_explore.cell_computers import Cell, CellComputer
@@ -107,7 +110,8 @@ class ArchiveBuffer(ReplayBuffer):
         done: np.ndarray,
         infos: List[Dict[str, Any]],
     ) -> None:
-        """Add an element to the buffer.
+        """
+        Add an element to the buffer.
 
         :param obs: the current observation
         :param next_obs: the next observation
@@ -321,3 +325,165 @@ class ArchiveBuffer(ReplayBuffer):
         buffer.pos = self.pos
         buffer.full = self.full
         return buffer
+
+
+class PrioritizedHerDictReplayBuffer(HerReplayBuffer, ArchiveBuffer):
+    def __init__(
+        self,
+        env: VecEnv,
+        buffer_size: int,
+        cell_computer: CellComputer,
+        count_pow: int = 0,
+        device: Union[th.device, str] = "cpu",
+        replay_buffer: Optional[DictReplayBuffer] = None,
+        max_episode_length: Optional[int] = None,
+        n_sampled_goal: int = 4,
+        goal_selection_strategy: Union[GoalSelectionStrategy, str] = "future",
+        online_sampling: bool = True,
+        handle_timeout_termination: bool = True,
+    ):
+        HerReplayBuffer.__init__(
+            self,
+            env,
+            buffer_size,
+            device=device,
+            replay_buffer=replay_buffer,
+            max_episode_length=max_episode_length,
+            n_sampled_goal=n_sampled_goal,
+            goal_selection_strategy=goal_selection_strategy,
+            online_sampling=online_sampling,
+            handle_timeout_termination=handle_timeout_termination,
+        )
+        ArchiveBuffer.__init__(
+            self,
+            buffer_size,
+            env.observation_space["observation"],
+            env.action_space,
+            cell_computer,
+            count_pow=count_pow,
+            device=device,
+            n_envs=1,
+            optimize_memory_usage=False,
+            handle_timeout_termination=handle_timeout_termination,
+        )
+        self._cell_to_transitions = {}
+
+    def add(
+        self,
+        obs: Dict[str, np.ndarray],
+        next_obs: Dict[str, np.ndarray],
+        action: np.ndarray,
+        reward: np.ndarray,
+        done: np.ndarray,
+        infos: List[Dict[str, Any]],
+    ) -> None:
+        for _obs, _next_obs, _infos in zip(obs["observation"], next_obs["observation"], infos):
+            self._process_transition(_obs, _next_obs, _infos)
+        super().add(obs, next_obs, action, reward, done, infos)
+
+    def _cell_to_transition(self, cell):
+        episode_idx, transition_idx = random.choice(self._cell_to_transitions[cell])
+        ep_length = self.episode_lengths[episode_idx]
+        if transition_idx == ep_length-1:
+            transition_idx -= 1
+        return episode_idx, transition_idx
+
+    def _new_cell_found(self, cell: Cell) -> None:
+        super()._new_cell_found(cell)
+        self._cell_to_transitions[cell] = []
+
+    def _update_counts(self, obs: np.ndarray, cell: Cell) -> None:
+        super()._update_counts(obs, cell)
+        # a little bit incorrect for the first transition. It does not cont
+        # transition but cell visition. It might not be a problem when agent
+        # always start from the same cell.
+        self._cell_to_transitions[cell].append((self.pos, self.current_idx))
+
+    def _sample_transitions(
+        self,
+        batch_size: Optional[int],
+        maybe_vec_env: Optional[VecNormalize],
+        online_sampling: bool,
+        n_sampled_goal: Optional[int] = None,
+    ) -> Union[DictReplayBufferSamples, Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], np.ndarray, np.ndarray]]:
+        """
+        :param batch_size: Number of element to sample (only used for online sampling)
+        :param env: associated gym VecEnv to normalize the observations/rewards
+            Only valid when using online sampling
+        :param online_sampling: Using online_sampling for HER or not.
+        :param n_sampled_goal: Number of sampled goals for replay. (offline sampling)
+        :return: Samples.
+        """
+        cell_idxs = np.random.randint(0, self.nb_cells, batch_size)
+        transitions_indices = []
+        episode_indices = []
+        for cell_idx in cell_idxs:
+            cell = self._idx_to_cell[cell_idx]
+            episode_idx, transition_idx = self._cell_to_transition(cell)
+            episode_indices.append(episode_idx)
+            transitions_indices.append(transition_idx)
+        episode_indices = np.array(episode_indices)
+        transitions_indices = np.array(transitions_indices)
+
+        # Select which episodes to use
+        her_indices = np.arange(batch_size)[: int(self.her_ratio * batch_size)]
+
+        # get selected transitions
+        transitions = {key: self._buffer[key][episode_indices, transitions_indices].copy() for key in self._buffer.keys()}
+
+        # sample new desired goals and relabel the transitions
+        new_goals = self.sample_goals(episode_indices, her_indices, transitions_indices)
+        transitions["desired_goal"][her_indices] = new_goals
+
+        # Convert info buffer to numpy array
+        transitions["info"] = np.array(
+            [
+                self.info_buffer[episode_idx][transition_idx]
+                for episode_idx, transition_idx in zip(episode_indices, transitions_indices)
+            ]
+        )
+
+        # Edge case: episode of one timesteps with the future strategy
+        # no virtual transition can be created
+        if len(her_indices) > 0:
+            # Vectorized computation of the new reward
+            transitions["reward"][her_indices, 0] = self.env.env_method(
+                "compute_reward",
+                # the new state depends on the previous state and action
+                # s_{t+1} = f(s_t, a_t)
+                # so the next_achieved_goal depends also on the previous state and action
+                # because we are in a GoalEnv:
+                # r_t = reward(s_t, a_t) = reward(next_achieved_goal, desired_goal)
+                # therefore we have to use "next_achieved_goal" and not "achieved_goal"
+                transitions["next_achieved_goal"][her_indices, 0],
+                # here we use the new desired goal
+                transitions["desired_goal"][her_indices, 0],
+                transitions["info"][her_indices, 0],
+            )
+
+        # concatenate observation with (desired) goal
+        observations = self._normalize_obs(transitions, maybe_vec_env)
+
+        # HACK to make normalize obs and `add()` work with the next observation
+        next_observations = {
+            "observation": transitions["next_obs"],
+            "achieved_goal": transitions["next_achieved_goal"],
+            # The desired goal for the next observation must be the same as the previous one
+            "desired_goal": transitions["desired_goal"],
+        }
+        next_observations = self._normalize_obs(next_observations, maybe_vec_env)
+
+        if online_sampling:
+            next_obs = {key: self.to_torch(next_observations[key][:, 0, :]) for key in self._observation_keys}
+
+            normalized_obs = {key: self.to_torch(observations[key][:, 0, :]) for key in self._observation_keys}
+
+            return DictReplayBufferSamples(
+                observations=normalized_obs,
+                actions=self.to_torch(transitions["action"]),
+                next_observations=next_obs,
+                dones=self.to_torch(transitions["done"]),
+                rewards=self.to_torch(self._normalize_reward(transitions["reward"], maybe_vec_env)),
+            )
+        else:
+            return observations, next_observations, transitions["action"], transitions["reward"]
