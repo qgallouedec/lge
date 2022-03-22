@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Callable, Tuple
 
 import numpy as np
 import torch as th
@@ -63,9 +63,8 @@ def get_cells(images: th.Tensor, width: int, height: int, nb_shades: int) -> th.
     :param nb_shades: Number of possible shades of gray in the cell representation
     :return: The cells as a Tensor
     """
-
     # Converts (N x H x W x C) to (N x C x H x W)
-    images = images.transpose(1, 3)
+    images = images.transpose(-3, -1)
     # Range [0, 255] to range [0.0, 1.0]
     images = images / 255
     # Convert to grayscale
@@ -79,7 +78,7 @@ def get_cells(images: th.Tensor, width: int, height: int, nb_shades: int) -> th.
     return cells
 
 
-def get_param_score(images: np.ndarray, width: int, height: int, nb_shades: int) -> float:
+def get_param_score(images: th.Tensor, width: int, height: int, nb_shades: int) -> float:
     """
     Get the score of the parameters.
 
@@ -89,7 +88,6 @@ def get_param_score(images: np.ndarray, width: int, height: int, nb_shades: int)
     :param nb_shades: Number of possible shades of gray in the cell representation
     :return: The score
     """
-    images = th.from_numpy(images)
     cells = get_cells(images, width, height, nb_shades)
     # List the uniques cells produced, and compute their probability
     cells, counts = th.unique(cells, return_counts=True, dim=0)
@@ -143,3 +141,35 @@ def optimize_downscale_parameters(
             best_nb_shades = nb_shades
 
     return best_w, best_h, best_nb_shades
+
+
+CellFactory = Callable[[th.Tensor], th.Tensor]
+
+
+class DownscaleCellFactory:
+    def __init__(self) -> None:
+        self.width = None
+        self.height = None
+        self.nb_shades = None
+
+    def set_parameters(self, width: int, height: int, nb_shades: int) -> None:
+        """
+        Set the parameters of the cell factory.
+
+        :param width: _description_
+        :param height: _description_
+        :param nb_shades: _description_
+        """
+        self.width = width
+        self.height = height
+        self.nb_shades = nb_shades
+
+    def __call__(self, images: th.Tensor) -> th.Tensor:
+        if len(images.shape) == 3:  # (H x W x C)
+            images = images.unsqueeze(0)  # (H x W x C) to (1 x H x W x C)
+            cells = get_cells(images, self.width, self.height, self.nb_shades)
+            return cells[0]
+        elif len(images.shape) > 3:
+            return get_cells(images, self.width, self.height, self.nb_shades)
+        else:
+            raise ValueError("Dimensions should be (H x W x C) or (N x H x W x C)")
