@@ -86,7 +86,7 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
         # When the last goal is reached, delay the done to allow some random actions
         if self._is_last_goal_reached:
             if self.done_countdown != 0:
-                info["use_random_action"] = True
+                info["action_repeat"] = action
                 self.done_countdown -= 1
             else:  # self.done_countdown == 0:
                 done = True

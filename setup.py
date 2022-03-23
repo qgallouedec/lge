@@ -7,7 +7,7 @@ setup(
     description="Implementation of Go-Explore based on stable-baselines3",
     long_description=open("README.md").read(),
     install_requires=[
-        "stable_baselines3 @ git+https://git@github.com/qgallouedec/stable-baselines3@feat/multienv-her-alt",
+        "stable_baselines3 @ git+https://git@github.com/qgallouedec/stable-baselines3@action-repeat",
         "torchvision",
         "gym[atari, accept-rom-license]",
     ],
