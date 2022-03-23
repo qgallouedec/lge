@@ -33,11 +33,12 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
     ) -> None:
         super().__init__(env)
         # Set a goal-conditionned observation space
+        self.cell_space = cell_factory.cell_space
         self.observation_space = spaces.Dict(
             {
                 "observation": copy.deepcopy(self.env.observation_space),
-                "desired_goal": copy.deepcopy(self.env.observation_space),
-                "achieved_goal": copy.deepcopy(self.env.observation_space),
+                "desired_goal": copy.deepcopy(self.cell_space),
+                "achieved_goal": copy.deepcopy(self.cell_space),
             }
         )
         self.archive = None  # type: ArchiveBuffer
@@ -58,7 +59,7 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
         obs = self.env.reset()
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
         # TODO: change here
-        self.goal_trajectory = [self.observation_space["desired_goal"].sample() for _ in range(3)]
+        self.goal_trajectory = [self.observation_space["desired_goal"].sample().astype(np.uint8) for _ in range(3)]
         # self.goal_trajectory = self.archive.sample_goal_trajectory()
         self._goal_idx = 0
         self.done_countdown = self.nb_random_exploration_steps
@@ -69,7 +70,7 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
     def _get_obs(self, obs: np.ndarray) -> Dict[str, np.ndarray]:
         return {
             "observation": obs.copy(),
-            "achieved_goal": obs.copy(),
+            "achieved_goal": self.cell_factory(th.from_numpy(obs).moveaxis(-1, -3)).numpy(),
             "desired_goal": self.goal_trajectory[self._goal_idx].copy(),
         }
 
@@ -78,10 +79,11 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
 
         # Compute reward (has to be done before moving to next goal)
         desired_goal = self.goal_trajectory[self._goal_idx]
-        reward = self.compute_reward(wrapped_obs, desired_goal, {})
+        achieved_goal = self.cell_factory(th.from_numpy(wrapped_obs).moveaxis(-1, -3)).numpy()
+        reward = float(self.compute_reward(achieved_goal, desired_goal, {}))
 
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
-        self.maybe_move_to_next_goal(wrapped_obs)
+        self.maybe_move_to_next_goal(achieved_goal)
 
         # When the last goal is reached, delay the done to allow some random actions
         if self._is_last_goal_reached:
@@ -94,38 +96,24 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
         obs = self._get_obs(wrapped_obs)
         return obs, reward, done, info
 
-    def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info: Mapping[str, Any]) -> float:
-        if len(achieved_goal.shape) == len(self.observation_space["achieved_goal"].shape):
-            is_success = self.is_success(achieved_goal, desired_goal)
-        elif len(achieved_goal.shape) == len(self.observation_space["achieved_goal"].shape) + 1:
-            # Here, the samples comes from the buffer. In SB3, when observation are images
-            # the buffer store transposed images. That's why we need to transpose this images
-            # before computing success. Remove the following 2 lines if obs are not images.
-            achieved_goal = np.moveaxis(achieved_goal, 1, -1)
-            desired_goal = np.moveaxis(desired_goal, 1, -1)
-            is_success = self.is_success(achieved_goal, desired_goal, dim=0)
-        else:
-            raise ValueError("dim can only be either None or 0")
+    def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info: Mapping[str, Any]) -> np.ndarray:
+        is_success = self.is_success(achieved_goal, desired_goal)
         return is_success - 1
 
-    def is_success(self, obs: np.ndarray, goal: np.ndarray, dim: Optional[int] = None) -> np.ndarray:
+    def is_success(self, achieved_goal: np.ndarray, desired_goal: np.ndarray) -> np.ndarray:
         """
-        Return True when the obs and the goal are in the same cell.
+        Return True when the desired goal matches the achieved goal.
 
-        :param obs: The observation
-        :param goal: The goal
+        :param achieved_goal: The achieved goal
+        :param desired_goal: The desired goal
         :return: Success or not
         """
-        cells = self.cell_factory(th.from_numpy(obs))
-        goal_cells = self.cell_factory(th.from_numpy(goal))
-        if dim is None:
-            return (cells == goal_cells).all().cpu().numpy()
-        elif dim == 0:
-            return np.array([(cell == goal_cell).all() for cell, goal_cell in zip(cells, goal_cells)])
+        if achieved_goal.shape == self.cell_space.shape:
+            return (achieved_goal == desired_goal).all()
         else:
-            raise ValueError("dim can only be either None or 0")
+            return np.array([(cell == goal_cell).all() for cell, goal_cell in zip(achieved_goal, desired_goal)])
 
-    def maybe_move_to_next_goal(self, obs: np.ndarray) -> None:
+    def maybe_move_to_next_goal(self, achieved_goal: np.ndarray) -> None:
         """
         Set the next goal idx if necessary.
 
@@ -138,7 +126,7 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
         upper_idx = min(self._goal_idx + self.window_size, len(self.goal_trajectory))
         for goal_idx in range(self._goal_idx, upper_idx):
             goal = self.goal_trajectory[goal_idx]
-            if self.is_success(obs, goal):
+            if self.is_success(achieved_goal, goal):
                 self._goal_idx = goal_idx + 1
         # Update the flag _is_last_goal_reached
         if self._goal_idx == len(self.goal_trajectory):

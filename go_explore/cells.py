@@ -3,9 +3,10 @@ from typing import Callable, Tuple
 import numpy as np
 import torch as th
 from torchvision.transforms.functional import resize, rgb_to_grayscale
+from gym import spaces
 
-MAX_W = 160
-MAX_H = 210
+MAX_H = 160
+MAX_W = 210
 MAX_NB_SHADES = 255
 
 
@@ -57,27 +58,24 @@ def get_cells(images: th.Tensor, width: int, height: int, nb_shades: int) -> th.
     """
     Return the cells associated with each image.
 
-    :param images: The images as a Tensor of dims (N x H x W x C)
+    :param images: The images as a Tensor of dims (... x 3 x W x H)
     :param width: The width of the downscaled image
     :param height: The height of the downscaled image
     :param nb_shades: Number of possible shades of gray in the cell representation
     :return: The cells as a Tensor
     """
-    # Converts (N x H x W x C) to (N x C x H x W)
-    images = images.transpose(-3, -1)
-    # Range [0, 255] to range [0.0, 1.0]
-    images = images / 255
+    # Image's dims are (... x 3 x W x H)
+    # We need a little trick on shape, because resize  and rgb_to_grayscale only accepts size (N x W x H)
+    prev_shape = images.shape[:-3]  # the "..." par of the shape
+    images = images.reshape((-1, *images.shape[-3:]))  #  (... x 3 x W x H) to (N x 3 x W x H)
     # Convert to grayscale
-    images = rgb_to_grayscale(images)
+    images = rgb_to_grayscale(images)  # (N x 1 x W x H)
     # Resize
-    prev_shape = images.shape[:-2]
-    images = images.reshape((-1, *images.shape[-2:]))  #  (... x 1 x H x W) to (N x H x W)
-    images = resize(images, (width, height))
-    images = images.reshape((*prev_shape, *images.shape[-2:]))  #  (... x 1 x H x W) to (N x H x W)
+    images = resize(images, (width, height))  # (N x 1 x NEW_W x NEW_H)
+    # images = images.squeeze(1)  # (N x NEW_W x NEW_H)
+    images = images.reshape((*prev_shape, *images.shape[-2:]))  #  (N x 1 x W x H) to (... x W x H)
     # Downscale
-    cells = th.floor(images * nb_shades)
-    # Squeeze (... x 1 x H x W) to (... x H x W)
-    cells = cells.squeeze(-3)
+    cells = th.floor(images / nb_shades).to(th.uint8) * nb_shades
     return cells
 
 
@@ -85,7 +83,7 @@ def get_param_score(images: th.Tensor, width: int, height: int, nb_shades: int) 
     """
     Get the score of the parameters.
 
-    :param images: The images as a Tensor of dims (N x H x W x C)
+    :param images: The images as a Tensor of dims (N x 3 x W x H)
     :param width: The width of the downscaled image
     :param height: The height of the downscaled image
     :param nb_shades: Number of possible shades of gray in the cell representation
@@ -103,7 +101,7 @@ def get_param_score(images: th.Tensor, width: int, height: int, nb_shades: int) 
 
 
 def optimize_downscale_parameters(
-    images: np.ndarray,
+    images: th.Tensor,
     best_w: int = MAX_W,
     best_h: int = MAX_H,
     best_nb_shades: int = MAX_NB_SHADES,
@@ -112,7 +110,7 @@ def optimize_downscale_parameters(
     """
     Find the best parameters for the cell computation.
 
-    :param images: Frames, dimensions are (N, W, H, C)
+    :param images: The images as a Tensor of dims (N x 3 x W x H)
     :param best_w: Best known width value, defaults to MAX_W
     :param best_h: Best known height value, defaults to MAX_H
     :param best_nb_shades: Best known number of shades value, defaults to MAX_NB_SHADES
@@ -150,10 +148,20 @@ CellFactory = Callable[[th.Tensor], th.Tensor]
 
 
 class DownscaleCellFactory:
+    """
+    Downscale cell factory.
+
+    Example:
+    >>> cell_factory = DownscaleCellFactory()
+    >>> cell_factory.set_parameters(width=15, height=10, nb_shades=20)
+    >>> images.shape
+    torch.Size([10, 3, 210, 160])  # (N x 3 x W x H)
+    >>> cell_factory(images).shape
+    torch.Size([10, 15, 10])  # (N x 3 x W x H)
+    """
+
     def __init__(self) -> None:
-        self.width = MAX_W
-        self.height = MAX_H
-        self.nb_shades = MAX_NB_SHADES
+        self.set_parameters(width=MAX_W, height=MAX_H, nb_shades=MAX_NB_SHADES)
 
     def set_parameters(self, width: int, height: int, nb_shades: int) -> None:
         """
@@ -166,13 +174,13 @@ class DownscaleCellFactory:
         self.width = width
         self.height = height
         self.nb_shades = nb_shades
+        self.cell_space = spaces.Box(low=0, high=255, shape=(width, height))
 
     def __call__(self, images: th.Tensor) -> th.Tensor:
-        if len(images.shape) == 3:  # (H x W x C)
-            images = images.unsqueeze(0)  # (H x W x C) to (1 x H x W x C)
-            cells = get_cells(images, self.width, self.height, self.nb_shades)
-            return cells[0]
-        elif len(images.shape) > 3:
-            return get_cells(images, self.width, self.height, self.nb_shades)
-        else:
-            raise ValueError("Dimensions should be (H x W x C) or (N x H x W x C)")
+        """
+        Compute the cells.
+
+        :param images: Images with shape (... x 3 x W x H)
+        :return: A tensor of cells.
+        """
+        return get_cells(images, self.width, self.height, self.nb_shades)

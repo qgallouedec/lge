@@ -1,5 +1,6 @@
 from typing import List, Union
 
+import numpy as np
 import torch as th
 from gym import Env, spaces
 from stable_baselines3 import HerReplayBuffer
@@ -76,7 +77,6 @@ class ArchiveBuffer(HerReplayBuffer):
         """
         upper_bound = self.pos if not self.full else self.buffer_size
         observations = self.to_torch(self.observations["observation"][:upper_bound])
-        observations = observations.transpose(-1, -3)
         self.cells = self.cell_factory(observations)
 
     def _update_trajectories(self) -> None:
@@ -109,7 +109,7 @@ class ArchiveBuffer(HerReplayBuffer):
         self.earliest_cell_pos = th.div(earliest_cell_occurence, self.n_envs, rounding_mode="floor")
         self.earliest_cell_start = flat_ep_start[earliest_cell_occurence]
 
-    def sample_cell_trajectory(self) -> List[th.Tensor]:
+    def sample_cell_trajectory(self) -> List[np.ndarray]:
         """
         Sample a trajcetory of cells.
 
@@ -123,9 +123,9 @@ class ArchiveBuffer(HerReplayBuffer):
         start = self.earliest_cell_start[cell_uid]
         pos = self.earliest_cell_pos[cell_uid]
         # Loop to avoid consecutive repetition
-        cell_trajectory = [self.cells[start, env]]
+        cell_trajectory = [self.cells[start, env].cpu().numpy()]
         for i in range(start, pos + 1):
-            cell = self.cells[i, env]
+            cell = self.cells[i, env].cpu().numpy()
             if (cell != cell_trajectory[-1]).any():
                 cell_trajectory.append(cell)
         return cell_trajectory
