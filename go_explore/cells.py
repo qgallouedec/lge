@@ -71,9 +71,9 @@ def get_cells(images: th.Tensor, width: int, height: int, nb_shades: int) -> th.
     images = rgb_to_grayscale(images)
     # Resize
     prev_shape = images.shape[:-2]
-    images = images.reshape((-1, *images.shape[-2:])) #  (... x 1 x H x W) to (N x H x W)
+    images = images.reshape((-1, *images.shape[-2:]))  #  (... x 1 x H x W) to (N x H x W)
     images = resize(images, (width, height))
-    images = images.reshape((*prev_shape, *images.shape[-2:])) #  (... x 1 x H x W) to (N x H x W)
+    images = images.reshape((*prev_shape, *images.shape[-2:]))  #  (... x 1 x H x W) to (N x H x W)
     # Downscale
     cells = th.floor(images * nb_shades)
     # Squeeze (... x 1 x H x W) to (... x H x W)
