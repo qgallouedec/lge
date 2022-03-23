@@ -9,7 +9,7 @@ setup(
     install_requires=[
         "stable_baselines3 @ git+https://git@github.com/qgallouedec/stable-baselines3@feat/multienv-her-alt",
         "torchvision",
-        "gym[atari]",
+        "gym[atari, accept-rom-license]",
     ],
     extras_require={
         "tests": ["pytest", "black"],
