@@ -6,6 +6,7 @@ import numpy as np
 import torch as th
 from gym import Env, spaces
 from stable_baselines3.common.base_class import maybe_make_env
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 
@@ -42,7 +43,6 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
             }
         )
         self.archive = None  # type: ArchiveBuffer
-
         self.cell_factory = cell_factory
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
@@ -58,9 +58,7 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        # TODO: change here
-        self.goal_trajectory = [self.observation_space["desired_goal"].sample().astype(np.uint8) for _ in range(3)]
-        # self.goal_trajectory = self.archive.sample_goal_trajectory()
+        self.goal_trajectory = self.archive.sample_cell_trajectory()
         self._goal_idx = 0
         self.done_countdown = self.nb_random_exploration_steps
         self._is_last_goal_reached = False  # useful flag
@@ -134,6 +132,26 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
             self._goal_idx -= 1
 
 
+class _UpdateCellsCallback(BaseCallback):
+    """
+    Callback that runs cell update.
+
+    :param archive: The archive
+    :param update_freq: Cells update frequency
+    """
+
+    def __init__(self, archive: ArchiveBuffer, update_freq: int):
+        super().__init__()
+        self.archive = archive
+        self.update_freq = update_freq
+
+    def _on_step(self) -> bool:
+        self.logger.record("go_explore/nb_cells", self.archive.nb_cells)
+        if self.n_calls % self.update_freq == 0:
+            self.archive.update_cells()
+        return super()._on_step()
+
+
 class GoExplore:
     """
     Go-Explore implementation as described in [1].
@@ -175,14 +193,17 @@ class GoExplore:
             verbose=verbose,
             **model_kwargs
         )
+        self.archive = self.model.replay_buffer
         for _env in self.model.env.envs:
-            _env.set_archive(self.model.replay_buffer)
+            _env.set_archive(self.archive)
 
-    def explore(self, total_timesteps: int, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int, reset_num_timesteps: bool = False, cells_update_freq: int = 1000) -> None:
         """
         Run exploration.
 
         :param total_timesteps: Total timestep of exploration.
-        :param reset_num_timesteps: whether or not to reset the current timestep number (used in logging), defaults to False
+        :param reset_num_timesteps: Whether or not to reset the current timestep number (used in logging), defaults to False
+        :param update_freq: Cells update frequency
         """
-        self.model.learn(total_timesteps, reset_num_timesteps=reset_num_timesteps)
+        update_cell_cb = _UpdateCellsCallback(self.archive, update_freq=cells_update_freq)
+        self.model.learn(total_timesteps, reset_num_timesteps=reset_num_timesteps, callback=update_cell_cb)

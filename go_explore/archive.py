@@ -63,6 +63,8 @@ class ArchiveBuffer(HerReplayBuffer):
         assert n_envs == 1, "The trajectory manager is not compatible with multiprocessing"
         self.count_pow = count_pow
         self.cell_factory = cell_factory
+        self.counts = None  # type: th.Tensor
+        self.nb_cells = 0
 
     def update_cells(self) -> None:
         """
@@ -115,6 +117,8 @@ class ArchiveBuffer(HerReplayBuffer):
 
         :return: A list of non-repatitive cells as Tensor
         """
+        if self.counts is None:  # no cells yet
+            return [self.observation_space["desired_goal"].sample().astype(np.uint8)]
         # Weights depending of the cell visitation count
         weights = 1 / th.sqrt(self.counts + 1)
         cell_uid = th.multinomial(weights, 1)

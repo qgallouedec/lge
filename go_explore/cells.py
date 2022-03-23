@@ -151,26 +151,19 @@ class DownscaleCellFactory:
     """
     Downscale cell factory.
 
+    :param width: The width of the downscaled image
+    :param height: The height of the downscaled image
+    :param nb_shades: Number of possible shades of gray in the cell representation
+
     Example:
-    >>> cell_factory = DownscaleCellFactory()
-    >>> cell_factory.set_parameters(width=15, height=10, nb_shades=20)
+    >>> cell_factory = DownscaleCellFactory(width=15, height=10, nb_shades=20)
     >>> images.shape
     torch.Size([10, 3, 210, 160])  # (N x 3 x W x H)
     >>> cell_factory(images).shape
     torch.Size([10, 15, 10])  # (N x 3 x W x H)
     """
 
-    def __init__(self) -> None:
-        self.set_parameters(width=MAX_W, height=MAX_H, nb_shades=MAX_NB_SHADES)
-
-    def set_parameters(self, width: int, height: int, nb_shades: int) -> None:
-        """
-        Set the parameters of the cell factory.
-
-        :param width: _description_
-        :param height: _description_
-        :param nb_shades: _description_
-        """
+    def __init__(self, width: int = MAX_W, height: int = MAX_H, nb_shades: int = MAX_NB_SHADES) -> None:
         self.width = width
         self.height = height
         self.nb_shades = nb_shades
@@ -184,3 +177,25 @@ class DownscaleCellFactory:
         :return: A tensor of cells.
         """
         return get_cells(images, self.width, self.height, self.nb_shades)
+
+
+class CellIsObs:
+    """
+    Cell is observation.
+
+    Example:
+    >>> cell_factory = CellIsObs()
+    >>> images.shape
+    torch.Size([10, 3, 210, 160])  # (N x 3 x W x H)
+    >>> cell_factory(images).shape
+    torch.Size([10, 3, 210, 160])  # (N x 3 x W x H)
+    """
+
+    def __call__(self, observations: th.Tensor) -> th.Tensor:
+        """
+        Compute the cells.
+
+        :param observations: Observations
+        :return: A tensor of cells.
+        """
+        return observations
