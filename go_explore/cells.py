@@ -70,11 +70,14 @@ def get_cells(images: th.Tensor, width: int, height: int, nb_shades: int) -> th.
     # Convert to grayscale
     images = rgb_to_grayscale(images)
     # Resize
+    prev_shape = images.shape[:-2]
+    images = images.reshape((-1, *images.shape[-2:])) #  (... x 1 x H x W) to (N x H x W)
     images = resize(images, (width, height))
+    images = images.reshape((*prev_shape, *images.shape[-2:])) #  (... x 1 x H x W) to (N x H x W)
     # Downscale
     cells = th.floor(images * nb_shades)
-    # Squeeze (N x 1 x H x W) to (N x H x W)
-    cells = cells.squeeze(1)
+    # Squeeze (... x 1 x H x W) to (... x H x W)
+    cells = cells.squeeze(-3)
     return cells
 
 
@@ -148,9 +151,9 @@ CellFactory = Callable[[th.Tensor], th.Tensor]
 
 class DownscaleCellFactory:
     def __init__(self) -> None:
-        self.width = None
-        self.height = None
-        self.nb_shades = None
+        self.width = MAX_W
+        self.height = MAX_H
+        self.nb_shades = MAX_NB_SHADES
 
     def set_parameters(self, width: int, height: int, nb_shades: int) -> None:
         """
