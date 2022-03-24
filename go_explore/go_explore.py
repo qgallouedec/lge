@@ -6,7 +6,6 @@ import numpy as np
 import torch as th
 from gym import Env, spaces
 from stable_baselines3.common.base_class import maybe_make_env
-from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 
@@ -132,26 +131,6 @@ class Goalify(gym.GoalEnv, gym.Wrapper):
             self._goal_idx -= 1
 
 
-class _UpdateCellsCallback(BaseCallback):
-    """
-    Callback that runs cell update.
-
-    :param archive: The archive
-    :param update_freq: Cells update frequency
-    """
-
-    def __init__(self, archive: ArchiveBuffer, update_freq: int):
-        super().__init__()
-        self.archive = archive
-        self.update_freq = update_freq
-
-    def _on_step(self) -> bool:
-        self.logger.record("go_explore/nb_cells", self.archive.nb_cells)
-        if self.n_calls % self.update_freq == 0:
-            self.archive.update_cells()
-        return super()._on_step()
-
-
 class GoExplore:
     """
     Go-Explore implementation as described in [1].
@@ -205,5 +184,4 @@ class GoExplore:
         :param reset_num_timesteps: Whether or not to reset the current timestep number (used in logging), defaults to False
         :param update_freq: Cells update frequency
         """
-        update_cell_cb = _UpdateCellsCallback(self.archive, update_freq=cells_update_freq)
-        self.model.learn(total_timesteps, reset_num_timesteps=reset_num_timesteps, callback=update_cell_cb)
+        self.model.learn(total_timesteps, reset_num_timesteps=reset_num_timesteps)

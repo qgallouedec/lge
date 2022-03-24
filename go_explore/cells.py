@@ -1,9 +1,12 @@
-from typing import Callable, Tuple
+import copy
+from abc import ABC, abstractmethod
+from typing import Tuple
 
+import gym.spaces
 import numpy as np
 import torch as th
-from torchvision.transforms.functional import resize, rgb_to_grayscale
 from gym import spaces
+from torchvision.transforms.functional import resize, rgb_to_grayscale
 
 MAX_H = 160
 MAX_W = 210
@@ -72,7 +75,6 @@ def get_cells(images: th.Tensor, width: int, height: int, nb_shades: int) -> th.
     images = rgb_to_grayscale(images)  # (N x 1 x W x H)
     # Resize
     images = resize(images, (width, height))  # (N x 1 x NEW_W x NEW_H)
-    # images = images.squeeze(1)  # (N x NEW_W x NEW_H)
     images = images.reshape((*prev_shape, *images.shape[-2:]))  #  (N x 1 x W x H) to (... x W x H)
     # Downscale
     cells = th.floor(images / nb_shades).to(th.uint8) * nb_shades
@@ -144,10 +146,15 @@ def optimize_downscale_parameters(
     return best_w, best_h, best_nb_shades
 
 
-CellFactory = Callable[[th.Tensor], th.Tensor]
+class CellFactory(ABC):
+    cell_space: gym.spaces.Space
+
+    @abstractmethod
+    def __call__(self, observations: th.Tensor) -> th.Tensor:
+        ...
 
 
-class DownscaleCellFactory:
+class DownscaleCellFactory(CellFactory):
     """
     Downscale cell factory.
 
@@ -174,7 +181,7 @@ class DownscaleCellFactory:
         Compute the cells.
 
         :param images: Images with shape (... x 3 x W x H)
-        :return: A tensor of cells.
+        :return: A tensor of cells
         """
         return get_cells(images, self.width, self.height, self.nb_shades)
 
@@ -184,18 +191,21 @@ class CellIsObs:
     Cell is observation.
 
     Example:
-    >>> cell_factory = CellIsObs()
+    >>> cell_factory = CellIsObs(observation_space)
     >>> images.shape
     torch.Size([10, 3, 210, 160])  # (N x 3 x W x H)
     >>> cell_factory(images).shape
     torch.Size([10, 3, 210, 160])  # (N x 3 x W x H)
     """
 
+    def __init__(self, observation_space: spaces) -> None:
+        self.cell_space = copy.deepcopy(observation_space)
+
     def __call__(self, observations: th.Tensor) -> th.Tensor:
         """
         Compute the cells.
 
         :param observations: Observations
-        :return: A tensor of cells.
+        :return: A tensor of cells
         """
         return observations
