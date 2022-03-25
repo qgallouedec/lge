@@ -12,6 +12,8 @@ from go_explore.archive import ArchiveBuffer
 from go_explore.cells import CellFactory
 from stable_baselines3.common.preprocessing import maybe_transpose, is_image_space
 
+from go_explore.policies import MyCombinedExtractor
+
 
 class Goalify(gym.Wrapper):
     """
@@ -154,7 +156,11 @@ class GoExplore:
 
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
-        replay_buffer_kwargs.update({"cell_factory": cell_factory, "count_pow": count_pow})
+        replay_buffer_kwargs.update(dict(cell_factory=cell_factory, count_pow=count_pow))
+        policy_kwargs = dict(
+            features_extractor_class=MyCombinedExtractor,
+            features_extractor_kwargs=dict(cell_factory=cell_factory),
+        )
         model_kwargs = {} if model_kwargs is None else model_kwargs
 
         self.model = model_class(
@@ -162,6 +168,7 @@ class GoExplore:
             env,
             replay_buffer_class=ArchiveBuffer,
             replay_buffer_kwargs=replay_buffer_kwargs,
+            policy_kwargs=policy_kwargs,
             verbose=verbose,
             **model_kwargs
         )
@@ -169,6 +176,12 @@ class GoExplore:
         self.archive.set_env(env)
         for _env in self.model.env.envs:
             _env.set_archive(self.archive)
+
+    def _update_cell_factory_param(self):
+        samples = self.archive.sample(512).next_observations["observation"]
+        self.archive.cell_factory.optimize_param(samples)
+        self.archive.when_cell_factory_updated()
+        # TODO: modify the network self.model.policy
 
     def explore(self, total_timesteps: int, reset_num_timesteps: bool = False) -> None:
         """
