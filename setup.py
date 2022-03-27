@@ -10,6 +10,7 @@ setup(
         "stable_baselines3 @ git+https://git@github.com/qgallouedec/stable-baselines3@action-repeat",
         "torchvision",
         "gym[atari, accept-rom-license]",
+        "optuna",
     ],
     extras_require={
         "tests": ["pytest", "black"],
