@@ -215,7 +215,7 @@ class DownscaleObs(CellFactory):
 
     def __init__(self, observation_space: spaces.Space) -> None:
         self.cell_space = copy.deepcopy(observation_space)
-        self.steps = np.ones(self.cell_space.shape[0])
+        self.step = 1
 
     def __call__(self, observations: th.Tensor) -> th.Tensor:
         """
@@ -224,20 +224,17 @@ class DownscaleObs(CellFactory):
         :param observations: Observations
         :return: A tensor of cells
         """
-        cells = th.floor(observations / self.steps) * self.steps
+        cells = th.floor(observations / self.step) * self.step
         return cells
 
     def optimize_param(self, samples: th.Tensor, nb_trials: int = 300) -> float:
-        def objective(trial: optuna.Trial):
-            steps = []
-            for dim in range(len(self.steps)):
-                steps.append(trial.suggest_loguniform("step_" + str(dim), 1e-6, 1e4))
-            self.steps = np.array(steps)
+        def objective(trial: optuna.Trial) -> float:
+            self.step = trial.suggest_loguniform("step", 1e-6, 1e4)
             cells = self.__call__(samples)
             score = get_param_score(cells)
             return score
 
         study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=nb_trials)
-        self.steps = np.array([study.best_params["step_" + str(dim)] for dim in range(len(self.steps))])
+        self.step = np.array(study.best_params["step"])
         return study.best_value

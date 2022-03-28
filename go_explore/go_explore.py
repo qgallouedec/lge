@@ -1,17 +1,19 @@
 import copy
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Optional, Tuple, Type
 
 import gym
 import numpy as np
 from gym import Env, spaces
+import torch as th
 from stable_baselines3.common.base_class import maybe_make_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
+from stable_baselines3.common.callbacks import BaseCallback
 
 from go_explore.archive import ArchiveBuffer
 from go_explore.cells import CellFactory
 from stable_baselines3.common.preprocessing import maybe_transpose, is_image_space
-
+from stable_baselines3.common.utils import get_schedule_fn
 from go_explore.policies import MyCombinedExtractor
 
 
@@ -126,6 +128,33 @@ class Goalify(gym.Wrapper):
             self._goal_idx -= 1
 
 
+class CustomCallback(BaseCallback):
+    """
+    A custom callback that derives from ``BaseCallback``.
+
+    :param verbose: (int) Verbosity level 0: not output 1: info 2: debug
+    """
+
+    def __init__(self, func: Callable[[None], None], call_freq: int = 1, verbose=0):
+        super(CustomCallback, self).__init__(verbose)
+        self.func = func
+        self.call_freq = call_freq
+
+    def _on_step(self) -> bool:
+        """
+        This method will be called by the model after each call to `env.step()`.
+
+        For child callback (of an `EventCallback`), this will be called
+        when the event is triggered.
+
+        :return: (bool) If the callback returns False, training is aborted early.
+        """
+        if self.num_timesteps % self.call_freq == 0:
+            self.func()
+
+        return True
+
+
 class GoExplore:
     """
     Go-Explore implementation as described in [1].
@@ -181,10 +210,13 @@ class GoExplore:
         samples = self.archive.sample(512).next_observations["observation"]
         self.archive.cell_factory.optimize_param(samples)
         self.archive.when_cell_factory_updated()
+        self.model.policy._build(get_schedule_fn(self.model.learning_rate))
+        print(self.archive.cell_factory.step)
+
         # At this point, we should maybe sample random weights for the last layers (since cell factory changes).
         # But is there necessary? For the moment, we don't change the weights.
 
-    def explore(self, total_timesteps: int, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int, update_cell_factory_freq=10000, reset_num_timesteps: bool = False) -> None:
         """
         Run exploration.
 
@@ -192,4 +224,5 @@ class GoExplore:
         :param reset_num_timesteps: Whether or not to reset the current timestep number (used in logging), defaults to False
         :param update_freq: Cells update frequency
         """
-        self.model.learn(total_timesteps, reset_num_timesteps=reset_num_timesteps)
+        cb = CustomCallback(self._update_cell_factory_param, update_cell_factory_freq)
+        self.model.learn(total_timesteps, callback=cb, reset_num_timesteps=reset_num_timesteps)
