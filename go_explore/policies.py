@@ -10,11 +10,17 @@ from go_explore.cells import CellFactory
 
 class MyCombinedExtractor(BaseFeaturesExtractor):
     """
-    Combined feature extractor for Dict observation spaces containing keys "observation" and "goal".
+    Feature extraction for GoExplore. Dict observation spaces containing keys "observation" and "goal".
 
-    Builds a feature extractor "observation" (CNN or MLP, depending on input shape).
-    Use cell_factory for the "goal".
-    The output features are concatenated and fed through additional MLP network ("combined").
+    The output is the concatenation of:
+     - the output of a feature extractor on the "observation" (CNN or MLP, depending on input shape).
+     - the output of the cell_factory on the "goal".
+
+    The size of the cell may vary during the learning process. However, it is not possible to
+    constantly change the network structure. We therefore set the size of the output constant
+    equal to the maximum size that the cell can take. We complete the unused outputs with zeros.
+    The maximum size that the cell can take is the size of the goal space (which is the same as the
+    observation space)
 
     :param observation_space: The Dict observation space
     :param cell_factory: The cell factory
@@ -27,28 +33,23 @@ class MyCombinedExtractor(BaseFeaturesExtractor):
 
         self.cell_factory = cell_factory
 
-        extractors = {}
-        total_concat_size = 0
-
         if is_image_space(observation_space["observation"]):
-            extractors["observation"] = NatureCNN(observation_space["observation"], features_dim=cnn_output_dim)
-            total_concat_size += cnn_output_dim
+            self.observation_extractor = NatureCNN(observation_space["observation"], features_dim=cnn_output_dim)
+            observation_feature_size = cnn_output_dim
         else:
             # The observation key is a vector, flatten it if needed
-            extractors["observation"] = nn.Flatten()
-            total_concat_size += get_flattened_obs_dim(observation_space["observation"])
+            self.observation_extractor = nn.Flatten()
+            observation_feature_size = get_flattened_obs_dim(observation_space["observation"])
 
-        extractors["goal"] = self.cell_factory
-        total_concat_size += get_flattened_obs_dim(observation_space["goal"])
-
-        self.extractors = extractors
+        cell_size = get_flattened_obs_dim(observation_space["goal"])
 
         # Update the features dim manually
-        self._features_dim = total_concat_size
+        self._features_dim = observation_feature_size + cell_size
 
     def forward(self, observations: TensorDict) -> th.Tensor:
-        encoded_tensor_list = []
-
-        for key, extractor in self.extractors.items():
-            encoded_tensor_list.append(extractor(observations[key]))
-        return th.cat(encoded_tensor_list, dim=1)
+        features = th.zeros((observations["observation"].shape[0], self._features_dim))  # (N_ENVS x FEAT_DIM)
+        non_zeros_features = th.cat(
+            [self.observation_extractor(observations["observation"]), self.cell_factory(observations["goal"])], dim=1
+        )
+        features[:, : non_zeros_features.shape[1]] = non_zeros_features
+        return features

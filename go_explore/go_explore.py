@@ -181,7 +181,8 @@ class GoExplore:
         samples = self.archive.sample(512).next_observations["observation"]
         self.archive.cell_factory.optimize_param(samples)
         self.archive.when_cell_factory_updated()
-        # TODO: modify the network self.model.policy
+        # At this point, we should maybe sample random weights for the last layers (since cell factory changes).
+        # But is there necessary? For the moment, we don't change the weights.
 
     def explore(self, total_timesteps: int, reset_num_timesteps: bool = False) -> None:
         """
