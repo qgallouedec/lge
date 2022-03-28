@@ -259,8 +259,9 @@ class ArchiveBuffer(DictReplayBuffer):
         # Compute the unique cells.
         # cells_uid is a tensor of shape (nb_obs,) mapping observation index to its cell index.
         # unique_cells is a tensor of shape (nb_cells, *cell_shape) mapping cell index to the cell.
-        self.unique_cells, cells_uid, counts = th.unique(flat_cells, return_inverse=True, return_counts=True, dim=0)
+        unique_cells, cells_uid, counts = th.unique(flat_cells, return_inverse=True, return_counts=True, dim=0)
         self.counts = counts.cpu().numpy()  # type: np.ndarray
+        self.unique_cells = unique_cells.cpu().numpy()  # type: np.ndarray
         nb_cells = self.unique_cells.shape[0]  # number of unique cells
         flat_pos = th.arange(self.ep_start.shape[0]).repeat_interleave(self.n_envs)  # [0, 0, 1, 1, 2, ...] if n_envs == 2
         flat_ep_start = th.from_numpy(self.ep_start).flatten()  # shape from (pos, env_idx) to (idx,)
