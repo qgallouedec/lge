@@ -298,7 +298,7 @@ class ArchiveBuffer(DictReplayBuffer):
         start = self.ep_start[goal_pos, env]
         # Loop to avoid consecutive repetition
         trajectory = [self.next_observations["observation"][start, env]]
-        for pos in range(start + 1, goal_pos):
+        for pos in range(start + 1, goal_pos + 1):
             previous_cell = self.cells[pos - 1, env]
             cell = self.cells[pos, env]
             if (previous_cell != cell).any():
