@@ -8,7 +8,7 @@ from torch import nn
 from go_explore.cells import CellFactory
 
 
-class MyCombinedExtractor(BaseFeaturesExtractor):
+class GoExploreExtractor(BaseFeaturesExtractor):
     """
     Feature extraction for GoExplore. Dict observation spaces containing keys "observation" and "goal".
 
@@ -29,7 +29,7 @@ class MyCombinedExtractor(BaseFeaturesExtractor):
     """
 
     def __init__(self, observation_space: gym.spaces.Dict, cell_factory: CellFactory, cnn_output_dim: int = 256):
-        super(MyCombinedExtractor, self).__init__(observation_space, features_dim=1)
+        super(GoExploreExtractor, self).__init__(observation_space, features_dim=1)
 
         self.cell_factory = cell_factory
 
