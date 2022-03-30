@@ -193,6 +193,7 @@ class ArchiveBuffer(DictReplayBuffer):
         :type obs: np.ndarray
         """
         cells = self.compute_cell(obs)
+        self.cells[self.pos] = cells
         for env_idx in range(self.n_envs):
             cell = cells[env_idx]
             maybe_cell_uid = index(cell, self.unique_cells)
