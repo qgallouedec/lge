@@ -1,5 +1,7 @@
 # Go Explore
 
+**Under development**
+
 Unofficial implementation of the Go-Explore algorithm presented in [First return then explore](https://arxiv.org/abs/2004.12919) based on [stable-baselines3](https://github.com/DLR-RM/stable-baselines3)
 
 
