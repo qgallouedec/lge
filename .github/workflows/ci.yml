@@ -21,7 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install .[extra,tests]
+        pip install -e .[extra,tests]
         pip install pytest-cov
     - name: Check codestyle
       run: |
