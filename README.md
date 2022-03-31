@@ -2,6 +2,8 @@
 
 **Under development**
 
+[![codecov](https://codecov.io/gh/qgallouedec/go-explore/branch/main/graph/badge.svg?token=f0yjhgL1nj)](https://codecov.io/gh/qgallouedec/go-explore)
+
 Unofficial implementation of the Go-Explore algorithm presented in [First return then explore](https://arxiv.org/abs/2004.12919) based on [stable-baselines3](https://github.com/DLR-RM/stable-baselines3)
 
 
