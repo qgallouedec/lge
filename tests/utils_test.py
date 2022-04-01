@@ -9,10 +9,22 @@ def test_indexes():
     assert (indexes(a, b) == np.array([3, 4])).all()
 
 
+def test_indexes_when_none():
+    a = np.array([-1, -1])
+    b = np.array([[1, 2], [3, 5], [4, 3], [3, 4], [3, 4], [5, 4]])
+    assert (indexes(a, b) == np.array([])).all()
+
+
 def test_index():
     a = np.array([3, 4])
     b = np.array([[1, 2], [3, 5], [4, 3], [3, 4], [3, 4]])
     assert index(a, b) == 3
+
+
+def test_index_when_none():
+    a = np.array([-1, -1])
+    b = np.array([[1, 2], [3, 5], [4, 3], [3, 4], [3, 4]])
+    assert index(a, b) is None
 
 
 def test_multinomial():
