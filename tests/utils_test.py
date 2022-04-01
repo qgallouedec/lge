@@ -1,4 +1,5 @@
 import numpy as np
+
 from go_explore.utils import index, indexes, multinomial, sample_geometric
 
 

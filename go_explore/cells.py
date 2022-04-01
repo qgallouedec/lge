@@ -1,6 +1,6 @@
 import copy
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Tuple, Type
+from typing import Dict
 
 import gym.spaces
 import numpy as np
@@ -8,6 +8,7 @@ import optuna
 import torch as th
 from gym import spaces
 from torchvision.transforms.functional import resize, rgb_to_grayscale
+
 from go_explore.utils import sample_geometric
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
