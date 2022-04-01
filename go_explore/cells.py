@@ -47,7 +47,7 @@ class CellFactory(ABC):
         ...
 
 
-def get_param_score(cells: th.Tensor) -> float:
+def get_param_score(cells: th.Tensor, split_factor: float = 0.125) -> float:
     """
     Get the score of the parameters.
 
@@ -59,7 +59,7 @@ def get_param_score(cells: th.Tensor) -> float:
     nb_samples = cells.shape[0]
     probs = counts / nb_samples
     # Compute the score
-    score = distribution_score(probs, nb_samples, split_factor=0.125)
+    score = distribution_score(probs, nb_samples, split_factor)
     return score
 
 
