@@ -27,7 +27,10 @@ def test_feature_extractor_image():
     )
     cell_factory = ImageGrayscaleDownscale(height // 5, width // 5, 50)
     feature_extractor = GoExploreExtractor(observation_space, cell_factory, cnn_output_dim)
-    observation = {"observation": th.randint(0, 255, (1, 3, height, width)), "goal": th.randint(0, 255, (1, 3, height, width))}
+    observation = {
+        "observation": th.randint(0, 255, (1, 3, height, width), dtype=th.float32),
+        "goal": th.randint(0, 255, (1, 3, height, width), dtype=th.float32),
+    }
     feature = feature_extractor(observation)
     assert feature.shape == (1, cnn_output_dim + height * width)
     max_used_idx = cnn_output_dim + height // 5 * width // 5
