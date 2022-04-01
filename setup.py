@@ -13,6 +13,6 @@ setup(
         "optuna",
     ],
     extras_require={
-        "tests": ["pytest", "black"],
+        "tests": ["pytest", "black", "isort"],
     },
 )
