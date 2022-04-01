@@ -40,11 +40,11 @@ class CellFactory(ABC):
 
     @abstractmethod
     def __call__(self, observations: th.Tensor) -> th.Tensor:
-        ...
+        ...  # pragma: no cover
 
     @abstractmethod
     def optimize_param(self, samples: th.Tensor, nb_trials: int = 300) -> float:
-        ...
+        ...  # pragma: no cover
 
 
 def get_param_score(cells: th.Tensor, split_factor: float = 0.125) -> float:
