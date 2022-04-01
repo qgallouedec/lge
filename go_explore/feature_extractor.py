@@ -1,3 +1,5 @@
+from logging import warning
+
 import gym.spaces
 import torch as th
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
@@ -5,7 +7,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, NatureC
 from stable_baselines3.common.type_aliases import TensorDict
 from torch import nn
 
-from go_explore.cells import CellFactory
+from go_explore.cells import CellFactory, CellIsObs, DownscaleObs, ImageGrayscaleDownscale
 
 
 class GoExploreExtractor(BaseFeaturesExtractor):
@@ -31,8 +33,6 @@ class GoExploreExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space: gym.spaces.Dict, cell_factory: CellFactory, cnn_output_dim: int = 256):
         super(GoExploreExtractor, self).__init__(observation_space, features_dim=1)
 
-        self.cell_factory = cell_factory
-
         if is_image_space(observation_space["observation"]):
             self.observation_extractor = NatureCNN(observation_space["observation"], features_dim=cnn_output_dim)
             observation_feature_size = cnn_output_dim
@@ -41,10 +41,19 @@ class GoExploreExtractor(BaseFeaturesExtractor):
             self.observation_extractor = nn.Flatten()
             observation_feature_size = get_flattened_obs_dim(observation_space["observation"])
 
-        cell_size = get_flattened_obs_dim(observation_space["goal"])
+        self.cell_factory = cell_factory
+        if isinstance(cell_factory, ImageGrayscaleDownscale):
+            max_cell_size = ImageGrayscaleDownscale.MAX_H * ImageGrayscaleDownscale.MAX_W
+        elif isinstance(cell_factory, (DownscaleObs, CellIsObs)):
+            max_cell_size = get_flattened_obs_dim(observation_space["goal"])
+        else:
+            warning(
+                "cell_factory unknown. By default, the output size of the feature extractor"
+                "is set to be to be the observation dim, which can be too big."
+            )
 
         # Update the features dim manually
-        self._features_dim = observation_feature_size + cell_size
+        self._features_dim = observation_feature_size + max_cell_size
 
     def forward(self, observations: TensorDict) -> th.Tensor:
         features = th.zeros((observations["observation"].shape[0], self._features_dim))  # (N_ENVS x FEAT_DIM)
