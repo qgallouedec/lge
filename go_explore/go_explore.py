@@ -13,7 +13,7 @@ from stable_baselines3.common.utils import get_schedule_fn
 
 from go_explore.archive import ArchiveBuffer
 from go_explore.cells import CellFactory
-from go_explore.policies import GoExploreExtractor
+from go_explore.feature_extractor import GoExploreExtractor
 
 
 class Goalify(gym.Wrapper):
