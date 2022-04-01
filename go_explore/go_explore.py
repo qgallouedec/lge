@@ -139,7 +139,7 @@ class CallEveryNTimesteps(BaseCallback):
     :param verbose: Verbosity level 0: not output 1: info 2: debug, defaults to 0
     """
 
-    def __init__(self, func: Callable[[], None], call_freq: int = 1, verbose=0):
+    def __init__(self, func: Callable[[], None], call_freq: int = 1, verbose=0) -> None:
         super(CallEveryNTimesteps, self).__init__(verbose)
         self.func = func
         self.call_freq = call_freq
@@ -182,7 +182,7 @@ class GoExplore:
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
-    ):
+    ) -> None:
         # Wrap the env
         def env_func():
             return Goalify(maybe_make_env(env, verbose))

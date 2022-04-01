@@ -226,7 +226,7 @@ class ArchiveBuffer(DictReplayBuffer):
         cells = self.cell_factory(th_obs).cpu().numpy()
         return cells
 
-    def when_cell_factory_updated(self):
+    def when_cell_factory_updated(self) -> None:
         """
         Call this function when you change the parametrisation of the cell factory.
         It computes the new cells and the new traejctories.
