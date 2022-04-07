@@ -45,7 +45,7 @@ class CellFactory(ABC):
         ...  # pragma: no cover
 
     @abstractmethod
-    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300) -> float:
+    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300, split_factor: float = 0.125) -> float:
         ...  # pragma: no cover
 
 
@@ -276,11 +276,11 @@ class LatentCelling(CellFactory):
         cells = th.floor(features / self.step) * self.step
         return cells
 
-    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300) -> float:
+    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300, split_factor: float = 0.125) -> float:
         def objective(trial: optuna.Trial) -> float:
             self.step = trial.suggest_loguniform("step", 1e-6, 1e4)
             cells = self.__call__(samples)
-            score = get_param_score(cells)
+            score = get_param_score(cells, split_factor=split_factor)
             return score
 
         study = optuna.create_study(direction="maximize")
