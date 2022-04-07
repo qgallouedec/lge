@@ -7,6 +7,7 @@ import numpy as np
 import optuna
 import torch as th
 from gym import spaces
+from torch import nn
 from torchvision.transforms.functional import resize, rgb_to_grayscale
 
 from go_explore.utils import sample_geometric
@@ -226,6 +227,53 @@ class DownscaleObs(CellFactory):
         :return: A tensor of cells
         """
         cells = th.floor(observations / self.step) * self.step
+        return cells
+
+    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300) -> float:
+        def objective(trial: optuna.Trial) -> float:
+            self.step = trial.suggest_loguniform("step", 1e-6, 1e4)
+            cells = self.__call__(samples)
+            score = get_param_score(cells)
+            return score
+
+        study = optuna.create_study(direction="maximize")
+        study.optimize(objective, n_trials=nb_trials)
+        self.step = np.array(study.best_params["step"])
+        return study.best_value
+
+
+class LatentCelling(CellFactory):
+    """
+    Downscale the latent representation of the observation to compute de cell.
+    You need to give a feature extractor.
+
+    Example:
+    >>> cell_factory = LatentCelling(observation_space)
+    >>> cell_factory.set_feature_extractor(feature_extractor)
+    >>> cell_factory(observation) # returns the cell
+    """
+
+    def __init__(self, observation_space: spaces.Space) -> None:
+        self.cell_space = copy.deepcopy(observation_space)
+        self.step = 1.0
+        self.feature_extractor = None
+
+    def set_feature_extractor(self, feature_extractor: nn.Module) -> None:
+        """Set the feature extractor. You need to call it before using the cell factory.
+
+        :param feature_extractor: The feature extractor
+        """
+        self.feature_extractor = feature_extractor
+
+    def __call__(self, observations: th.Tensor) -> th.Tensor:
+        """
+        Compute the cells.
+
+        :param observations: Observations
+        :return: A tensor of cells
+        """
+        features = self.feature_extractor(observations)
+        cells = th.floor(features / self.step) * self.step
         return cells
 
     def optimize_param(self, samples: th.Tensor, nb_trials: int = 300) -> float:
