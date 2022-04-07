@@ -15,7 +15,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import CellIsObs
+from go_explore.cells import CellIsObs, DownscaleObs
 from go_explore.utils import index
 
 
@@ -383,7 +383,6 @@ def test_trajectory_manager():
     # Useless for this test
     action = np.array([[0], [0]])
     reward = np.array([0, 0])
-    done = np.array([0, 0])
     infos = [{}, {}]
     goal = np.array([[0], [0]])
 
@@ -469,3 +468,65 @@ def test_performance_her(goal_selection_strategy):
 
     # 90% training success
     assert np.mean(model.ep_success_buffer) > 0.90
+
+
+def test_trajectory_manager_when_updated():
+    # Useless for this test
+    action = np.array([[0], [0]])
+    reward = np.array([0, 0])
+    infos = [{}, {}]
+    goal = np.array([[0], [0]])
+
+    cell_factory = DownscaleObs(spaces.Box(-10, 10, (1,)))
+    archive = ArchiveBuffer(
+        buffer_size=100,
+        observation_space=spaces.Dict({"observation": spaces.Box(-10, 10, (1,)), "goal": spaces.Box(-10, 10, (1,))}),
+        action_space=spaces.Box(-10, 10, (1,)),
+        cell_factory=cell_factory,
+        n_envs=2,
+    )
+    trajectories = np.array(
+        [
+            [[0], [1], [2], [3], [4], [5], [6], [7]],
+            [[0], [1], [2], [3], [4], [5], [6], [7]],
+        ]
+    )
+    for i in range(7):
+        archive.add(
+            obs={"observation": trajectories[:, i], "goal": goal},
+            next_obs={"observation": trajectories[:, i + 1], "goal": goal},
+            action=action,
+            reward=reward,
+            done=np.ones(2) * (i == 6),
+            infos=infos,
+        )
+
+    cell_factory.step = 2
+    archive.when_cell_factory_updated()
+    sampled_trajectories = [list(archive.sample_trajectory()) for _ in range(20)]  # list convinient to compare
+
+    possible_trajectories = [
+        [[1]],
+        [[1], [2]],
+        [[1], [2]],
+        [[1], [2], [4]],
+        [[1], [2], [4]],
+        [[1], [2], [4], [6]],
+    ]
+    assert np.all([trajectory in possible_trajectories for trajectory in sampled_trajectories])
+    assert np.all([trajectory in sampled_trajectories for trajectory in possible_trajectories])
+
+    cell_factory.step = 1
+    archive.when_cell_factory_updated()
+    sampled_trajectories = [list(archive.sample_trajectory()) for _ in range(30)]  # list convinient to compare
+    possible_trajectories = [
+        [[1]],
+        [[1], [2]],
+        [[1], [2], [3]],
+        [[1], [2], [3], [4]],
+        [[1], [2], [3], [4], [5]],
+        [[1], [2], [3], [4], [5], [6]],
+        [[1], [2], [3], [4], [5], [6], [7]],
+    ]
+    assert np.all([trajectory in possible_trajectories for trajectory in sampled_trajectories])
+    assert np.all([trajectory in sampled_trajectories for trajectory in possible_trajectories])
