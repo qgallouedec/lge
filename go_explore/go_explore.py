@@ -9,10 +9,9 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
-from stable_baselines3.common.utils import get_schedule_fn
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import CellFactory
+from go_explore.cells import LatentCelling
 from go_explore.feature_extractor import GoExploreExtractor
 
 
@@ -107,7 +106,7 @@ class Goalify(gym.Wrapper):
         """
         cell = self.archive.compute_cell(obs)
         goal_cell = self.archive.compute_cell(goal)
-        return (cell == goal_cell).all(-1)
+        return np.isclose(cell, goal_cell, atol=0.001).all(-1)
 
     def maybe_move_to_next_goal(self, obs: np.ndarray) -> None:
         """
@@ -176,7 +175,7 @@ class GoExplore:
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
-        cell_factory: CellFactory,
+        cell_factory: LatentCelling,
         count_pow: float = 1,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
@@ -190,10 +189,7 @@ class GoExplore:
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
         replay_buffer_kwargs.update(dict(cell_factory=cell_factory, count_pow=count_pow))
-        policy_kwargs = dict(
-            features_extractor_class=GoExploreExtractor,
-            features_extractor_kwargs=dict(cell_factory=cell_factory),
-        )
+        policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {} if model_kwargs is None else model_kwargs
 
         self.model = model_class(
@@ -209,6 +205,8 @@ class GoExplore:
         self.archive.set_env(env)
         for _env in self.model.env.envs:
             _env.set_archive(self.archive)
+
+        cell_factory.set_feature_extractor(self.model.policy.actor.features_extractor.observation_extractor)
 
     def _update_cell_factory_param(self) -> None:
         samples = self.archive.sample(512).next_observations["observation"]
