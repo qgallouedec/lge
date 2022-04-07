@@ -227,7 +227,7 @@ class ArchiveBuffer(DictReplayBuffer):
         prev_shape = obs.shape[:-n_obs_dim]  # the "..." part of the shape
         obs = obs.reshape((-1, *self.obs_shape["observation"]))  #  (... x OBS_SHAPE) to (N x OBS_SHAPE)
         th_obs = self.to_torch(obs)
-        cells = self.cell_factory(th_obs).cpu().numpy() # (N x OBS_SHAPE) to (N x CELL_SIZE)
+        cells = self.cell_factory(th_obs).cpu().numpy()  # (N x OBS_SHAPE) to (N x CELL_SIZE)
         cells = cells.reshape((*prev_shape, -1))  #  (N x CELL_SIZE) to (... x CELL_SIZE)
         return cells
 
