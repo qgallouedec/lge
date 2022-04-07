@@ -379,30 +379,23 @@ class ArchiveBuffer(DictReplayBuffer):
             obs["goal"] = new_goals
             # The goal for the next observation must be the same as the previous one. TODO: Why ?
             next_obs["goal"] = new_goals
-            # The goal has changed, there is no longer a guarantee that the transition is
-            # successful. Since it is not possible to easily get this information, we prefer
-            # to remove it. The success information is not used in the learning algorithm anyway.
-            for info in infos:
-                info.pop("is_success", None)
-            # Compute new reward
-            rewards = self.env.env_method(
-                "compute_reward",
-                # here we use the new goal
-                obs["goal"],
-                # the new state depends on the previous state and action
-                # s_{t+1} = f(s_t, a_t)
-                # so the next observation depends also on the previous state and action
-                # because we are in a GoalEnv:
-                # r_t = reward(s_t, a_t) = reward(next_obs, goal)
-                # therefore we have to use next_obs["observation"] and not obs["observation"]
-                next_obs["observation"],
-                infos,
-                # we use the method of the first environment assuming that all environments are identical.
-                indices=[0],
-            )
-            rewards = rewards[0].astype(np.float32)  # env_method returns a list containing one element
-        else:
-            rewards = self.rewards[batch_inds, env_indices]
+        # Compute new reward
+        rewards = self.env.env_method(
+            "compute_reward",
+            # here we use the new goal
+            obs["goal"],
+            # the new state depends on the previous state and action
+            # s_{t+1} = f(s_t, a_t)
+            # so the next observation depends also on the previous state and action
+            # because we are in a GoalEnv:
+            # r_t = reward(s_t, a_t) = reward(next_obs, goal)
+            # therefore we have to use next_obs["observation"] and not obs["observation"]
+            next_obs["observation"],
+            self.infos[batch_inds, env_indices],
+            # we use the method of the first environment assuming that all environments are identical.
+            indices=[0],
+        )
+        rewards = rewards[0].astype(np.float32)  # env_method returns a list containing one element
 
         obs = self._normalize_obs(obs)
         next_obs = self._normalize_obs(next_obs)
