@@ -134,8 +134,10 @@ class BitFlippingEnv(GoalEnv):
         :param batch_size:
         :return:
         """
+        if batch_size == 0:
+            return state
         # Convert back to bit vector
-        if isinstance(state, int):
+        elif isinstance(state, int):
             state = np.array(state).reshape(batch_size, -1)
             # Convert to binary representation
             state = (((state[:, :] & (1 << np.arange(len(self.state))))) > 0).astype(int)
@@ -265,7 +267,7 @@ def test_multiprocessing(model_class):
         GoalSelectionStrategy.FUTURE,
     ],
 )
-def test_goal_selection_strategy(goal_selection_strategy):
+def test_goal_selection_strategy_with_model(goal_selection_strategy):
     """
     Test different goal strategies.
     """
@@ -311,7 +313,7 @@ def test_goal_selection_strategy(goal_selection_strategy):
         GoalSelectionStrategy.FUTURE,
     ],
 )
-def test_goal_selection_strategy1(goal_selection_strategy):
+def test_goal_selection_strategy(goal_selection_strategy):
     # Test different goal strategies.
     env = make_vec_env(BitFlippingEnv, env_kwargs=dict(n_bits=2))
     cell_factory = CellIsObs(env.observation_space["observation"])
