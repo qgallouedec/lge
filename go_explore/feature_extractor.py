@@ -30,7 +30,7 @@ class GoExploreExtractor(BaseFeaturesExtractor):
         256 to avoid exploding network sizes.
     """
 
-    def __init__(self, observation_space: gym.spaces.Dict, cell_factory: CellFactory, cnn_output_dim: int = 256):
+    def __init__(self, observation_space: gym.spaces.Dict, cnn_output_dim: int = 256):
         super(GoExploreExtractor, self).__init__(observation_space, features_dim=1)
 
         if is_image_space(observation_space["observation"]):
@@ -41,24 +41,11 @@ class GoExploreExtractor(BaseFeaturesExtractor):
             self.observation_extractor = nn.Flatten()
             observation_feature_size = get_flattened_obs_dim(observation_space["observation"])
 
-        self.cell_factory = cell_factory
-        if isinstance(cell_factory, ImageGrayscaleDownscale):
-            max_cell_size = ImageGrayscaleDownscale.MAX_H * ImageGrayscaleDownscale.MAX_W
-        elif isinstance(cell_factory, (DownscaleObs, CellIsObs)):
-            max_cell_size = get_flattened_obs_dim(observation_space["goal"])
-        else:
-            warning(
-                "cell_factory unknown. By default, the output size of the feature extractor"
-                "is set to be to be the observation dim, which can be too big."
-            )
-
         # Update the features dim manually
-        self._features_dim = observation_feature_size + max_cell_size
+        self._features_dim = 2 * observation_feature_size
 
     def forward(self, observations: TensorDict) -> th.Tensor:
-        features = th.zeros((observations["observation"].shape[0], self._features_dim))  # (N_ENVS x FEAT_DIM)
-        non_zeros_features = th.cat(
-            [self.observation_extractor(observations["observation"]), self.cell_factory(observations["goal"])], dim=1
+        features = th.cat(
+            [self.observation_extractor(observations["observation"]), self.observation_extractor(observations["goal"])], dim=1
         )
-        features[:, : non_zeros_features.shape[1]] = non_zeros_features
         return features
