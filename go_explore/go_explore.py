@@ -212,10 +212,9 @@ class GoExplore:
 
     def _update_cell_factory_param(self) -> None:
         samples = self.archive.sample(512).next_observations["observation"]
-        self.archive.cell_factory.optimize_param(samples)
+        score = self.archive.cell_factory.optimize_param(samples)
+        self.model.logger.log("New parameters for cell factory with score", score)
         self.archive.when_cell_factory_updated()
-        # randomize networks weights
-        self.model.policy._build(get_schedule_fn(self.model.learning_rate))
 
     def explore(self, total_timesteps: int, update_cell_factory_freq=40000, reset_num_timesteps: bool = False) -> None:
         """
