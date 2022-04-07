@@ -1,13 +1,9 @@
-from logging import warning
-
 import gym.spaces
 import torch as th
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, NatureCNN
 from stable_baselines3.common.type_aliases import TensorDict
 from torch import nn
-
-from go_explore.cells import CellFactory, CellIsObs, DownscaleObs, ImageGrayscaleDownscale
 
 
 class GoExploreExtractor(BaseFeaturesExtractor):
@@ -16,16 +12,9 @@ class GoExploreExtractor(BaseFeaturesExtractor):
 
     The output is the concatenation of:
      - the output of a feature extractor on the "observation" (CNN or MLP, depending on input shape).
-     - the output of the cell_factory on the "goal".
-
-    The size of the cell may vary during the learning process. However, it is not possible to
-    constantly change the network structure. We therefore set the size of the output constant
-    equal to the maximum size that the cell can take. We complete the unused outputs with zeros.
-    The maximum size that the cell can take is the size of the goal space (which is the same as the
-    observation space)
+     - the output of a feature extractor on the "goal" (CNN or MLP, depending on input shape).
 
     :param observation_space: The Dict observation space
-    :param cell_factory: The cell factory
     :param cnn_output_dim: Number of features to output from each CNN submodule(s). Defaults to
         256 to avoid exploding network sizes.
     """
