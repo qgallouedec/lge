@@ -47,6 +47,8 @@ class Goalify(gym.Wrapper):
         """
         Set the archive.
 
+        The archive is used to compute goal traejctories, and to compute the cell for the reward.
+
         :param archive: The archive
         """
         self.archive = archive
@@ -175,20 +177,22 @@ class GoExplore:
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
-        cell_factory: LatentCelling,
         count_pow: float = 1,
+        split_factor: float = 0.125,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
     ) -> None:
+        self.split_factor = split_factor
         # Wrap the env
         def env_func():
             return Goalify(maybe_make_env(env, verbose))
 
         env = make_vec_env(env_func, n_envs=n_envs)
+        self.cell_factory = LatentCelling(env.observation_space["observation"])
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
-        replay_buffer_kwargs.update(dict(cell_factory=cell_factory, count_pow=count_pow))
+        replay_buffer_kwargs.update(dict(cell_factory=self.cell_factory, count_pow=count_pow))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {} if model_kwargs is None else model_kwargs
 
@@ -206,11 +210,11 @@ class GoExplore:
         for _env in self.model.env.envs:
             _env.set_archive(self.archive)
 
-        cell_factory.set_feature_extractor(self.model.policy.actor.features_extractor.observation_extractor)
+        self.cell_factory.set_feature_extractor(self.model.policy.actor.features_extractor.observation_extractor)
 
     def _update_cell_factory_param(self) -> None:
         samples = self.archive.sample(512).next_observations["observation"]
-        score = self.archive.cell_factory.optimize_param(samples)
+        score = self.archive.cell_factory.optimize_param(samples, split_factor=self.split_factor)
         self.model.logger.log("New parameters for cell factory with score", score)
         self.archive.when_cell_factory_updated()
 
