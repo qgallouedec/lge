@@ -27,8 +27,10 @@ class GoExploreExtractor(BaseFeaturesExtractor):
             observation_feature_size = cnn_output_dim
         else:
             # The observation key is a vector, flatten it if needed
-            self.observation_extractor = nn.Flatten()
             observation_feature_size = get_flattened_obs_dim(observation_space["observation"])
+            self.observation_extractor = nn.Sequential(
+                nn.Flatten(), nn.Linear(observation_feature_size, observation_feature_size)
+            )
 
         # Update the features dim manually
         self._features_dim = 2 * observation_feature_size
