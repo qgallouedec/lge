@@ -238,7 +238,7 @@ class DownscaleObs(CellFactory):
 
         study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=nb_trials)
-        self.step = np.array(study.best_params["step"])
+        self.step = study.best_params["step"]
         return study.best_value
 
 
@@ -285,5 +285,5 @@ class LatentCelling(CellFactory):
 
         study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=nb_trials)
-        self.step = np.array(study.best_params["step"])
+        self.step = study.best_params["step"]
         return study.best_value
