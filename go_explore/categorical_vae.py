@@ -56,8 +56,8 @@ class BetaVAE(nn.Module):
 class CategoricalVAE(nn.Module):
     def __init__(self) -> None:
         super(CategoricalVAE, self).__init__()
-        self.num_classes = 32
-        self.nb_categoricals = 32
+        self.num_classes = 16
+        self.nb_categoricals = 16
 
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 8, kernel_size=4, stride=2, padding=0),  # [N x 8 x 41 x 41]
@@ -89,13 +89,12 @@ class CategoricalVAE(nn.Module):
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         logits = self.encoder(x)
-        distribution = OneHotCategoricalStraightThrough(logits=logits)
         if self.training:
+            distribution = OneHotCategoricalStraightThrough(logits=logits)
             one_hot = distribution.rsample()
         else:
             argmax = torch.argmax(logits, dim=2)
             one_hot = F.one_hot(argmax, self.num_classes).float()
-
         recons = self.decoder(one_hot)
         recons = torch.clamp(recons, min=0.0, max=1.0)
-        return recons, distribution.mean.detach(), torch.clamp(distribution.variance.log().detach(), -10, 10)
+        return recons
