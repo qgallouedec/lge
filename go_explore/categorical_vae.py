@@ -54,37 +54,45 @@ class BetaVAE(nn.Module):
 
 
 class CategoricalVAE(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, nb_classes: int = 32, nb_categoricals: int = 32, in_channels: int = 3) -> None:
         super(CategoricalVAE, self).__init__()
-        self.num_classes = 16
-        self.nb_categoricals = 16
-
-        self.encoder = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=4, stride=2, padding=0),  # [N x 8 x 41 x 41]
+        self.nb_classes = nb_classes
+        self.nb_categoricals = nb_categoricals
+        _h = 8
+        self.encoder = nn.Sequential(  # [N x C x 129 x 129]
+            nn.Conv2d(in_channels, _h * 1, kernel_size=3, stride=2, padding=1),  # [N x 8 x 65 x 65]
             nn.ReLU(inplace=True),
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=0),  # [N x 16 x 20 x 20]
+            nn.Conv2d(_h * 1, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 33 x 33]
             nn.ReLU(inplace=True),
-            nn.Conv2d(16, 32, kernel_size=4, stride=2, padding=0),  # [N x 32 x  9 x 9]
+            nn.Conv2d(_h * 2, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 17 x 17]
             nn.ReLU(inplace=True),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=0),  # [N x 64 x  4 x 4]
+            nn.Conv2d(_h * 4, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 9 x 9]
             nn.ReLU(inplace=True),
-            nn.Flatten(),  # [N x 64*4*4]
-            nn.Linear(64 * 4 * 4, self.nb_categoricals * self.num_classes),
-            nn.Unflatten(-1, (self.nb_categoricals, self.num_classes)),
+            nn.Conv2d(_h * 8, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 5 x 5]
+            nn.ReLU(inplace=True),
+            nn.Conv2d(_h * 16, _h * 32, kernel_size=3, stride=2, padding=1),  # [N x 256 x 3 x 3]
+            nn.ReLU(inplace=True),
+            nn.Flatten(),  # [N x 128*3*3]
+            nn.Linear(_h * 32 * 3 * 3, self.nb_categoricals * self.nb_classes),  # [N x k*l]
+            nn.Unflatten(-1, (self.nb_categoricals, self.nb_classes)),  # [N x k x l]
         )
 
         self.decoder = nn.Sequential(
-            nn.Flatten(),  # [N x 32*32]
-            nn.Linear(self.nb_categoricals * self.num_classes, 64 * 4 * 4),  # [N x 64 x 4 x 4]
+            nn.Flatten(),  # [N x k*l]
+            nn.Linear(self.nb_categoricals * self.nb_classes, _h * 32 * 3 * 3),  # [N x 64 x 3 x 3]
             nn.ReLU(inplace=True),
-            nn.Unflatten(-1, (64, 4, 4)),
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=0),  # [N x 32 x 9 x 9]
+            nn.Unflatten(-1, (_h * 32, 3, 3)),
+            nn.ConvTranspose2d(_h * 32, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 5 x 5]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, padding=0),  # [N x 16 x 20 x 20]
+            nn.ConvTranspose2d(_h * 16, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 9 x 9]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=0),  # [N x 8 x 41 x 41]
+            nn.ConvTranspose2d(_h * 8, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 17 x 17]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(8, 1, kernel_size=4, stride=2, padding=0),  # [N x 1 x 84 x 84]
+            nn.ConvTranspose2d(_h * 4, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 33 x 33]
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(_h * 2, _h * 1, kernel_size=3, stride=2, padding=1),  # [N x 8 x 65 x 65]
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(_h * 1, in_channels, kernel_size=3, stride=2, padding=1),  # [N x C x 129 x 129]
         )
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
@@ -94,7 +102,7 @@ class CategoricalVAE(nn.Module):
             one_hot = distribution.rsample()
         else:
             argmax = torch.argmax(logits, dim=2)
-            one_hot = F.one_hot(argmax, self.num_classes).float()
+            one_hot = F.one_hot(argmax, self.nb_classes).float()
         recons = self.decoder(one_hot)
         recons = torch.clamp(recons, min=0.0, max=1.0)
         return recons
