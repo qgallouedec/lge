@@ -118,18 +118,17 @@ class CategoricalVAE(nn.Module):
         It returns the loss, and the detached reconstruction loss and KL loss for monitoring.
         """
         eps = 1e-20  # to avoid log of 0
-
+        alpha = 0.0001
         # Reconstruction Loss
-        recons_loss = F.mse_loss(input, recons, reduction="none").sum(1)
+        recons_loss = F.mse_loss(input, recons)
 
         # KL divergence = entropy(latent) - cross_entropy(latent, uniform log-odds)
         probs = F.softmax(logits, dim=2)
         latent_entropy = probs * torch.log(probs + eps)
         target_entropy = probs * torch.log((1.0 / torch.tensor(self.nb_classes)))
         kl_divergence = torch.sum(latent_entropy - target_entropy, (1, 2))
+        kl_loss = -alpha * torch.mean(kl_divergence)
 
         # total loss = reconstruction loss - KL Divergence
-        loss = torch.mean(recons_loss - 0.1 * kl_divergence)
-        recons_loss = torch.mean(recons_loss).item()
-        kl_loss = torch.mean(-0.1 * kl_divergence).item()
+        loss = recons_loss + kl_loss
         return loss, recons_loss, kl_loss
