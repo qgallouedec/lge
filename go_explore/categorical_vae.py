@@ -3,7 +3,6 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-from torch.distributions import OneHotCategoricalStraightThrough
 
 
 class BetaVAE(nn.Module):
@@ -54,10 +53,11 @@ class BetaVAE(nn.Module):
 
 
 class CategoricalVAE(nn.Module):
-    def __init__(self, nb_classes: int = 32, nb_categoricals: int = 32, in_channels: int = 3) -> None:
+    def __init__(self, nb_classes: int = 32, nb_categoricals: int = 32, in_channels: int = 3, tau: float = 1.0) -> None:
         super(CategoricalVAE, self).__init__()
         self.nb_classes = nb_classes
         self.nb_categoricals = nb_categoricals
+        self.tau = tau
         _h = 8
         self.encoder = nn.Sequential(  # [N x C x 129 x 129]
             nn.Conv2d(in_channels, _h * 1, kernel_size=3, stride=1, padding=1),  # [N x 8 x 129 x 129]
@@ -101,13 +101,8 @@ class CategoricalVAE(nn.Module):
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         logits = self.encoder(x)
-        if self.training:
-            distribution = OneHotCategoricalStraightThrough(logits=logits)
-            one_hot = distribution.rsample()
-        else:
-            argmax = torch.argmax(logits, dim=2)
-            one_hot = F.one_hot(argmax, self.nb_classes).float()
-        recons = self.decoder(one_hot)
+        latent = F.gumbel_softmax(logits, tau=self.tau)
+        recons = self.decoder(latent)
         return recons, logits
 
     def loss_fn(self, input: torch.Tensor, recons: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
