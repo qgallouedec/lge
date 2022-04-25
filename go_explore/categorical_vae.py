@@ -60,39 +60,43 @@ class CategoricalVAE(nn.Module):
         self.nb_categoricals = nb_categoricals
         _h = 8
         self.encoder = nn.Sequential(  # [N x C x 129 x 129]
-            nn.Conv2d(in_channels, _h * 1, kernel_size=3, stride=2, padding=1),  # [N x 8 x 65 x 65]
+            nn.Conv2d(in_channels, _h * 1, kernel_size=3, stride=1, padding=1),  # [N x 8 x 129 x 129]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 1, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 33 x 33]
+            nn.Conv2d(_h * 1, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 65 x 65]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 2, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 17 x 17]
+            nn.Conv2d(_h * 2, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 33 x 33]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 4, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 9 x 9]
+            nn.Conv2d(_h * 4, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 8, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 5 x 5]
+            nn.Conv2d(_h * 8, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 16, _h * 32, kernel_size=3, stride=2, padding=1),  # [N x 256 x 3 x 3]
+            nn.Conv2d(_h * 16, _h * 32, kernel_size=3, stride=2, padding=1),  # [N x 256 x 5 x 5]
             nn.ReLU(inplace=True),
-            nn.Flatten(),  # [N x 128*3*3]
-            nn.Linear(_h * 32 * 3 * 3, self.nb_categoricals * self.nb_classes),  # [N x k*l]
+            nn.Conv2d(_h * 32, _h * 64, kernel_size=3, stride=2, padding=1),  # [N x 512 x 3 x 3]
+            nn.ReLU(inplace=True),
+            nn.Flatten(),  # [N x 512*3*3]
+            nn.Linear(_h * 64 * 3 * 3, self.nb_categoricals * self.nb_classes),  # [N x k*l]
             nn.Unflatten(-1, (self.nb_categoricals, self.nb_classes)),  # [N x k x l]
         )
 
         self.decoder = nn.Sequential(
             nn.Flatten(),  # [N x k*l]
-            nn.Linear(self.nb_categoricals * self.nb_classes, _h * 32 * 3 * 3),  # [N x 64 x 3 x 3]
+            nn.Linear(self.nb_categoricals * self.nb_classes, _h * 64 * 3 * 3),  # [N x 512 x 3 x 3]
             nn.ReLU(inplace=True),
-            nn.Unflatten(-1, (_h * 32, 3, 3)),
-            nn.ConvTranspose2d(_h * 32, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 5 x 5]
+            nn.Unflatten(-1, (_h * 64, 3, 3)),
+            nn.ConvTranspose2d(_h * 64, _h * 32, kernel_size=3, stride=2, padding=1),  # [N x 256 x 5 x 5]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 16, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 9 x 9]
+            nn.ConvTranspose2d(_h * 32, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 8, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 17 x 17]
+            nn.ConvTranspose2d(_h * 16, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 4, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 33 x 33]
+            nn.ConvTranspose2d(_h * 8, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 33 x 33]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 2, _h * 1, kernel_size=3, stride=2, padding=1),  # [N x 8 x 65 x 65]
+            nn.ConvTranspose2d(_h * 4, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 65 x 65]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 1, in_channels, kernel_size=3, stride=2, padding=1),  # [N x C x 129 x 129]
+            nn.ConvTranspose2d(_h * 2, _h * 1, kernel_size=3, stride=2, padding=1),  # [N x 8 x 129 x 129]
+            nn.ReLU(inplace=True),
+            nn.ConvTranspose2d(_h * 1, in_channels, kernel_size=3, stride=1, padding=1),  # [N x C x 129 x 129]
         )
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
@@ -104,5 +108,28 @@ class CategoricalVAE(nn.Module):
             argmax = torch.argmax(logits, dim=2)
             one_hot = F.one_hot(argmax, self.nb_classes).float()
         recons = self.decoder(one_hot)
-        recons = torch.clamp(recons, min=0.0, max=1.0)
-        return recons
+        return recons, logits
+
+    def loss_fn(self, input: torch.Tensor, recons: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the total loss.
+
+        total loss = reconstruction loss + KL loss
+        It returns the loss, and the detached reconstruction loss and KL loss for monitoring.
+        """
+        eps = 1e-20  # to avoid log of 0
+
+        # Reconstruction Loss
+        recons_loss = F.mse_loss(input, recons, reduction="none").sum(1)
+
+        # KL divergence = entropy(latent) - cross_entropy(latent, uniform log-odds)
+        probs = F.softmax(logits, dim=2)
+        latent_entropy = probs * torch.log(probs + eps)
+        target_entropy = probs * torch.log((1.0 / torch.tensor(self.nb_classes)))
+        kl_divergence = torch.sum(latent_entropy - target_entropy, (1, 2))
+
+        # total loss = reconstruction loss - KL Divergence
+        loss = torch.mean(recons_loss - 0.1 * kl_divergence)
+        recons_loss = torch.mean(recons_loss).item()
+        kl_loss = torch.mean(-0.1 * kl_divergence).item()
+        return loss, recons_loss, kl_loss
