@@ -1,6 +1,8 @@
 from typing import Optional
 
 import numpy as np
+import torch
+from PIL import Image
 
 
 def indexes(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -60,3 +62,27 @@ def sample_geometric(mean: int, max_value: int) -> int:
         value = np.random.geometric(1 / mean)
         if value < max_value:
             return value
+
+
+def build_recons_image(input: torch.Tensor, recons: torch.Tensor) -> Image:
+    """
+    Stack and return an image of inputs and reconstruction.
+
+    :param input: Input images
+    :param recons: Reconstructions
+    :return: Image, first row is input images, second is reconstruction
+    """
+    # Clamp the values to [0, 1]
+    recons = torch.clamp(recons, min=0.0, max=1.0)
+
+    # Tensor to array, and transpose
+    input = np.moveaxis(input.detach().cpu().numpy(), 1, 3)
+    recons = np.moveaxis(recons.detach().cpu().numpy(), 1, 3)
+
+    # Stack all images
+    input = np.hstack(tuple(input))
+    recons = np.hstack(tuple(recons))
+    img = np.vstack((input, recons))
+
+    img = Image.fromarray((img.squeeze() * 255).astype(np.uint8), "RGB")
+    return img
