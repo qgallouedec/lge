@@ -9,9 +9,10 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
+from stable_baselines3.common.type_aliases import MaybeCallback
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import LatentCelling
+from go_explore.cells import CellFactory
 from go_explore.feature_extractor import GoExploreExtractor
 
 
@@ -177,6 +178,7 @@ class GoExplore:
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
+        cell_factory: CellFactory,
         count_pow: float = 1,
         split_factor: float = 0.125,
         n_envs: int = 1,
@@ -190,7 +192,7 @@ class GoExplore:
             return Goalify(maybe_make_env(env, verbose))
 
         env = make_vec_env(env_func, n_envs=n_envs)
-        self.cell_factory = LatentCelling(env.observation_space["observation"])
+        self.cell_factory = cell_factory
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
         replay_buffer_kwargs.update(dict(cell_factory=self.cell_factory, count_pow=count_pow))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
@@ -210,8 +212,22 @@ class GoExplore:
         for _env in self.model.env.envs:
             _env.set_archive(self.archive)
 
-        self.cell_factory.set_feature_extractor(self.model.policy.actor.features_extractor.observation_extractor)
+        # self.cell_factory.set_feature_extractor(self.model.policy.actor.features_extractor.observation_extractor)
+        # self.vae = self.cell_factory.vae
+        # self.vae_optimizer = torch.optim.Adam(self.vae.parameters(), lr=2e-4)
 
+    def explore(self, total_timesteps: int, callback: MaybeCallback = None, reset_num_timesteps: bool = False) -> None:
+        """
+        Run exploration.
+
+        :param total_timesteps: Total timestep of exploration.
+        :param callback: Callback, default to None
+        :param reset_num_timesteps: Whether or not to reset the current timestep number (used in logging), defaults to False
+        """
+        self.model.learn(total_timesteps, callback=callback, reset_num_timesteps=reset_num_timesteps)
+
+
+class GoExploreOriginal(GoExplore):
     def _update_cell_factory_param(self) -> None:
         samples = self.archive.sample(512).next_observations["observation"]
         score = self.cell_factory.optimize_param(samples, split_factor=self.split_factor)
@@ -222,9 +238,9 @@ class GoExplore:
         """
         Run exploration.
 
-        :param total_timesteps: Total timestep of exploration.
-        :param reset_num_timesteps: Whether or not to reset the current timestep number (used in logging), defaults to False
+        :param total_timesteps: Total timestep of exploration
         :param update_freq: Cells update frequency
+        :param reset_num_timesteps: Whether or not to reset the current timestep number (used in logging), defaults to False
         """
         cell_factory_updater = CallEveryNTimesteps(self._update_cell_factory_param, update_cell_factory_freq)
-        self.model.learn(total_timesteps, callback=cell_factory_updater, reset_num_timesteps=reset_num_timesteps)
+        super().explore(total_timesteps, callback=cell_factory_updater, reset_num_timesteps=reset_num_timesteps)
