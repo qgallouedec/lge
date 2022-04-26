@@ -78,19 +78,17 @@ class CategoricalVAE(nn.Module):
     | 17 x 17   | 64             |
     | 9 x 9     | 128            |
     | 5 x 5     | 256            |
-    | 3 x 3     | 512            |
 
-    The result is flattened to a vector of size 4608.
+    The result is flattened to a vector of size 6400.
     The result is passed through a fully connected layer that utput size is nb_categoricals x nb_classes vector.
     The latent is sampled from the Gumbel-Softmax distribution.
-    The result is passed through a fully connected layer that utput size is 4608.
+    The result is passed through a fully connected layer that utput size is 6400.
     The result is unflattened to a vector of size 3 x 3 x 512.
 
     Decoder:
 
     | Size      | Channels       |
     |-----------|----------------|
-    | 3 x 3     | 512            |
     | 5 x 5     | 256            |
     | 9 x 9     | 128            |
     | 17 x 17   | 64             |
@@ -133,20 +131,16 @@ class CategoricalVAE(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(_h * 16, _h * 32, kernel_size=3, stride=2, padding=1),  # [N x 256 x 5 x 5]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 32, _h * 64, kernel_size=3, stride=2, padding=1),  # [N x 512 x 3 x 3]
-            nn.ReLU(inplace=True),
-            nn.Flatten(),  # [N x 512*3*3]
-            nn.Linear(_h * 64 * 3 * 3, self.nb_categoricals * self.nb_classes),  # [N x k*l]
+            nn.Flatten(),  # [N x 256*5*5]
+            nn.Linear(_h * 32 * 5 * 5, self.nb_categoricals * self.nb_classes),  # [N x k*l]
             nn.Unflatten(-1, (self.nb_categoricals, self.nb_classes)),  # [N x k x l]
         )
 
         self.decoder = nn.Sequential(
             nn.Flatten(),  # [N x k*l]
-            nn.Linear(self.nb_categoricals * self.nb_classes, _h * 64 * 3 * 3),  # [N x 512 x 3 x 3]
+            nn.Linear(self.nb_categoricals * self.nb_classes, _h * 32 * 5 * 5),  # [N x 256 x 5 x 5]
             nn.ReLU(inplace=True),
-            nn.Unflatten(-1, (_h * 64, 3, 3)),
-            nn.ConvTranspose2d(_h * 64, _h * 32, kernel_size=3, stride=2, padding=1),  # [N x 256 x 5 x 5]
-            nn.ReLU(inplace=True),
+            nn.Unflatten(-1, (_h * 32, 5, 5)),
             nn.ConvTranspose2d(_h * 32, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
             nn.ReLU(inplace=True),
             nn.ConvTranspose2d(_h * 16, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
