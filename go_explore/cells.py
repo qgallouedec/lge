@@ -10,6 +10,7 @@ from gym import spaces
 from torch import nn
 from torchvision.transforms.functional import resize, rgb_to_grayscale
 
+from go_explore.categorical_vae import CategoricalVAE
 from go_explore.utils import sample_geometric
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -42,10 +43,6 @@ class CellFactory(ABC):
 
     @abstractmethod
     def __call__(self, observations: th.Tensor) -> th.Tensor:
-        ...  # pragma: no cover
-
-    @abstractmethod
-    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300, split_factor: float = 0.125) -> float:
         ...  # pragma: no cover
 
 
@@ -200,9 +197,6 @@ class CellIsObs(CellFactory):
         """
         return observations.clone()
 
-    def optimize_param(cls, samples: th.Tensor, nb_trials: int = 300) -> Dict:
-        return dict()
-
 
 class DownscaleObs(CellFactory):
     """
@@ -287,3 +281,28 @@ class LatentCelling(CellFactory):
         study.optimize(objective, n_trials=nb_trials)
         self.step = study.best_params["step"]
         return study.best_value
+
+
+class CategoricalVAECelling(CellFactory):
+    """"""
+
+    def __init__(self) -> None:
+        self.cell_space = spaces.Box(0, 1, (32 * 32,))
+        self.vae = CategoricalVAE(nb_classes=32, nb_categoricals=32)
+
+    def __call__(self, observations: th.Tensor) -> th.Tensor:
+        """
+        Compute the cells.
+
+        :param observations: Observations
+        :return: A tensor of cells
+        """
+        input = resize(observations, (129, 129)).float() / 255
+        self.vae.eval()
+        _, _, latent = self.vae(input)
+        latent = th.flatten(latent, start_dim=1)
+        return latent
+
+    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300, split_factor: float = 0.125) -> float:
+        print("nothing to poptimize")
+        return 0.0
