@@ -154,13 +154,11 @@ class CategoricalVAE(nn.Module):
             nn.ConvTranspose2d(_h * 1, in_channels, kernel_size=3, stride=1, padding=1),  # [N x C x 129 x 129]
         )
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         logits = self.encoder(x)
-        latent = F.gumbel_softmax(logits, tau=self.tau, hard=self.hard_sampling)
+        if self.training:
+            latent = F.gumbel_softmax(logits, tau=self.tau, hard=self.hard_sampling)
+        else:
+            latent = F.one_hot(torch.argmax(logits, -1), self.nb_classes).float()
         recons = self.decoder(latent)
-        # Compute kl
-        probs = F.softmax(logits, dim=2)
-        latent_entropy = probs * torch.log(probs + 1e-10)
-        target_entropy = probs * torch.log((1.0 / torch.tensor(self.nb_classes)))
-        kl = (latent_entropy - target_entropy).mean()
-        return recons, kl
+        return recons, logits
