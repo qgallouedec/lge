@@ -112,7 +112,7 @@ class CategoricalVAE(nn.Module):
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         logits = self.encoder(x)
-        latent = F.gumbel_softmax(logits, tau=self.tau)
+        latent = F.gumbel_softmax(logits, tau=self.tau, hard=True)
         recons = self.decoder(latent)
         # Compute kl
         probs = F.softmax(logits, dim=2)
