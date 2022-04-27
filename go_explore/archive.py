@@ -11,7 +11,7 @@ from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import KEY_TO_GOAL_STRATEGY, GoalSelectionStrategy
 
 from go_explore.cells import CellFactory
-from go_explore.utils import index, multinomial
+from go_explore.utils import multinomial
 
 
 class ArchiveBuffer(DictReplayBuffer):
@@ -73,7 +73,11 @@ class ArchiveBuffer(DictReplayBuffer):
         # compute ratio between HER replays and regular replays in percent for online HER sampling
         self.her_ratio = 1 - (1.0 / (self.n_sampled_goal + 1))
         self.count_pow = count_pow
+        self.cell_factory = cell_factory
         self.infos = np.array([[{} for _ in range(self.n_envs)] for _ in range(self.buffer_size)])
+        # self.cells maps buffer position to the cell representation.
+        self.cell_space = self.cell_factory.cell_space
+        self.cells = np.zeros((self.buffer_size, self.n_envs, *self.cell_space.shape), dtype=self.cell_space.dtype)
 
         if isinstance(goal_selection_strategy, str):
             goal_selection_strategy = KEY_TO_GOAL_STRATEGY[goal_selection_strategy.lower()]
@@ -87,23 +91,6 @@ class ArchiveBuffer(DictReplayBuffer):
         self.ep_start = np.zeros((self.buffer_size, self.n_envs), dtype=np.int64)
         self._current_ep_start = np.zeros(self.n_envs, dtype=np.int64)
         self.ep_length = np.zeros((self.buffer_size, self.n_envs), dtype=np.int64)
-
-        # For cell management
-        self.cell_factory = cell_factory
-        self._reset_cell_trackers()
-
-    def _reset_cell_trackers(self) -> None:
-        cell_shape = self.cell_factory.cell_space.shape
-        # self.counts maps cell uid to the cell visitation count.
-        self.counts = np.empty((0,), dtype=np.int64)
-        # self.earliest_cell_envs maps cell uid to the env index of the earliest cell visitation.
-        self.earliest_cell_env = np.empty((0,), dtype=np.int64)
-        # self.earliest_cell_pos maps cell uid to the buffer position of the earliest cell visitation.
-        self.earliest_cell_pos = np.empty((0,), dtype=np.int64)
-        # self.cells maps buffer position to the cell representation.
-        self.cells = np.zeros((self.buffer_size, self.n_envs, *cell_shape))
-        # self.unique_cells maps cell uid to its cell representation.
-        self.unique_cells = np.empty((0, *cell_shape), dtype=self.cell_factory.cell_space.dtype)
 
     def __getstate__(self) -> Dict[str, Any]:
         """
@@ -146,8 +133,8 @@ class ArchiveBuffer(DictReplayBuffer):
         infos: List[Dict[str, Any]],
     ) -> None:
         self._erase_if_write_over()
-        self._add_new_cell(next_obs["observation"])
-
+        # Update cells
+        self.cells[self.pos] = self.compute_cell(next_obs["observation"])
         # Update episode start
         self.ep_start[self.pos] = self._current_ep_start.copy()
 
@@ -185,36 +172,6 @@ class ArchiveBuffer(DictReplayBuffer):
                 episode_indices = np.arange(self.pos, episode_end) % self.buffer_size
                 self.ep_length[episode_indices, env_idx] = 0
 
-    def _add_new_cell(self, obs: np.ndarray) -> None:
-        """
-        Process an observation and update the cell count and the trajectories.
-
-        :param obs: The observation.
-        :type obs: np.ndarray
-        """
-        cells = self.compute_cell(obs)
-        self.cells[self.pos] = cells
-        for env_idx in range(self.n_envs):
-            cell = cells[env_idx]
-            maybe_cell_uid = index(cell, self.unique_cells)
-            if maybe_cell_uid is not None:
-                # Cell is known, so we increase the cell count
-                self.counts[maybe_cell_uid] += 1
-                # Get the min known distance
-                best_pos, best_env = self.earliest_cell_pos[maybe_cell_uid], self.earliest_cell_env[maybe_cell_uid]
-                min_distance_to_cell = best_pos - self.ep_start[best_pos, best_env]
-                current_distance_to_cell = self.pos - self._current_ep_start[env_idx]
-                # If this time we've reached the cell earlier, update the attributes
-                if current_distance_to_cell < min_distance_to_cell:
-                    self.earliest_cell_env[maybe_cell_uid] = env_idx
-                    self.earliest_cell_pos[maybe_cell_uid] = self.pos
-            else:
-                # The cell is new
-                self.unique_cells = np.concatenate((self.unique_cells, np.expand_dims(cell, axis=0)))
-                self.counts = np.concatenate((self.counts, [1]))
-                self.earliest_cell_env = np.concatenate((self.earliest_cell_env, [env_idx]))
-                self.earliest_cell_pos = np.concatenate((self.earliest_cell_pos, [self.pos]))
-
     def compute_cell(self, obs: np.ndarray) -> np.ndarray:
         """
         Compute the cell of the observation.
@@ -231,18 +188,12 @@ class ArchiveBuffer(DictReplayBuffer):
         cells = cells.reshape((*prev_shape, -1))  #  (N x CELL_SIZE) to (... x CELL_SIZE)
         return cells
 
-    def when_cell_factory_updated(self) -> None:
-        """
-        Call this function when you change the parametrisation of the cell factory.
-        It computes the new cells and the new traejctories.
-        """
-        self._reset_cell_trackers()
-        self._recompute_cells()
-        self._recompute_trajectories()
-
-    def _recompute_cells(self) -> None:
+    def recompute_cells(self) -> None:
         """
         Re-compute all the cells.
+
+        Call this function when you change the parametrisation of the cell factory.
+        It computes the new cells and the new traejctories.
         """
         upper_bound = self.pos if not self.full else self.buffer_size
         # Recompute 256 by 256 to avoid cuda space allocation error.
@@ -251,36 +202,6 @@ class ArchiveBuffer(DictReplayBuffer):
             upper = min(upper_bound, k + 256)
             self.cells[k:upper] = self.compute_cell(self.next_observations["observation"][k:upper])
             k += 256
-
-    def _recompute_trajectories(self) -> None:
-        """
-        Update the trajectories based on the cells. Must be called after updating cells.
-        """
-        upper_bound = self.pos if not self.full else self.buffer_size
-        cells = self.to_torch(self.cells[:upper_bound])
-        nb_obs = upper_bound * self.n_envs
-        if upper_bound == 0:
-            return  # no trajectory yet
-        flat_cells = cells.reshape((nb_obs, -1))  # shape from (pos, env_idx, *cell_shape) to (idx, *cell_shape)
-        # Compute the unique cells.
-        # cells_uid is a tensor of shape (nb_obs,) mapping observation index to its cell index.
-        # unique_cells is a tensor of shape (nb_cells, *cell_shape) mapping cell index to the cell.
-        unique_cells, cells_uid, counts = th.unique(flat_cells, return_inverse=True, return_counts=True, dim=0)
-        self.counts = counts.cpu().numpy()  # type: np.ndarray
-        self.unique_cells = unique_cells.cpu().numpy()  # type: np.ndarray
-        nb_cells = self.unique_cells.shape[0]  # number of unique cells
-        flat_pos = th.arange(self.ep_start.shape[0]).repeat_interleave(self.n_envs)  # [0, 0, 1, 1, 2, ...] if n_envs == 2
-        flat_ep_start = th.from_numpy(self.ep_start).flatten()  # shape from (pos, env_idx) to (idx,)
-        flat_timestep = flat_pos - flat_ep_start  # timestep within the episode
-
-        earliest_cell_occurence = th.zeros(nb_cells, dtype=th.int64)
-        for cell_uid in range(nb_cells):
-            cell_idxs = th.where(cell_uid == cells_uid)[0]  # index of observations that are in the cell
-            all_cell_occurences_timestep = flat_timestep[cell_idxs]  # the cell has been visited after all these timesteps
-            earliest = th.argmin(all_cell_occurences_timestep)  # focus on the time when the cell is visited the earliest
-            earliest_cell_occurence[cell_uid] = cell_idxs[earliest]
-        self.earliest_cell_env = (earliest_cell_occurence % self.n_envs).cpu().numpy()
-        self.earliest_cell_pos = th.div(earliest_cell_occurence, self.n_envs, rounding_mode="floor").cpu().numpy()
 
     def sample_trajectory(self) -> List[np.ndarray]:
         """
@@ -291,25 +212,35 @@ class ArchiveBuffer(DictReplayBuffer):
 
         :return: A list of observations as array
         """
-        if self.counts.shape[0] == 0:  # no cells yet
+        upper_bound = self.pos if not self.full else self.buffer_size
+        if upper_bound == 0:  # no cells yet
             goal = self.observation_space["goal"].sample()
-            return [goal]
-        # Weights depending of the cell visitation count
-        weights = 1 / np.sqrt(self.counts + 1)
-        cell_uid = multinomial(weights)
-        # Get the env_idx, the pos in the buffer and the position of the start of the trajectory
-        env = self.earliest_cell_env[cell_uid]
-        goal_pos = self.earliest_cell_pos[cell_uid]
+            return [goal], [self.compute_cell(goal)]
+
+        all_cells = self.cells[:upper_bound]
+        all_cells = all_cells.reshape(upper_bound * self.n_envs, -1)
+        all_cells = th.from_numpy(all_cells).to(self.device)
+        _, cells_uid, counts = th.unique(all_cells, return_inverse=True, return_counts=True, dim=0)
+        weights = 1 / th.sqrt(counts + 1)
+        goal_cell_id = multinomial(weights)
+        cell_id_traj = cells_uid.reshape(upper_bound, self.n_envs)
+        where = th.where(cell_id_traj == goal_cell_id)
+        where = where[0].cpu().numpy(), where[1].cpu().numpy()
+        dist_to = where[0] - self.ep_start[where]
+        shortest = dist_to.argmin()
+        goal_pos, env = where[0][shortest].item(), where[1][shortest].item()
         start = self.ep_start[goal_pos, env]
         # Loop to avoid consecutive repetition
         trajectory = [self.next_observations["observation"][start, env]]
+        cell_trajectory = [self.cells[start, env]]
         for pos in range(start + 1, goal_pos + 1):
             previous_cell = self.cells[pos - 1, env]
             cell = self.cells[pos, env]
             if (previous_cell != cell).any():
                 obs = self.next_observations["observation"][pos, env]
                 trajectory.append(obs)
-        return trajectory
+                cell_trajectory.append(cell)
+        return np.array(trajectory), np.array(cell_trajectory)
 
     def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> DictReplayBufferSamples:
         """
@@ -337,7 +268,8 @@ class ArchiveBuffer(DictReplayBuffer):
         virtual_env_indices, real_env_indices = np.split(env_indices, [nb_virtual])
 
         # get real and virtual data
-        real_data = self._get_samples(real_batch_inds, real_env_indices, her_relabeling=False, env=env)
+        # TODO: Warning, her_labeling should be disabled
+        real_data = self._get_samples(real_batch_inds, real_env_indices, her_relabeling=True, env=env)
         virtual_data = self._get_samples(virtual_batch_inds, virtual_env_indices, her_relabeling=True, env=env)
 
         # Concatenate real and virtual data
@@ -376,11 +308,11 @@ class ArchiveBuffer(DictReplayBuffer):
         # Get infos and obs
         obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}
         next_obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()}
-
+        cells = self.cells[batch_inds, env_indices]
         if her_relabeling:
             infos = copy.deepcopy(self.infos[batch_inds, env_indices])
             # Sample and set new goals
-            new_goals = self._sample_goals(batch_inds, env_indices)
+            new_goals, new_goal_cells = self._sample_goals(batch_inds, env_indices)
             obs["goal"] = new_goals
             # The goal for the next observation must be the same as the previous one. TODO: Why ?
             next_obs["goal"] = new_goals
@@ -388,14 +320,14 @@ class ArchiveBuffer(DictReplayBuffer):
         rewards = self.env.env_method(
             "compute_reward",
             # here we use the new goal
-            obs["goal"],
+            new_goal_cells,
             # the new state depends on the previous state and action
             # s_{t+1} = f(s_t, a_t)
             # so the next observation depends also on the previous state and action
             # because we are in a GoalEnv:
             # r_t = reward(s_t, a_t) = reward(next_obs, goal)
             # therefore we have to use next_obs["observation"] and not obs["observation"]
-            next_obs["observation"],
+            cells,
             self.infos[batch_inds, env_indices],
             # we use the method of the first environment assuming that all environments are identical.
             indices=[0],
@@ -448,7 +380,10 @@ class ArchiveBuffer(DictReplayBuffer):
             raise ValueError(f"Strategy {self.goal_selection_strategy} for sampling goals not supported!")
 
         transition_indices = (transition_indices_in_episode + batch_ep_start) % self.buffer_size
-        return self.next_observations["observation"][transition_indices, env_indices]
+        return (
+            self.next_observations["observation"][transition_indices, env_indices],
+            self.cells[transition_indices, env_indices],
+        )
 
     def truncate_last_trajectory(self) -> None:
         """
