@@ -36,10 +36,9 @@ def index(a: np.ndarray, b: np.ndarray) -> Optional[int]:
         return idxs[0]
 
 
-def multinomial(weights: np.ndarray) -> int:
+def multinomial(weights: torch.Tensor) -> torch.Tensor:
     p = weights / weights.sum()
-    r = np.random.multinomial(1, p, size=1)
-    idx = np.nonzero(r)[1][0]
+    idx = torch.multinomial(p, 1)[0]
     return idx
 
 
@@ -84,3 +83,28 @@ def build_image(images: List[torch.Tensor]) -> Image:
     # Convert to Image
     full_image = Image.fromarray((full_image.squeeze() * 255).astype(np.uint8), "RGB")
     return full_image
+
+
+def one_hot(x: np.ndarray, num_classes: int = -1) -> np.ndarray:
+    """
+    Numpy implementation of one_hot.
+
+    :param x: class values of any shape.
+    :param num_classes: Total number of classes. If set to -1, the number
+        of classes will be inferred as one greater than the largest class
+        value in the input array.
+    :return: Array that has one more dimension with 1 values at the
+    index of last dimension indicated by the input, and 0 everywhere
+    else.
+
+    Examples:
+        >>> one_hot(np.arange(0, 5) % 3)
+        array([[1., 0., 0.],
+               [0., 1., 0.],
+               [0., 0., 1.],
+               [1., 0., 0.],
+               [0., 1., 0.]])
+    """
+    num_classes = np.max(x) + 1 if num_classes == -1 else num_classes
+    y = np.eye(num_classes)[x]
+    return y
