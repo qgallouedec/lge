@@ -12,7 +12,7 @@ from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.type_aliases import MaybeCallback
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import CellFactory
+from go_explore.cells import CellFactory, ImageGrayscaleDownscale
 from go_explore.feature_extractor import GoExploreExtractor
 
 
@@ -57,7 +57,7 @@ class Goalify(gym.Wrapper):
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        self.goal_trajectory = self.archive.sample_trajectory()
+        self.goal_trajectory, self.cell_trajectory = self.archive.sample_trajectory()
         if is_image_space(self.observation_space["goal"]):
             self.goal_trajectory = [goal.transpose(1, 2, 0) for goal in self.goal_trajectory]
         self._goal_idx = 0
@@ -75,11 +75,12 @@ class Goalify(gym.Wrapper):
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
         obs, reward, done, info = self.env.step(action)
         # Compute reward (has to be done before moving to next goal)
-        goal = self.goal_trajectory[self._goal_idx]
-        reward = float(self.compute_reward(obs, goal))
+        goal_cell = self.cell_trajectory[self._goal_idx]
+        cell = self.archive.compute_cell(obs)
+        reward = float(self.compute_reward(cell, goal_cell))
 
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
-        self.maybe_move_to_next_goal(obs)
+        self.maybe_move_to_next_goal(cell)
 
         # When the last goal is reached, delay the done to allow some random actions
         if self._is_last_goal_reached:
@@ -95,11 +96,11 @@ class Goalify(gym.Wrapper):
         dict_obs = self._get_dict_obs(obs)
         return dict_obs, reward, done, info
 
-    def compute_reward(self, obs: np.ndarray, goal: np.ndarray, info: Optional[Dict] = None) -> np.ndarray:
-        is_success = self.is_success(obs, goal)
+    def compute_reward(self, cell: np.ndarray, goal_cell: np.ndarray, info: Optional[Dict] = None) -> np.ndarray:
+        is_success = self.is_success(cell, goal_cell)
         return is_success - 1
 
-    def is_success(self, obs: np.ndarray, goal: np.ndarray) -> np.ndarray:
+    def is_success(self, cell: np.ndarray, goal_cell: np.ndarray) -> np.ndarray:
         """
         Return True when the observation and the goal observation are in the same cell.
 
@@ -107,11 +108,9 @@ class Goalify(gym.Wrapper):
         :param goal: The goal observation
         :return: Success or not
         """
-        cell = self.archive.compute_cell(obs)
-        goal_cell = self.archive.compute_cell(goal)
         return np.isclose(cell, goal_cell, atol=0.001).all(-1)
 
-    def maybe_move_to_next_goal(self, obs: np.ndarray) -> None:
+    def maybe_move_to_next_goal(self, cell: np.ndarray) -> None:
         """
         Set the next goal idx if necessary.
 
@@ -122,11 +121,9 @@ class Goalify(gym.Wrapper):
         :param obs: The observation
         """
         upper_idx = min(self._goal_idx + self.window_size, len(self.goal_trajectory))
-        for goal_idx in range(self._goal_idx, upper_idx):
-            goal = self.goal_trajectory[goal_idx]
-            if self.is_success(obs, goal):
-                self._goal_idx = goal_idx + 1
-        # Update the flag _is_last_goal_reached
+        future_success = self.is_success(cell, self.cell_trajectory[self._goal_idx : upper_idx])
+        if future_success.any():
+            self._goal_idx += future_success.argmax() + 1
         if self._goal_idx == len(self.goal_trajectory):
             self._is_last_goal_reached = True
             self._goal_idx -= 1
@@ -161,17 +158,9 @@ class CallEveryNTimesteps(BaseCallback):
         return True
 
 
-class GoExplore:
+class BaseGoExplore:
     """
-    Go-Explore implementation as described in [1].
-
-    This is a simplified version, which does not include a number of tricks
-    whose impact on performance we do not know. The goal is to implement the
-    general principle of the algorithm and not all the little tricks.
-    In particular, we do not implement:
-    - everything related with domain knowledge,
-    - self-imitation learning,
-    - parallelized exploration phase
+    Base implementation for Go-Explore.
     """
 
     def __init__(
@@ -179,14 +168,12 @@ class GoExplore:
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
         cell_factory: CellFactory,
-        count_pow: float = 1,
-        split_factor: float = 0.125,
+        count_pow: float = 1.0,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
     ) -> None:
-        self.split_factor = split_factor
         # Wrap the env
         def env_func():
             return Goalify(maybe_make_env(env, verbose))
@@ -212,10 +199,6 @@ class GoExplore:
         for _env in self.model.env.envs:
             _env.set_archive(self.archive)
 
-        # self.cell_factory.set_feature_extractor(self.model.policy.actor.features_extractor.observation_extractor)
-        # self.vae = self.cell_factory.vae
-        # self.vae_optimizer = torch.optim.Adam(self.vae.parameters(), lr=2e-4)
-
     def explore(self, total_timesteps: int, callback: MaybeCallback = None, reset_num_timesteps: bool = False) -> None:
         """
         Run exploration.
@@ -227,7 +210,32 @@ class GoExplore:
         self.model.learn(total_timesteps, callback=callback, reset_num_timesteps=reset_num_timesteps)
 
 
-class GoExploreOriginal(GoExplore):
+class GoExploreOriginal(BaseGoExplore):
+    """
+    This is a simplified version of Go-Explore from the original paper, which does not include
+    a number of tricks which impacts the performance.
+    The goal is to implement the general principle of the algorithm and not all the little tricks.
+    In particular, we do not implement:
+    - everything related with domain knowledge,
+    - self-imitation learning,
+    - parallelized exploration phase
+    """
+
+    def __init__(
+        self,
+        model_class: Type[OffPolicyAlgorithm],
+        env: Env,
+        count_pow: float = 1.0,
+        split_factor: float = 0.125,
+        n_envs: int = 1,
+        replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
+        model_kwargs: Optional[Dict[str, Any]] = None,
+        verbose: int = 0,
+    ) -> None:
+        cell_factory = ImageGrayscaleDownscale(height=10, width=10, nb_shades=30)
+        super().__init__(model_class, env, cell_factory, count_pow, n_envs, replay_buffer_kwargs, model_kwargs, verbose)
+        self.split_factor = split_factor
+
     def _update_cell_factory_param(self) -> None:
         samples = self.archive.sample(512).next_observations["observation"]
         score = self.cell_factory.optimize_param(samples, split_factor=self.split_factor)
