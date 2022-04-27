@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import torch
@@ -64,25 +64,23 @@ def sample_geometric(mean: int, max_value: int) -> int:
             return value
 
 
-def build_recons_image(input: torch.Tensor, recons: torch.Tensor) -> Image:
+def build_image(images: List[torch.Tensor]) -> Image:
     """
-    Stack and return an image of inputs and reconstruction.
+    Stack and return an image.
 
-    :param input: Input images
-    :param recons: Reconstructions
-    :return: Image, first row is input images, second is reconstruction
+    :param images: List of batch of images. Each element must have size N x 3 x H x W
+    :return: Image.
     """
     # Clamp the values to [0, 1]
-    recons = torch.clamp(recons, min=0.0, max=1.0)
+    images = [torch.clamp(image, min=0.0, max=1.0) for image in images]
 
     # Tensor to array, and transpose
-    input = np.moveaxis(input.detach().cpu().numpy(), 1, 3)
-    recons = np.moveaxis(recons.detach().cpu().numpy(), 1, 3)
+    images = [np.moveaxis(image.detach().cpu().numpy(), 1, 3) for image in images]
 
     # Stack all images
-    input = np.hstack(tuple(input))
-    recons = np.hstack(tuple(recons))
-    img = np.vstack((input, recons))
+    rows = [np.hstack(tuple(image)) for image in images]
+    full_image = np.vstack(rows)
 
-    img = Image.fromarray((img.squeeze() * 255).astype(np.uint8), "RGB")
-    return img
+    # Convert to Image
+    full_image = Image.fromarray((full_image.squeeze() * 255).astype(np.uint8), "RGB")
+    return full_image
