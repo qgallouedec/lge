@@ -1,11 +1,11 @@
 import copy
 from abc import ABC, abstractmethod
-from typing import Dict
+from typing import Sized, Union
 
 import gym.spaces
 import numpy as np
 import optuna
-import torch as th
+import torch
 from gym import spaces
 from torch import nn
 from torchvision.transforms.functional import resize, rgb_to_grayscale
@@ -16,7 +16,7 @@ from go_explore.utils import sample_geometric
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
-def distribution_score(probs: th.Tensor, nb_samples: int, split_factor: float) -> float:
+def distribution_score(probs: torch.Tensor, nb_samples: int, split_factor: float) -> float:
     """
     Get the score of the distribution. Used to find the best cell factory parameters.
 
@@ -33,20 +33,43 @@ def distribution_score(probs: th.Tensor, nb_samples: int, split_factor: float) -
         return 0.0
     target_nb_cells = split_factor * nb_samples
     nb_cells = probs.shape[0]
-    entropy_ratio = -th.sum(probs * th.log(probs) / np.log(nb_cells)).item()
+    entropy_ratio = -torch.sum(probs * torch.log(probs) / np.log(nb_cells)).item()
     discrepancy_measure = np.sqrt(np.abs(nb_cells / target_nb_cells - 1) + 1)
     return entropy_ratio / discrepancy_measure
 
 
 class CellFactory(ABC):
     cell_space: gym.spaces.Space
+    obs_shape: Sized
+
+    def __call__(self, observations: Union[np.ndarray, torch.Tensor]) -> Union[np.ndarray, torch.Tensor]:
+        observation_type = type(observations)
+        nb_dim = len(self.obs_shape)
+
+        # When observation is a array, convert it into a tensor
+        if observation_type is np.ndarray:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            observations = torch.as_tensor(observations).to(device)
+
+        # observations has shape (... x OBS_SHAPE)
+        main_shape, observation_shape = observations.shape[:-nb_dim], observations.shape[-nb_dim:]
+        observations = observations.view((-1, *observation_shape))  #  (... x OBS_SHAPE) to (N x OBS_SHAPE)
+        cells = self.compute_cells(observations)  # (N x OBS_SHAPE) to (N x CELL_SHAPE)
+        cell_shape = cells.shape[1:]
+        cells = cells.view((*main_shape, *cell_shape))  #  (N x CELL_SHAPE) to (... x CELL_SHAPE)
+
+        # Return the same type as input
+        if observation_type is np.ndarray:
+            cells = cells.detach().cpu().numpy()
+
+        return cells
 
     @abstractmethod
-    def __call__(self, observations: th.Tensor) -> th.Tensor:
+    def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
         ...  # pragma: no cover
 
 
-def get_param_score(cells: th.Tensor, split_factor: float = 0.125) -> float:
+def get_param_score(cells: torch.Tensor, split_factor: float = 0.125) -> float:
     """
     Get the score of the parameters.
 
@@ -54,7 +77,7 @@ def get_param_score(cells: th.Tensor, split_factor: float = 0.125) -> float:
     :return: The score
     """
     # List the uniques cells produced, and compute their probability
-    _, counts = th.unique(cells, return_counts=True, dim=0)
+    _, counts = torch.unique(cells, return_counts=True, dim=0)
     nb_samples = cells.shape[0]
     probs = counts / nb_samples
     # Compute the score
@@ -90,35 +113,33 @@ class ImageGrayscaleDownscale(CellFactory):
         self.width = width
         self.nb_shades = nb_shades
         self.cell_space = spaces.Box(low=0, high=255, shape=(height * width,))
+        self.obs_shape = (self.MAX_H, self.MAX_W, self.MAX_NB_SHADES)
 
-    def __call__(self, images: th.Tensor) -> th.Tensor:
+    def compute_cells(self, images: torch.Tensor) -> torch.Tensor:
         """
         Return the cells associated with each image.
 
-        :param images: The images as a Tensor of dims (... x 3 x H x W)
+        :param images: The images as a Tensor of dims (N x 3 x H x W)
         :param height: The height of the downscaled image
         :param width: The width of the downscaled image
         :param nb_shades: Number of possible shades of gray in the cell representation
         :return: The cells as a Tensor
         """
         # Image's dims must be (... x 3 x H x W)
-        if images.shape[-3] != 3 and images.shape[-1] == 3:  # (... x H x W x 3)
-            images = images.moveaxis(-1, -3)  # (... x H x W x 3) to # (... x 3 x H x W)
+        if images.shape[1] != 3 and images.shape[3] == 3:  # (... x H x W x 3)
+            images = images.moveaxis(3, 1)  # (... x H x W x 3) to # (... x 3 x H x W)
             # Yes, it does not work with W == 3 but, come on...
-        # We need a little trick on shape, because resize  and rgb_to_grayscale only accepts size (N x H x W)
-        prev_shape = images.shape[:-3]  # the "..." part of the shape
-        images = images.reshape((-1, *images.shape[-3:]))  #  (... x 3 x H x W) to (N x 3 x H x W)
         # Convert to grayscale
         images = rgb_to_grayscale(images)  # (N x 1 x H x W)
         # Resize
         images = resize(images, (self.height, self.width))  # (N x 1 x NEW_W x NEW_H)
-        images = images.reshape((*prev_shape, -1))  #  (N x 1 x H x W) to (... x H x W)
+        images = images.squeeze(1)  #  (N x 1 x H x W) to (N x H x W)
         # Downscale
         coef = 256 / self.nb_shades
-        cells = (th.floor(images / coef) * coef).to(th.uint8)
+        cells = (torch.floor(images / coef) * coef).to(torch.uint8)
         return cells
 
-    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300) -> float:
+    def optimize_param(self, samples: torch.Tensor, nb_trials: int = 300) -> float:
         def objective(trial: optuna.Trial):
             height = trial.suggest_int("height", 1, self.MAX_H)
             width = trial.suggest_int("width", 1, self.MAX_W)
@@ -133,7 +154,7 @@ class ImageGrayscaleDownscale(CellFactory):
         self.set_param(**study.best_params)
         return study.best_value
 
-    def old_optimize_param(self, samples: th.Tensor, nb_trials: int = 300) -> float:
+    def old_optimize_param(self, samples: torch.Tensor, nb_trials: int = 300) -> float:
         """
         Find the best parameters for the cell computation.
 
@@ -186,9 +207,10 @@ class CellIsObs(CellFactory):
     """
 
     def __init__(self, observation_space: spaces.Space) -> None:
+        self.obs_shape = observation_space.shape
         self.cell_space = copy.deepcopy(observation_space)
 
-    def __call__(self, observations: th.Tensor) -> th.Tensor:
+    def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
         """
         Compute the cells.
 
@@ -210,20 +232,21 @@ class DownscaleObs(CellFactory):
     """
 
     def __init__(self, observation_space: spaces.Space) -> None:
+        self.obs_shape = observation_space.shape
         self.cell_space = copy.deepcopy(observation_space)
-        self.step = 1
+        self.step = 1.0
 
-    def __call__(self, observations: th.Tensor) -> th.Tensor:
+    def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
         """
         Compute the cells.
 
         :param observations: Observations
         :return: A tensor of cells
         """
-        cells = th.floor(observations / self.step) * self.step
+        cells = torch.floor(observations / self.step) * self.step
         return cells
 
-    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300) -> float:
+    def optimize_param(self, samples: torch.Tensor, nb_trials: int = 300) -> float:
         def objective(trial: optuna.Trial) -> float:
             self.step = trial.suggest_loguniform("step", 1e-6, 1e4)
             cells = self.__call__(samples)
@@ -248,6 +271,7 @@ class LatentCelling(CellFactory):
     """
 
     def __init__(self, observation_space: spaces.Space) -> None:
+        self.obs_shape = observation_space.shape
         self.cell_space = copy.deepcopy(observation_space)
         self.step = 1.0
         self.feature_extractor = None
@@ -259,7 +283,7 @@ class LatentCelling(CellFactory):
         """
         self.feature_extractor = feature_extractor
 
-    def __call__(self, observations: th.Tensor) -> th.Tensor:
+    def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
         """
         Compute the cells.
 
@@ -267,10 +291,10 @@ class LatentCelling(CellFactory):
         :return: A tensor of cells
         """
         features = self.feature_extractor(observations)
-        cells = th.floor(features / self.step) * self.step
+        cells = torch.floor(features / self.step) * self.step
         return cells
 
-    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300, split_factor: float = 0.125) -> float:
+    def optimize_param(self, samples: torch.Tensor, nb_trials: int = 300, split_factor: float = 0.125) -> float:
         def objective(trial: optuna.Trial) -> float:
             self.step = trial.suggest_loguniform("step", 1e-6, 1e4)
             cells = self.__call__(samples)
@@ -290,7 +314,7 @@ class CategoricalVAECelling(CellFactory):
         self.cell_space = spaces.Box(0, 1, (32 * 32,))
         self.vae = CategoricalVAE(nb_classes=32, nb_categoricals=32)
 
-    def __call__(self, observations: th.Tensor) -> th.Tensor:
+    def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
         """
         Compute the cells.
 
@@ -300,9 +324,5 @@ class CategoricalVAECelling(CellFactory):
         input = resize(observations, (129, 129)).float() / 255
         self.vae.eval()
         _, _, latent = self.vae(input)
-        latent = th.flatten(latent, start_dim=1)
+        latent = torch.flatten(latent, start_dim=1)
         return latent
-
-    def optimize_param(self, samples: th.Tensor, nb_trials: int = 300, split_factor: float = 0.125) -> float:
-        print("nothing to poptimize")
-        return 0.0
