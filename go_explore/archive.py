@@ -172,14 +172,17 @@ class ArchiveBuffer(DictReplayBuffer):
         Re-compute all the cells.
 
         Call this function when you change the parametrisation of the cell factory.
-        It computes the new cells and the new traejctories.
+        It computes the new cells.
         """
         upper_bound = self.pos if not self.full else self.buffer_size
         # Recompute 256 by 256 to avoid cuda space allocation error.
         k = 0
         while k < upper_bound:
             upper = min(upper_bound, k + 256)
+            self.observations["cell"][k:upper] = self.cell_factory(self.observations["observation"][k:upper])
+            self.observations["goal_cell"][k:upper] = self.cell_factory(self.observations["goal"][k:upper])
             self.next_observations["cell"][k:upper] = self.cell_factory(self.next_observations["observation"][k:upper])
+            self.next_observations["goal_cell"][k:upper] = self.cell_factory(self.next_observations["goal"][k:upper])
             k += 256
 
     def sample_trajectory(self) -> List[np.ndarray]:
