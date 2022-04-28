@@ -29,15 +29,19 @@ class Goalify(gym.Wrapper):
     def __init__(
         self,
         env: Env,
+        cell_factory: CellFactory,
         nb_random_exploration_steps: int = 30,
         window_size: int = 10,
     ) -> None:
         super().__init__(env)
         # Set a goal-conditionned observation space
+        self.cell_factory = cell_factory
         self.observation_space = spaces.Dict(
             {
                 "observation": copy.deepcopy(self.env.observation_space),
                 "goal": copy.deepcopy(self.env.observation_space),
+                "goal": copy.deepcopy(self.cell_factory.cell_space),
+                "goal_cell": copy.deepcopy(self.cell_factory.cell_space),
             }
         )
         self.archive = None  # type: ArchiveBuffer
@@ -56,6 +60,7 @@ class Goalify(gym.Wrapper):
 
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
+        cell = self.cell_factory(obs)
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
         self.goal_trajectory, self.cell_trajectory = self.archive.sample_trajectory()
         if is_image_space(self.observation_space["goal"]):
@@ -63,20 +68,22 @@ class Goalify(gym.Wrapper):
         self._goal_idx = 0
         self.done_countdown = self.nb_random_exploration_steps
         self._is_last_goal_reached = False  # useful flag
-        dict_obs = self._get_dict_obs(obs)  # turn into dict
+        dict_obs = self._get_dict_obs(obs, cell)  # turn into dict
         return dict_obs
 
-    def _get_dict_obs(self, obs: np.ndarray) -> Dict[str, np.ndarray]:
+    def _get_dict_obs(self, obs: np.ndarray, cell: np.ndarray) -> Dict[str, np.ndarray]:
         return {
             "observation": obs.copy(),
             "goal": self.goal_trajectory[self._goal_idx].copy(),
+            "cell": cell.copy(),
+            "goal_cell": self.cell_trajectory[self._goal_idx].copy(),
         }
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
         obs, reward, done, info = self.env.step(action)
         # Compute reward (has to be done before moving to next goal)
+        cell = self.cell_factory(obs)
         goal_cell = self.cell_trajectory[self._goal_idx]
-        cell = self.archive.compute_cell(obs)
         reward = float(self.compute_reward(cell, goal_cell))
 
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
@@ -93,7 +100,7 @@ class Goalify(gym.Wrapper):
         else:
             info["is_success"] = False
 
-        dict_obs = self._get_dict_obs(obs)
+        dict_obs = self._get_dict_obs(obs, cell)
         return dict_obs, reward, done, info
 
     def compute_reward(self, cell: np.ndarray, goal_cell: np.ndarray, info: Optional[Dict] = None) -> np.ndarray:
@@ -176,12 +183,11 @@ class BaseGoExplore:
     ) -> None:
         # Wrap the env
         def env_func():
-            return Goalify(maybe_make_env(env, verbose))
+            return Goalify(maybe_make_env(env, verbose), cell_factory)
 
         env = make_vec_env(env_func, n_envs=n_envs)
-        self.cell_factory = cell_factory
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
-        replay_buffer_kwargs.update(dict(cell_factory=self.cell_factory, count_pow=count_pow))
+        replay_buffer_kwargs.update(dict(cell_factory=cell_factory, count_pow=count_pow))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {} if model_kwargs is None else model_kwargs
 
