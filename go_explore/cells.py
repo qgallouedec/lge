@@ -85,7 +85,7 @@ def get_param_score(cells: torch.Tensor, split_factor: float = 0.125) -> float:
     return score
 
 
-class ImageGrayscaleDownscale(CellFactory):
+class AtariGrayscaleDownscale(CellFactory):
     """
     The image is scaled to gray, resized smaller, and the number of shades is lowered.
 
@@ -94,26 +94,26 @@ class ImageGrayscaleDownscale(CellFactory):
     :param nb_shades: Number of possible shades of gray in the cell representation
 
     Example:
-    >>> cell_factory = ImageGrayscaleDownscale(height=15, width=10,  nb_shades=20)
+    >>> cell_factory = AtariGrayscaleDownscale(height=15, width=10,  nb_shades=20)
     >>> images.shape
     torch.Size([10, 3, 210, 160])  # (N x 3 x H x W)
     >>> cell_factory(images).shape
     torch.Size([10, 15, 10])  # (N x NEW_H x NEW_W)
     """
 
-    MAX_H = 210
-    MAX_W = 160
-    MAX_NB_SHADES = 255
+    MAX_H = 52
+    MAX_W = 40
+    MAX_NB_SHADES = 127
 
-    def __init__(self, height: int = MAX_H, width: int = MAX_W, nb_shades: int = MAX_NB_SHADES) -> None:
+    def __init__(self, height: int = 21, width: int = 16, nb_shades: int = 25) -> None:
         self.set_param(height, width, nb_shades)
+        self.cell_space = spaces.Box(low=0, high=255, shape=(self.MAX_H * self.MAX_W,))
 
     def set_param(self, height: int, width: int, nb_shades: int) -> None:
         self.height = height
         self.width = width
         self.nb_shades = nb_shades
-        self.cell_space = spaces.Box(low=0, high=255, shape=(height * width,))
-        self.obs_shape = (self.MAX_H, self.MAX_W, self.MAX_NB_SHADES)
+        self.obs_shape = (210, 160, 3)
 
     def compute_cells(self, images: torch.Tensor) -> torch.Tensor:
         """
@@ -136,17 +136,18 @@ class ImageGrayscaleDownscale(CellFactory):
         images = images.squeeze(1)  #  (N x 1 x H x W) to (N x H x W)
         # Downscale
         coef = 256 / self.nb_shades
-        cells = (torch.floor(images / coef) * coef).to(torch.uint8)
+        cells = torch.zeros(images.shape[0], self.MAX_H * self.MAX_W, dtype=torch.uint8)
+        cells[:, : self.width * self.height] = (torch.floor(images / coef) * coef).flatten(1)
         return cells
 
-    def optimize_param(self, samples: torch.Tensor, nb_trials: int = 300) -> float:
+    def optimize_param(self, samples: torch.Tensor, nb_trials: int = 300, split_factor: float = 0.125) -> float:
         def objective(trial: optuna.Trial):
             height = trial.suggest_int("height", 1, self.MAX_H)
             width = trial.suggest_int("width", 1, self.MAX_W)
             nb_shades = trial.suggest_int("nb_shades", 1, self.MAX_NB_SHADES)
             self.set_param(height, width, nb_shades)
             cells = self.__call__(samples)
-            score = get_param_score(cells)
+            score = get_param_score(cells, split_factor)
             return score
 
         study = optuna.create_study(direction="maximize")

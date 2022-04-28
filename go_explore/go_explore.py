@@ -12,7 +12,7 @@ from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.type_aliases import MaybeCallback
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import CellFactory, ImageGrayscaleDownscale
+from go_explore.cells import CellFactory, AtariGrayscaleDownscale
 from go_explore.feature_extractor import GoExploreExtractor
 
 
@@ -39,8 +39,8 @@ class Goalify(gym.Wrapper):
         self.observation_space = spaces.Dict(
             {
                 "observation": copy.deepcopy(self.env.observation_space),
+                "cell": copy.deepcopy(self.cell_factory.cell_space),
                 "goal": copy.deepcopy(self.env.observation_space),
-                "goal": copy.deepcopy(self.cell_factory.cell_space),
                 "goal_cell": copy.deepcopy(self.cell_factory.cell_space),
             }
         )
@@ -238,15 +238,17 @@ class GoExploreOriginal(BaseGoExplore):
         model_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
     ) -> None:
-        cell_factory = ImageGrayscaleDownscale(height=10, width=10, nb_shades=30)
+        cell_factory = AtariGrayscaleDownscale(height=5, width=5, nb_shades=10)
         super().__init__(model_class, env, cell_factory, count_pow, n_envs, replay_buffer_kwargs, model_kwargs, verbose)
         self.split_factor = split_factor
 
     def _update_cell_factory_param(self) -> None:
         samples = self.archive.sample(512).next_observations["observation"]
-        score = self.cell_factory.optimize_param(samples, split_factor=self.split_factor)
-        self.model.logger.log("New parameters for cell factory with score", score, "\tStep:", str(self.cell_factory.step))
-        self.archive.when_cell_factory_updated()
+        cell_factory = self.archive.cell_factory # type: AtariGrayscaleDownscale
+        score = cell_factory.optimize_param(samples, split_factor=self.split_factor)
+        msg = "New parameters for cell factory with score {:.4f}, height: {:2d}, width: {:2d}, nb of shades: {:2d}".format(score, cell_factory.height, cell_factory.width, cell_factory.nb_shades)
+        self.model.logger.log(msg)
+        self.archive.recompute_cells()
 
     def explore(self, total_timesteps: int, update_cell_factory_freq=40000, reset_num_timesteps: bool = False) -> None:
         """

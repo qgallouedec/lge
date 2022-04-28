@@ -2,7 +2,7 @@ import numpy as np
 import torch as th
 from gym import spaces
 
-from go_explore.cells import DownscaleObs, ImageGrayscaleDownscale
+from go_explore.cells import DownscaleObs, AtariGrayscaleDownscale
 from go_explore.feature_extractor import GoExploreExtractor
 
 
@@ -25,7 +25,7 @@ def test_feature_extractor_image():
             "goal": spaces.Box(0, 255, (3, height, width), dtype=np.uint8),
         }
     )
-    cell_factory = ImageGrayscaleDownscale(height // 5, width // 5, 50)
+    cell_factory = AtariGrayscaleDownscale(height // 5, width // 5, 50)
     feature_extractor = GoExploreExtractor(observation_space, cell_factory, cnn_output_dim)
     observation = {
         "observation": th.randint(0, 255, (1, 3, height, width), dtype=th.float32),

@@ -5,7 +5,7 @@ import numpy as np
 import torch as th
 from gym import spaces
 
-from go_explore.cells import CellIsObs, DownscaleObs, ImageGrayscaleDownscale, distribution_score, get_param_score
+from go_explore.cells import CellIsObs, DownscaleObs, AtariGrayscaleDownscale, distribution_score, get_param_score
 
 # Produce images
 env = gym.make("MontezumaRevenge-v0")
@@ -54,13 +54,13 @@ def test_get_param_score():
 
 
 def test_image_cell():
-    cell_factory = ImageGrayscaleDownscale(30, 40)
+    cell_factory = AtariGrayscaleDownscale(30, 40)
     cells = cell_factory(images)
     assert cells.shape == (301, 30 * 40)
 
 
 def test_transpose_image_cell():
-    cell_factory = ImageGrayscaleDownscale(30, 40)
+    cell_factory = AtariGrayscaleDownscale(30, 40)
     transposed_images = images.moveaxis(-3, -1)  # (... x 3 x H x W) to (... x H x W x 3)
     cells_1 = cell_factory(images)
     cells_2 = cell_factory(transposed_images)
@@ -68,7 +68,7 @@ def test_transpose_image_cell():
 
 
 def test_image_grayscale_downscale_optimization():
-    cell_factory = ImageGrayscaleDownscale()
+    cell_factory = AtariGrayscaleDownscale()
     # Optimize parameters
     cell_factory.optimize_param(images)
     # Get all the unique cells. It should produced around 38 cells (301*0.125)
@@ -78,7 +78,7 @@ def test_image_grayscale_downscale_optimization():
 
 
 def test_image_grayscale_downscale_old_optimization():
-    cell_factory = ImageGrayscaleDownscale()
+    cell_factory = AtariGrayscaleDownscale()
     # Optimize parameters
     cell_factory.old_optimize_param(images)
     # Get all the unique cells. It should produced around 38 cells (301*0.125)
