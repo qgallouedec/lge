@@ -75,9 +75,6 @@ class ArchiveBuffer(DictReplayBuffer):
         self.count_pow = count_pow
         self.cell_factory = cell_factory
         self.infos = np.array([[{} for _ in range(self.n_envs)] for _ in range(self.buffer_size)])
-        # self.cells maps buffer position to the cell representation.
-        self.cell_space = self.cell_factory.cell_space
-        self.cells = np.zeros((self.buffer_size, self.n_envs, *self.cell_space.shape), dtype=self.cell_space.dtype)
 
         if isinstance(goal_selection_strategy, str):
             goal_selection_strategy = KEY_TO_GOAL_STRATEGY[goal_selection_strategy.lower()]
@@ -133,8 +130,6 @@ class ArchiveBuffer(DictReplayBuffer):
         infos: List[Dict[str, Any]],
     ) -> None:
         self._erase_if_write_over()
-        # Update cells
-        self.cells[self.pos] = self.compute_cell(next_obs["observation"])
         # Update episode start
         self.ep_start[self.pos] = self._current_ep_start.copy()
 
@@ -172,22 +167,6 @@ class ArchiveBuffer(DictReplayBuffer):
                 episode_indices = np.arange(self.pos, episode_end) % self.buffer_size
                 self.ep_length[episode_indices, env_idx] = 0
 
-    def compute_cell(self, obs: np.ndarray) -> np.ndarray:
-        """
-        Compute the cell of the observation.
-
-        :param obs: The observation as an array.
-        :return: The cell, as an array
-        """
-        # obs has shape (... x OBS_SHAPE)
-        n_obs_dim = len(self.obs_shape["observation"])
-        prev_shape = obs.shape[:-n_obs_dim]  # the "..." part of the shape
-        obs = obs.reshape((-1, *self.obs_shape["observation"]))  #  (... x OBS_SHAPE) to (N x OBS_SHAPE)
-        th_obs = self.to_torch(obs).to(th.float32)
-        cells = self.cell_factory(th_obs).detach().cpu().numpy()  # (N x OBS_SHAPE) to (N x CELL_SIZE)
-        cells = cells.reshape((*prev_shape, -1))  #  (N x CELL_SIZE) to (... x CELL_SIZE)
-        return cells
-
     def recompute_cells(self) -> None:
         """
         Re-compute all the cells.
@@ -200,7 +179,7 @@ class ArchiveBuffer(DictReplayBuffer):
         k = 0
         while k < upper_bound:
             upper = min(upper_bound, k + 256)
-            self.cells[k:upper] = self.compute_cell(self.next_observations["observation"][k:upper])
+            self.next_observations["cell"][k:upper] = self.cell_factory(self.next_observations["observation"][k:upper])
             k += 256
 
     def sample_trajectory(self) -> List[np.ndarray]:
@@ -215,9 +194,9 @@ class ArchiveBuffer(DictReplayBuffer):
         upper_bound = self.pos if not self.full else self.buffer_size
         if upper_bound == 0:  # no cells yet
             goal = self.observation_space["goal"].sample()
-            return [goal], [self.compute_cell(goal)]
+            return [goal], [self.cell_factory(goal)]
 
-        all_cells = self.cells[:upper_bound]
+        all_cells = self.next_observations["cell"][:upper_bound]
         all_cells = all_cells.reshape(upper_bound * self.n_envs, -1)
         all_cells = th.from_numpy(all_cells).to(self.device)
         _, cells_uid, counts = th.unique(all_cells, return_inverse=True, return_counts=True, dim=0)
@@ -232,10 +211,10 @@ class ArchiveBuffer(DictReplayBuffer):
         start = self.ep_start[goal_pos, env]
         # Loop to avoid consecutive repetition
         trajectory = [self.next_observations["observation"][start, env]]
-        cell_trajectory = [self.cells[start, env]]
+        cell_trajectory = [self.next_observations["cell"][start, env]]
         for pos in range(start + 1, goal_pos + 1):
-            previous_cell = self.cells[pos - 1, env]
-            cell = self.cells[pos, env]
+            previous_cell = self.next_observations["cell"][pos - 1, env]
+            cell = self.next_observations["cell"][pos, env]
             if (previous_cell != cell).any():
                 obs = self.next_observations["observation"][pos, env]
                 trajectory.append(obs)
@@ -268,8 +247,7 @@ class ArchiveBuffer(DictReplayBuffer):
         virtual_env_indices, real_env_indices = np.split(env_indices, [nb_virtual])
 
         # get real and virtual data
-        # TODO: Warning, her_labeling should be disabled
-        real_data = self._get_samples(real_batch_inds, real_env_indices, her_relabeling=True, env=env)
+        real_data = self._get_samples(real_batch_inds, real_env_indices, her_relabeling=False, env=env)
         virtual_data = self._get_samples(virtual_batch_inds, virtual_env_indices, her_relabeling=True, env=env)
 
         # Concatenate real and virtual data
@@ -308,26 +286,25 @@ class ArchiveBuffer(DictReplayBuffer):
         # Get infos and obs
         obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}
         next_obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()}
-        cells = self.cells[batch_inds, env_indices]
         if her_relabeling:
-            infos = copy.deepcopy(self.infos[batch_inds, env_indices])
             # Sample and set new goals
             new_goals, new_goal_cells = self._sample_goals(batch_inds, env_indices)
             obs["goal"] = new_goals
             # The goal for the next observation must be the same as the previous one. TODO: Why ?
             next_obs["goal"] = new_goals
+            next_obs["goal_cell"] = new_goal_cells
         # Compute new reward
         rewards = self.env.env_method(
             "compute_reward",
             # here we use the new goal
-            new_goal_cells,
+            next_obs["goal_cell"],
             # the new state depends on the previous state and action
             # s_{t+1} = f(s_t, a_t)
             # so the next observation depends also on the previous state and action
             # because we are in a GoalEnv:
             # r_t = reward(s_t, a_t) = reward(next_obs, goal)
             # therefore we have to use next_obs["observation"] and not obs["observation"]
-            cells,
+            obs["cell"],
             self.infos[batch_inds, env_indices],
             # we use the method of the first environment assuming that all environments are identical.
             indices=[0],
@@ -382,7 +359,7 @@ class ArchiveBuffer(DictReplayBuffer):
         transition_indices = (transition_indices_in_episode + batch_ep_start) % self.buffer_size
         return (
             self.next_observations["observation"][transition_indices, env_indices],
-            self.cells[transition_indices, env_indices],
+            self.next_observations["cell"][transition_indices, env_indices],
         )
 
     def truncate_last_trajectory(self) -> None:
