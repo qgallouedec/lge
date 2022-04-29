@@ -49,7 +49,7 @@ class CellFactory(ABC):
         # When observation is a array, convert it into a tensor
         if observation_type is np.ndarray:
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            observations = torch.as_tensor(observations).to(device)
+            observations = torch.from_numpy(observations).to(device)
 
         # observations has shape (... x OBS_SHAPE)
         main_shape, observation_shape = observations.shape[:-nb_dim], observations.shape[-nb_dim:]
@@ -235,7 +235,7 @@ class DownscaleObs(CellFactory):
     def __init__(self, observation_space: spaces.Space) -> None:
         self.obs_shape = observation_space.shape
         self.cell_space = copy.deepcopy(observation_space)
-        self.step = 1.0
+        self.step = torch.ones(self.obs_shape)
 
     def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
         """
@@ -244,7 +244,8 @@ class DownscaleObs(CellFactory):
         :param observations: Observations
         :return: A tensor of cells
         """
-        cells = torch.floor(observations / self.step) * self.step
+        step = self.step.to(observations.device)
+        cells = torch.floor(observations / step - 0.5) * step
         return cells
 
     def optimize_param(self, samples: torch.Tensor, nb_trials: int = 300) -> float:
@@ -311,9 +312,10 @@ class LatentCelling(CellFactory):
 class CategoricalVAECelling(CellFactory):
     """"""
 
-    def __init__(self) -> None:
-        self.cell_space = spaces.Box(0, 1, (32 * 32,))
-        self.vae = CategoricalVAE(nb_classes=32, nb_categoricals=32)
+    def __init__(self, vae: CategoricalVAE) -> None:
+        self.vae = vae
+        self.obs_shape = (210, 160, 3)
+        self.cell_space = spaces.Box(0, 1, (vae.nb_categoricals * vae.nb_classes,))
 
     def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
         """
