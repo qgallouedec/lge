@@ -1,4 +1,3 @@
-import copy
 import warnings
 from typing import Any, Dict, List, Optional, Union
 
@@ -131,7 +130,7 @@ class ArchiveBuffer(DictReplayBuffer):
     ) -> None:
         self._erase_if_write_over()
         # Update episode start
-        self.ep_start[self.pos] = self._current_ep_start.copy()
+        self.ep_start[self.pos] = self._current_ep_start
 
         # Store the transition
         self.infos[self.pos] = infos
@@ -203,14 +202,14 @@ class ArchiveBuffer(DictReplayBuffer):
         all_cells = all_cells.reshape(upper_bound * self.n_envs, -1)
         all_cells = th.from_numpy(all_cells).to(self.device)
         _, cells_uid, counts = th.unique(all_cells, return_inverse=True, return_counts=True, dim=0)
-        weights = 1 / th.sqrt(counts + 1)
+        weights = 1 / th.pow(counts, self.count_pow)
         goal_cell_id = multinomial(weights)
-        cell_id_traj = cells_uid.reshape(upper_bound, self.n_envs)
-        where = th.where(cell_id_traj == goal_cell_id)
-        where = where[0].cpu().numpy(), where[1].cpu().numpy()
-        dist_to = where[0] - self.ep_start[where]
+        cell_id_traj = cells_uid.view(upper_bound, self.n_envs)
+        goal_pos, goal_env = th.where(cell_id_traj == goal_cell_id)
+        goal_pos, goal_env = goal_pos.cpu().numpy(), goal_env.cpu().numpy()
+        dist_to = goal_pos - self.ep_start[goal_pos, goal_env]
         shortest = dist_to.argmin()
-        goal_pos, env = where[0][shortest].item(), where[1][shortest].item()
+        goal_pos, env = goal_pos[shortest].item(), goal_env[shortest].item()
         start = self.ep_start[goal_pos, env]
         # Loop to avoid consecutive repetition
         trajectory = [self.next_observations["observation"][start, env]]
@@ -293,6 +292,7 @@ class ArchiveBuffer(DictReplayBuffer):
             # Sample and set new goals
             new_goals, new_goal_cells = self._sample_goals(batch_inds, env_indices)
             obs["goal"] = new_goals
+            obs["goal_cell"] = new_goal_cells
             # The goal for the next observation must be the same as the previous one. TODO: Why ?
             next_obs["goal"] = new_goals
             next_obs["goal_cell"] = new_goal_cells
@@ -300,14 +300,14 @@ class ArchiveBuffer(DictReplayBuffer):
         rewards = self.env.env_method(
             "compute_reward",
             # here we use the new goal
-            next_obs["goal_cell"],
+            next_obs["cell"],
             # the new state depends on the previous state and action
             # s_{t+1} = f(s_t, a_t)
             # so the next observation depends also on the previous state and action
             # because we are in a GoalEnv:
             # r_t = reward(s_t, a_t) = reward(next_obs, goal)
             # therefore we have to use next_obs["observation"] and not obs["observation"]
-            obs["cell"],
+            obs["goal_cell"],
             self.infos[batch_inds, env_indices],
             # we use the method of the first environment assuming that all environments are identical.
             indices=[0],
