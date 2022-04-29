@@ -6,6 +6,7 @@ import gym.spaces
 import numpy as np
 import optuna
 import torch
+import torch.nn.functional as F
 from gym import spaces
 from torch import nn
 from torchvision.transforms.functional import resize, rgb_to_grayscale
@@ -326,6 +327,7 @@ class CategoricalVAECelling(CellFactory):
         """
         input = resize(observations, (129, 129)).float() / 255
         self.vae.eval()
-        _, _, latent = self.vae(input)
-        latent = torch.flatten(latent, start_dim=1)
-        return latent
+        _, logits = self.vae(input)
+        cell = F.one_hot(torch.argmax(logits, -1), self.vae.nb_classes)
+        cell = torch.flatten(cell, start_dim=1)
+        return cell
