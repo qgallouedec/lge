@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Iterable, List, Optional, Union
 
 import numpy as np
 import torch
@@ -108,3 +108,20 @@ def one_hot(x: np.ndarray, num_classes: int = -1) -> np.ndarray:
     num_classes = np.max(x) + 1 if num_classes == -1 else num_classes
     y = np.eye(num_classes)[x]
     return y
+
+
+def choice(
+    a: Union[np.ndarray, int],
+    size: Optional[Union[int, Iterable[int]]] = None,
+    p: Optional[np.ndarray] = None,
+):
+    if type(a) is int:
+        a = np.arange(a)
+    if size is None:
+        size = (1,)
+    if p is None:
+        p = np.ones_like(a) / a.shape[0]
+    assert a.shape == p.shape
+
+    x = np.nonzero(np.random.multinomial(1, p, size=size))[1]
+    return a[x]

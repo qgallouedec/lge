@@ -10,7 +10,7 @@ from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import KEY_TO_GOAL_STRATEGY, GoalSelectionStrategy
 
 from go_explore.cells import CellFactory
-from go_explore.utils import multinomial
+from go_explore.utils import choice, multinomial
 
 
 class ArchiveBuffer(DictReplayBuffer):
@@ -241,7 +241,7 @@ class ArchiveBuffer(DictReplayBuffer):
         # Sample batch indices from the valid indices
         valid_inds = [np.arange(self.buffer_size)[is_valid[:, env_idx]] for env_idx in range(self.n_envs)]
         for i, env_idx in enumerate(env_indices):
-            batch_inds[i] = np.random.choice(valid_inds[env_idx])
+            batch_inds[i] = choice(valid_inds[env_idx])
 
         # Split the indexes between real and virtual transitions.
         nb_virtual = int(self.her_ratio * batch_size)
