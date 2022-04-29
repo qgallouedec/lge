@@ -12,7 +12,7 @@ from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.type_aliases import MaybeCallback
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import CellFactory, AtariGrayscaleDownscale
+from go_explore.cells import AtariGrayscaleDownscale, CellFactory
 from go_explore.feature_extractor import GoExploreExtractor
 
 
@@ -73,10 +73,10 @@ class Goalify(gym.Wrapper):
 
     def _get_dict_obs(self, obs: np.ndarray, cell: np.ndarray) -> Dict[str, np.ndarray]:
         return {
-            "observation": obs.copy(),
-            "goal": self.goal_trajectory[self._goal_idx].copy(),
-            "cell": cell.copy(),
-            "goal_cell": self.cell_trajectory[self._goal_idx].copy(),
+            "observation": obs.astype(np.float32),
+            "goal": self.goal_trajectory[self._goal_idx].astype(np.float32),
+            "cell": cell.astype(np.float32),
+            "goal_cell": self.cell_trajectory[self._goal_idx].astype(np.float32),
         }
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
@@ -244,9 +244,11 @@ class GoExploreOriginal(BaseGoExplore):
 
     def _update_cell_factory_param(self) -> None:
         samples = self.archive.sample(512).next_observations["observation"]
-        cell_factory = self.archive.cell_factory # type: AtariGrayscaleDownscale
+        cell_factory = self.archive.cell_factory  # type: AtariGrayscaleDownscale
         score = cell_factory.optimize_param(samples, split_factor=self.split_factor)
-        msg = "New parameters for cell factory with score {:.4f}, height: {:2d}, width: {:2d}, nb of shades: {:2d}".format(score, cell_factory.height, cell_factory.width, cell_factory.nb_shades)
+        msg = "New parameters for cell factory with score {:.4f}, height: {:2d}, width: {:2d}, nb of shades: {:2d}".format(
+            score, cell_factory.height, cell_factory.width, cell_factory.nb_shades
+        )
         self.model.logger.log(msg)
         self.archive.recompute_cells()
 
