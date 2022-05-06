@@ -2,7 +2,7 @@ import numpy as np
 import torch as th
 from gym import spaces
 
-from go_explore.cells import DownscaleObs, AtariGrayscaleDownscale
+from go_explore.cells import AtariGrayscaleDownscale, DownscaleObs
 from go_explore.feature_extractor import GoExploreExtractor
 
 

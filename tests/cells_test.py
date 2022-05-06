@@ -5,7 +5,7 @@ import numpy as np
 import torch as th
 from gym import spaces
 
-from go_explore.cells import CellIsObs, DownscaleObs, AtariGrayscaleDownscale, distribution_score, get_param_score
+from go_explore.cells import AtariGrayscaleDownscale, CellIsObs, DownscaleObs, distribution_score, get_param_score
 
 # Produce images
 env = gym.make("MontezumaRevenge-v0")
