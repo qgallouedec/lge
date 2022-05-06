@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
 import torch.nn.functional as F
-from gym import Env
+from gym import Env, spaces
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.utils import get_device
@@ -10,8 +10,8 @@ from torch import Tensor, optim
 from torchvision.transforms.functional import resize
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.categorical_vae import CategoricalVAE
-from go_explore.cells import AtariGrayscaleDownscale, CategoricalVAECelling
+from go_explore.categorical_vae import CNNCategoricalVAE
+from go_explore.cells import CellFactory
 from go_explore.go_explore import BaseGoExplore
 
 
@@ -43,7 +43,7 @@ def loss_func(input: Tensor, recons: Tensor, logits: Tensor, alpha: float = 0.01
 class VAELearner(BaseCallback):
     def __init__(
         self,
-        vae: CategoricalVAE,
+        vae: CNNCategoricalVAE,
         buffer: ArchiveBuffer,
         batch_size: int = 32,
         lr: float = 2e-4,
@@ -102,6 +102,29 @@ class RecomputeCell(BaseCallback):
             self.archive.recompute_cells()
 
 
+class CNNCategoricalVAECelling(CellFactory):
+    """"""
+
+    def __init__(self, vae: CNNCategoricalVAE) -> None:
+        self.vae = vae
+        self.obs_shape = (3, 210, 160)
+        self.cell_space = spaces.Box(0, 1, (vae.nb_categoricals * vae.nb_classes,))
+
+    def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
+        """
+        Compute the cells.
+
+        :param observations: Observations
+        :return: A tensor of cells
+        """
+        input = resize(observations, (129, 129)).float() / 255
+        self.vae.eval()
+        _, logits = self.vae(input)
+        cell = F.one_hot(torch.argmax(logits, -1), self.vae.nb_classes)
+        cell = torch.flatten(cell, start_dim=1)
+        return cell
+
+
 class GoExploreCatVAE(BaseGoExplore):
     """ """
 
@@ -115,9 +138,8 @@ class GoExploreCatVAE(BaseGoExplore):
         model_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
     ) -> None:
-        self.vae = CategoricalVAE().to(get_device("auto"))
-        cell_factory = CategoricalVAECelling(self.vae)
-        cell_factory = AtariGrayscaleDownscale(height=5, width=5, nb_shades=10)
+        self.vae = CNNCategoricalVAE().to(get_device("auto"))
+        cell_factory = CNNCategoricalVAECelling(self.vae)
         super().__init__(model_class, env, cell_factory, count_pow, n_envs, replay_buffer_kwargs, model_kwargs, verbose)
 
     def explore(self, total_timesteps: int, update_cell_factory_freq=10_000, reset_num_timesteps: bool = False) -> None:

@@ -6,12 +6,10 @@ import gym.spaces
 import numpy as np
 import optuna
 import torch
-import torch.nn.functional as F
 from gym import spaces
 from torch import nn
 from torchvision.transforms.functional import resize, rgb_to_grayscale
 
-from go_explore.categorical_vae import CategoricalVAE
 from go_explore.utils import sample_geometric
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -55,6 +53,12 @@ class CellFactory(ABC):
         # observations has shape (... x OBS_SHAPE)
         main_shape, observation_shape = observations.shape[:-nb_dim], observations.shape[-nb_dim:]
         observations = observations.view((-1, *observation_shape))  #  (... x OBS_SHAPE) to (N x OBS_SHAPE)
+
+        # When image, maybe transpose
+        if observations.shape[3] == 3:
+            observations = observations.moveaxis(3, 1)  # (N x H x W x 3) to (N x 3 x H x W)
+
+        # Compute cells
         cells = self.compute_cells(observations)  # (N x OBS_SHAPE) to (N x CELL_SHAPE)
         cell_shape = cells.shape[1:]
         cells = cells.view((*main_shape, *cell_shape))  #  (N x CELL_SHAPE) to (... x CELL_SHAPE)
@@ -308,26 +312,3 @@ class LatentCelling(CellFactory):
         study.optimize(objective, n_trials=nb_trials)
         self.step = study.best_params["step"]
         return study.best_value
-
-
-class CategoricalVAECelling(CellFactory):
-    """"""
-
-    def __init__(self, vae: CategoricalVAE) -> None:
-        self.vae = vae
-        self.obs_shape = (210, 160, 3)
-        self.cell_space = spaces.Box(0, 1, (vae.nb_categoricals * vae.nb_classes,))
-
-    def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
-        """
-        Compute the cells.
-
-        :param observations: Observations
-        :return: A tensor of cells
-        """
-        input = resize(observations, (129, 129)).float() / 255
-        self.vae.eval()
-        _, logits = self.vae(input)
-        cell = F.one_hot(torch.argmax(logits, -1), self.vae.nb_classes)
-        cell = torch.flatten(cell, start_dim=1)
-        return cell
