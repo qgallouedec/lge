@@ -10,7 +10,7 @@ from gym import spaces
 from torch import nn
 from torchvision.transforms.functional import resize, rgb_to_grayscale
 
-from go_explore.utils import sample_geometric
+from go_explore.utils import is_image, sample_geometric
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -55,7 +55,7 @@ class CellFactory(ABC):
         observations = observations.view((-1, *observation_shape))  #  (... x OBS_SHAPE) to (N x OBS_SHAPE)
 
         # When image, maybe transpose
-        if observations.shape[3] == 3:
+        if is_image(observations) and observations.shape[3] == 3:
             observations = observations.moveaxis(3, 1)  # (N x H x W x 3) to (N x 3 x H x W)
 
         # Compute cells
