@@ -3,16 +3,19 @@ from typing import Any, Dict, Optional, Tuple, Type
 import torch
 import torch.nn.functional as F
 from gym import Env, spaces
+from stable_baselines3.common.base_class import maybe_make_env
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
+from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.utils import get_device
 from torch import Tensor, optim
 from torchvision.transforms.functional import resize
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.categorical_vae import CNNCategoricalVAE
 from go_explore.cells import CellFactory
 from go_explore.go_explore import BaseGoExplore
+from go_explore.utils import is_image
+from go_explore.vae import CategoricalVAE, CNNCategoricalVAE
 
 
 def loss_func(input: Tensor, recons: Tensor, logits: Tensor, alpha: float = 0.01) -> Tuple[Tensor, float, float]:
@@ -47,8 +50,8 @@ class VAELearner(BaseCallback):
         buffer: ArchiveBuffer,
         batch_size: int = 32,
         lr: float = 2e-4,
-        train_freq: int = 10_000,
-        gradient_steps: int = 100,
+        train_freq: int = 1_000,
+        gradient_steps: int = 1_000,
     ):
         super().__init__()
         self.vae = vae
@@ -72,8 +75,9 @@ class VAELearner(BaseCallback):
         if type(input) is dict:
             input = input["observation"]
 
-        # Maps to [0, 1]
-        input = resize(input, (129, 129)).float() / 255
+        if is_image(input):
+            # Maps to [0, 1]
+            input = resize(input, (129, 129)).float() / 255
 
         # Compute the output image
         self.vae.train()
@@ -102,7 +106,7 @@ class RecomputeCell(BaseCallback):
             self.archive.recompute_cells()
 
 
-class CNNCategoricalVAECelling(CellFactory):
+class CategoricalVAECelling(CellFactory):
     """"""
 
     def __init__(self, vae: CNNCategoricalVAE) -> None:
@@ -117,7 +121,10 @@ class CNNCategoricalVAECelling(CellFactory):
         :param observations: Observations
         :return: A tensor of cells
         """
-        input = resize(observations, (129, 129)).float() / 255
+        if is_image(observations):
+            input = resize(observations, (129, 129)).float() / 255
+        else:
+            input = observations.float()
         self.vae.eval()
         _, logits = self.vae(input)
         cell = F.one_hot(torch.argmax(logits, -1), self.vae.nb_classes)
@@ -138,11 +145,16 @@ class GoExploreCatVAE(BaseGoExplore):
         model_kwargs: Optional[Dict[str, Any]] = None,
         verbose: int = 0,
     ) -> None:
-        self.vae = CNNCategoricalVAE().to(get_device("auto"))
-        cell_factory = CNNCategoricalVAECelling(self.vae)
+        env = maybe_make_env(env, verbose)
+        if is_image_space(env.observation_space):
+            VAE_class = CNNCategoricalVAE
+        else:
+            VAE_class = CategoricalVAE
+        self.vae = VAE_class().to(get_device("auto"))
+        cell_factory = CategoricalVAECelling(self.vae)
         super().__init__(model_class, env, cell_factory, count_pow, n_envs, replay_buffer_kwargs, model_kwargs, verbose)
 
-    def explore(self, total_timesteps: int, update_cell_factory_freq=10_000, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int, update_cell_factory_freq=1_000, reset_num_timesteps: bool = False) -> None:
         """
         Run exploration.
 
