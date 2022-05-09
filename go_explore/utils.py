@@ -125,3 +125,12 @@ def choice(
 
     x = np.nonzero(np.random.multinomial(1, p, size=size))[1]
     return a[x]
+
+
+def is_image(x: torch.Tensor) -> bool:
+    """Whether the input is an image, or a batch of images"""
+    shape = x.shape
+    if len(shape) >= 3 and 3 in shape:
+        return True
+    else:
+        return False
