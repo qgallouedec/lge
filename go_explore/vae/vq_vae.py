@@ -54,84 +54,128 @@ class VectorQuantizer(nn.Module):
         return loss, quantized.permute(0, 3, 1, 2), perplexity, encodings
 
 
-class Residual(nn.Module):
-    def __init__(self, n_channels):
-        super(Residual, self).__init__()
-        self.conv1 = nn.Conv2d(n_channels, n_channels, kernel_size=3, stride=1, padding=1, bias=False)
-        self.conv2 = nn.Conv2d(n_channels, n_channels, kernel_size=3, stride=1, padding=1, bias=False)
-
-    def forward(self, x):
-        residual = x
-        x = F.relu(x)
-        x = self.conv1(x)
-        x = F.relu(x)
-        x = self.conv2(x)
-        return x + residual
-
-
-class ResidualStack(nn.Module):
-    def __init__(self, n_channels):
-        super(ResidualStack, self).__init__()
-        self.residual1 = Residual(n_channels)
-        self.residual2 = Residual(n_channels)
-
-    def forward(self, x):
-        x = self.residual1(x)
-        x = F.relu(x)
-        x = self.residual2(x)
-        x = F.relu(x)
-        return x
-
-
-class Encoder(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(Encoder, self).__init__()
-        self.conv_1 = nn.Conv2d(in_channels=in_channels, out_channels=out_channels // 2, kernel_size=4, stride=2, padding=1)
-        self.conv_2 = nn.Conv2d(in_channels=out_channels // 2, out_channels=out_channels, kernel_size=4, stride=2, padding=1)
-        # self.conv_3 = nn.Conv2d(in_channels=out_channels, out_channels=out_channels, kernel_size=3, stride=1, padding=1)
-        self.residual_stack = ResidualStack(n_channels=out_channels)
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = F.relu(x)
-        x = self.conv_2(x)
-        # x = F.relu(x)
-        # x = self.conv_3(x)
-        return self.residual_stack(x)
-
-
-class Decoder(nn.Module):
-    def __init__(self, in_channels, num_hiddens):
-        super(Decoder, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=num_hiddens, kernel_size=3, stride=1, padding=1)
-        self.residual_stack = ResidualStack(n_channels=num_hiddens)
-        self.tconv1 = nn.ConvTranspose2d(
-            in_channels=num_hiddens, out_channels=num_hiddens // 2, kernel_size=4, stride=2, padding=1
-        )
-        self.tconv2 = nn.ConvTranspose2d(in_channels=num_hiddens // 2, out_channels=3, kernel_size=4, stride=2, padding=1)
-
-    def forward(self, inputs):
-        x = self.conv1(inputs)
-        x = self.residual_stack(x)
-        x = self.tconv1(x)
-        x = F.relu(x)
-        x = self.tconv2(x)
-        return x
-
-
 class VQ_VAE(nn.Module):
-    def __init__(self, num_hiddens, num_embeddings, embedding_dim, commitment_cost):
+    """
+    Categorical Variational Auto-Encoder.
+
+    Encoder:
+
+    | Size      | Channels       |
+    |-----------|----------------|
+    | 129 x 129 | input channels |
+    | 129 x 129 | 8              |
+    | 65 x 65   | 16             |
+    | 33 x 33   | 32             |
+    | 17 x 17   | 64             |
+    | 9 x 9     | 128            |
+    | 5 x 5     | 256            |
+
+    The result is flattened to a vector of size 6400.
+    The result is passed through a fully connected layer that utput size is nb_categoricals x nb_classes vector.
+    The latent is sampled from the Gumbel-Softmax distribution.
+    The result is passed through a fully connected layer that utput size is 6400.
+    The result is unflattened to a vector of size 3 x 3 x 512.
+
+    Decoder:
+
+    | Size      | Channels       |
+    |-----------|----------------|
+    | 5 x 5     | 256            |
+    | 9 x 9     | 128            |
+    | 17 x 17   | 64             |
+    | 33 x 33   | 32             |
+    | 65 x 65   | 16             |
+    | 129 x 129 | 8              |
+    | 129 x 129 | input channels |
+
+    :param nb_classes: Number of classes per categorical distribution
+    :param nb_categoricals: Number of categorical distributions
+    :param in_channels: Number of input channels
+    :param tau: Temparture in gumbel sampling
+    :param hard_sampling: If True, the latent is sampled will be discretized as one-hot vectors
+    """
+
+    def __init__(
+        self,
+        num_embeddings: int = 512,
+        commitment_cost: float = 0.25,
+        embedding_dim: int = 64,
+        in_channels: int = 3,
+    ) -> None:
         super(VQ_VAE, self).__init__()
+        # Encoder
+        self.conv1 = nn.Conv2d(in_channels, 8, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(8)
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(16)
+        self.conv3 = nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1)
+        self.bn3 = nn.BatchNorm2d(32)
+        self.conv4 = nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1)
+        self.bn4 = nn.BatchNorm2d(64)
+        self.conv5 = nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)
+        self.bn5 = nn.BatchNorm2d(128)
+        self.conv6 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
 
-        self.encoder = Encoder(3, num_hiddens)
-        self.pre_vq_conv = nn.Conv2d(in_channels=num_hiddens, out_channels=embedding_dim, kernel_size=1, stride=1)
-        self.vq_vae = VectorQuantizer(num_embeddings, embedding_dim, commitment_cost)
-        self.decoder = Decoder(embedding_dim, num_hiddens)
+        self.pre_vq_conv = nn.Conv2d(256, embedding_dim, kernel_size=1, stride=1)
+        self.vector_quantizer = VectorQuantizer(num_embeddings, embedding_dim, commitment_cost)
+        self.post_vq_conv = nn.ConvTranspose2d(embedding_dim, 256, kernel_size=1, stride=1)
 
-    def forward(self, x):
-        z = self.encoder(x)
-        z = self.pre_vq_conv(z)
-        loss, quantized, perplexity, _ = self.vq_vae(z)
-        x_recon = self.decoder(quantized)
+        # Decoder
+        self.tconv1 = nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1)
+        self.bn6 = nn.BatchNorm2d(128)
+        self.tconv2 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1)
+        self.bn7 = nn.BatchNorm2d(64)
+        self.tconv3 = nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1)
+        self.bn8 = nn.BatchNorm2d(32)
+        self.tconv4 = nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1)
+        self.bn9 = nn.BatchNorm2d(16)
+        self.tconv5 = nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1)
+        self.bn10 = nn.BatchNorm2d(8)
+        self.tconv6 = nn.ConvTranspose2d(8, in_channels, kernel_size=3, stride=1, padding=1)
 
-        return loss, x_recon, perplexity
+    def encode(self, x: Tensor) -> Tensor:
+        # [N x C x 129 x 129]
+        x = self.conv1(x)  # [N x 8 x 129 x 129]
+        x = self.bn1(x)
+        x = F.relu(x)
+        x = self.conv2(x)  # [N x 16 x 65 x 65]
+        x = self.bn2(x)
+        x = F.relu(x)
+        x = self.conv3(x)  # [N x 32 x 33 x 33]
+        x = self.bn3(x)
+        x = F.relu(x)
+        x = self.conv4(x)  # [N x 64 x 17 x 17]
+        x = self.bn4(x)
+        x = F.relu(x)
+        x = self.conv5(x)  # [N x 128 x 9 x 9]
+        x = self.bn5(x)
+        x = F.relu(x)
+        x = self.conv6(x)  # [N x 256 x 5 x 5]
+        return x
+
+    def decode(self, x: Tensor) -> Tensor:
+        x = self.tconv1(x)  # [N x 128 x 9 x 9]
+        x = self.bn6(x)
+        x = F.relu(x)
+        x = self.tconv2(x)  # [N x 64 x 17 x 17]
+        x = self.bn7(x)
+        x = F.relu(x)
+        x = self.tconv3(x)  # [N x 32 x 33 x 33]
+        x = self.bn8(x)
+        x = F.relu(x)
+        x = self.tconv4(x)  # [N x 16 x 65 x 65]
+        x = self.bn9(x)
+        x = F.relu(x)
+        x = self.tconv5(x)  # [N x 8 x 129 x 129]
+        x = self.bn10(x)
+        x = F.relu(x)
+        x = self.tconv6(x)  # [N x C x 129 x 129]
+        return x
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        latent = self.encode(x)
+        codes = self.pre_vq_conv(latent)
+        loss, quantized, perplexity, _ = self.vector_quantizer(codes)
+        x = self.post_vq_conv(quantized)
+        recon = self.decode(x)
+        return loss, recon, perplexity
