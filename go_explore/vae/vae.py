@@ -105,50 +105,87 @@ class CNNCategoricalVAE(nn.Module):
         self.nb_categoricals = nb_categoricals
         self.tau = tau
         self.hard_sampling = hard_sampling
-        _h = 8
-        self.encoder = nn.Sequential(  # [N x C x 129 x 129]
-            nn.Conv2d(in_channels, _h * 1, kernel_size=3, stride=1, padding=1),  # [N x 8 x 129 x 129]
-            nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 1, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 65 x 65]
-            nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 2, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 33 x 33]
-            nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 4, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
-            nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 8, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
-            nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 16, _h * 32, kernel_size=3, stride=2, padding=1),  # [N x 256 x 5 x 5]
-            nn.ReLU(inplace=True),
-            nn.Flatten(),  # [N x 256*5*5]
-            nn.Linear(_h * 32 * 5 * 5, self.nb_categoricals * self.nb_classes),  # [N x k*l]
-            nn.Unflatten(-1, (self.nb_categoricals, self.nb_classes)),  # [N x k x l]
-        )
 
-        self.decoder = nn.Sequential(
-            nn.Flatten(),  # [N x k*l]
-            nn.Linear(self.nb_categoricals * self.nb_classes, _h * 32 * 5 * 5),  # [N x 256 x 5 x 5]
-            nn.ReLU(inplace=True),
-            nn.Unflatten(-1, (_h * 32, 5, 5)),
-            nn.ConvTranspose2d(_h * 32, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 16, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 8, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 33 x 33]
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 4, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 65 x 65]
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 2, _h * 1, kernel_size=3, stride=2, padding=1),  # [N x 8 x 129 x 129]
-            nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 1, in_channels, kernel_size=3, stride=1, padding=1),  # [N x C x 129 x 129]
-        )
+        # Encoder
+        self.conv1 = nn.Conv2d(in_channels, 8, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(8)
+        self.conv2 = nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm2d(16)
+        self.conv3 = nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1)
+        self.bn3 = nn.BatchNorm2d(32)
+        self.conv4 = nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1)
+        self.bn4 = nn.BatchNorm2d(64)
+        self.conv5 = nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1)
+        self.bn5 = nn.BatchNorm2d(128)
+        # self.conv6 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
+        self.linear1 = nn.Linear(128 * 9 * 9, self.nb_categoricals * self.nb_classes)
+
+        # Decoder
+        self.linear2 = nn.Linear(self.nb_categoricals * self.nb_classes, 128 * 9 * 9)
+        # self.tconv1 = nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1)
+        self.tconv2 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1)
+        self.bn6 = nn.BatchNorm2d(64)
+        self.tconv3 = nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1)
+        self.bn7 = nn.BatchNorm2d(32)
+        self.tconv4 = nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1)
+        self.bn8 = nn.BatchNorm2d(16)
+        self.tconv5 = nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1)
+        self.bn9 = nn.BatchNorm2d(8)
+        self.tconv6 = nn.ConvTranspose2d(8, in_channels, kernel_size=3, stride=1, padding=1)
+
+    def encode(self, x: Tensor) -> Tensor:
+        # [N x C x 129 x 129]
+        x = self.conv1(x)  # [N x 8 x 129 x 129]
+        x = self.bn1(x)
+        x = F.relu(x)
+        x = self.conv2(x)  # [N x 16 x 65 x 65]
+        x = self.bn2(x)
+        x = F.relu(x)
+        x = self.conv3(x)  # [N x 32 x 33 x 33]
+        x = self.bn3(x)
+        x = F.relu(x)
+        x = self.conv4(x)  # [N x 64 x 17 x 17]
+        x = self.bn4(x)
+        x = F.relu(x)
+        x = self.conv5(x)  # [N x 128 x 9 x 9]
+        x = self.bn5(x)
+        x = F.relu(x)
+        # x = self.conv6(x)  # [N x 256 x 5 x 5]
+        # x = F.relu(x)
+        x = x.flatten(start_dim=1)  # [N x 256*5*5]
+        x = self.linear1(x)  # type: Tensor # [N x k*l]
+        return x
+
+    def decode(self, x: Tensor) -> Tensor:
+        x = self.linear2(x)  # [N x 256*5*5]
+        x = F.relu(x)
+        x = x.unflatten(-1, (128, 9, 9))  # [N x 256 x 5 x 5]
+        # x = self.tconv1(x)  # [N x 128 x 9 x 9]
+        # x = F.relu(x)
+        x = self.tconv2(x)  # [N x 64 x 17 x 17]
+        x = self.bn6(x)
+        x = F.relu(x)
+        x = self.tconv3(x)  # [N x 32 x 33 x 33]
+        x = self.bn7(x)
+        x = F.relu(x)
+        x = self.tconv4(x)  # [N x 16 x 65 x 65]
+        x = self.bn8(x)
+        x = F.relu(x)
+        x = self.tconv5(x)  # [N x 8 x 129 x 129]
+        x = self.bn9(x)
+        x = F.relu(x)
+        x = self.tconv6(x)  # [N x C x 129 x 129]
+        return x
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
-        logits = self.encoder(x)
+        x = self.encode(x)
+        logits = x.unflatten(-1, (self.nb_categoricals, self.nb_classes))  # [N x k x l]
         if self.training:
             latent = F.gumbel_softmax(logits, tau=self.tau, hard=self.hard_sampling)
         else:
             latent = F.one_hot(torch.argmax(logits, -1), self.nb_classes).float()
-        recons = self.decoder(latent)
+        x = latent.flatten(start_dim=1)  # [N x k*l]
+        recons = self.decode(x)
         return recons, logits
 
 
@@ -197,37 +234,37 @@ class CNN_VAE(nn.Module):
         super(CNNCategoricalVAE, self).__init__()
         _h = 8
         self.encoder = nn.Sequential(  # [N x C x 129 x 129]
-            nn.Conv2d(in_channels, _h * 1, kernel_size=3, stride=1, padding=1),  # [N x 8 x 129 x 129]
+            nn.Conv2d(in_channels, 8, kernel_size=3, stride=1, padding=1),  # [N x 8 x 129 x 129]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 1, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 65 x 65]
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),  # [N x 16 x 65 x 65]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 2, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 33 x 33]
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),  # [N x 32 x 33 x 33]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 4, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 8, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
             nn.ReLU(inplace=True),
-            nn.Conv2d(_h * 16, _h * 32, kernel_size=3, stride=2, padding=1),  # [N x 256 x 5 x 5]
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # [N x 256 x 5 x 5]
             nn.ReLU(inplace=True),
             nn.Flatten(),  # [N x 256*5*5]
-            nn.Linear(_h * 32 * 5 * 5, 256),  # [N x k*l]
+            nn.Linear(256 * 5 * 5, 256),  # [N x k*l]
         )
 
         self.decoder = nn.Sequential(
-            nn.Linear(256, _h * 32 * 5 * 5),  # [N x 256 x 5 x 5]
+            nn.Linear(256, 256 * 5 * 5),  # [N x 256 x 5 x 5]
             nn.ReLU(inplace=True),
-            nn.Unflatten(-1, (_h * 32, 5, 5)),
-            nn.ConvTranspose2d(_h * 32, _h * 16, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
+            nn.Unflatten(-1, (256, 5, 5)),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 16, _h * 8, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 8, _h * 4, kernel_size=3, stride=2, padding=1),  # [N x 32 x 33 x 33]
+            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1),  # [N x 32 x 33 x 33]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 4, _h * 2, kernel_size=3, stride=2, padding=1),  # [N x 16 x 65 x 65]
+            nn.ConvTranspose2d(32, 16, kernel_size=3, stride=2, padding=1),  # [N x 16 x 65 x 65]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 2, _h * 1, kernel_size=3, stride=2, padding=1),  # [N x 8 x 129 x 129]
+            nn.ConvTranspose2d(16, 8, kernel_size=3, stride=2, padding=1),  # [N x 8 x 129 x 129]
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(_h * 1, in_channels, kernel_size=3, stride=1, padding=1),  # [N x C x 129 x 129]
+            nn.ConvTranspose2d(8, in_channels, kernel_size=3, stride=1, padding=1),  # [N x C x 129 x 129]
         )
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
