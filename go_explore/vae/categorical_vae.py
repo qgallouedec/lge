@@ -190,4 +190,11 @@ class CNNCategoricalVAE(nn.Module):
             latent = F.one_hot(torch.argmax(logits, -1), self.nb_classes).float()
         x = latent.flatten(start_dim=1)  # [N x k*l]
         recons = self.decode(x)
-        return recons, logits
+
+        # KL loss
+        probs = F.softmax(logits, dim=2)
+        latent_entropy = probs * torch.log(probs + 1e-10)
+        target_entropy = probs * torch.log((1.0 / torch.tensor(self.nb_classes)))
+        kl_loss = (latent_entropy - target_entropy).mean()
+
+        return recons, kl_loss
