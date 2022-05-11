@@ -25,39 +25,25 @@ class VectorQuantizer(nn.Module):
         self.commitment_cost = commitment_cost
 
     def get_quantized(self, inputs: Tensor) -> Tensor:
-        # convert inputs from BCHW -> BHWC
-        inputs = inputs.permute(0, 2, 3, 1)
-        input_shape = inputs.shape
-
-        # Flatten input (B x H x W x C) to (B*H*W x C)
-        flat_input = inputs.reshape(-1, self.embedding_dim)
-
         # Calculate distances: result size: B*H*W x num_embeddings
-        distances = torch.cdist(flat_input, self.codebook.weight)
+        distances = torch.cdist(inputs, self.codebook.weight)
 
         # Encoding
         encodings_idxs = torch.argmin(distances, dim=1)
 
         # Quantize and unflatten
-        quantized = self.codebook(encodings_idxs).view(input_shape)
-        return quantized.permute(0, 3, 1, 2)
+        quantized = self.codebook(encodings_idxs)
+        return quantized
 
     def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-        # convert inputs from BCHW -> BHWC
-        inputs = inputs.permute(0, 2, 3, 1)
-        input_shape = inputs.shape
-
-        # Flatten input (B x H x W x C) to (B*H*W x C)
-        flat_input = inputs.reshape(-1, self.embedding_dim)
-
         # Calculate distances: result size: B*H*W x num_embeddings
-        distances = torch.cdist(flat_input, self.codebook.weight)
+        distances = torch.cdist(inputs, self.codebook.weight)
 
         # Encoding
         encodings_idxs = torch.argmin(distances, dim=1)
 
         # Quantize and unflatten
-        quantized = self.codebook(encodings_idxs).view(input_shape)
+        quantized = self.codebook(encodings_idxs)
 
         # Loss
         e_latent_loss = F.mse_loss(quantized.detach(), inputs)
@@ -71,8 +57,7 @@ class VectorQuantizer(nn.Module):
         avg_probs = torch.mean(encodings, dim=0)
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
-        # convert quantized from BHWC -> BCHW
-        return vq_loss, quantized.permute(0, 3, 1, 2), perplexity
+        return vq_loss, quantized, perplexity
 
 
 class VQ_VAE(nn.Module):
@@ -196,13 +181,113 @@ class VQ_VAE(nn.Module):
     def get_quantized(self, x: Tensor) -> Tensor:
         latent = self.encode(x)
         codes = self.pre_vq_conv(latent)
+        # convert inputs from BCHW -> BHWC
+        codes = codes.permute(0, 2, 3, 1)
+        codes_shape = codes.shape
+        # Flatten input (B x H x W x C) to (B*H*W x C)
+        # codes = codes.reshape(-1, self.embedding_dim)
+        codes = codes.flatten(start_dim=0, end_dim=2)
         quantized = self.vector_quantizer.get_quantized(codes)
+        quantized = quantized.view(codes_shape).permute(0, 3, 1, 2)
         return quantized
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         latent = self.encode(x)
         codes = self.pre_vq_conv(latent)
+        # convert inputs from BCHW -> BHWC
+        codes = codes.permute(0, 2, 3, 1)
+        codes_shape = codes.shape
+
+        # Flatten input (B x H x W x C) to (B*H*W x C)
+        codes = codes.flatten(start_dim=0, end_dim=2)
         vq_loss, quantized, perplexity = self.vector_quantizer(codes)
+        quantized = quantized.view(codes_shape).permute(0, 3, 1, 2)
+
         x = self.post_vq_conv(quantized)
         recons = self.decode(x)
+        return recons, vq_loss, perplexity
+
+
+class Linear_VQ_VAE(nn.Module):
+    """
+    Categorical Variational Auto-Encoder.
+
+    Encoder:
+
+    | Size      | Channels       |
+    |-----------|----------------|
+    | 129 x 129 | input channels |
+    | 129 x 129 | 8              |
+    | 65 x 65   | 16             |
+    | 33 x 33   | 32             |
+    | 17 x 17   | 64             |
+    | 9 x 9     | 128            |
+    | 5 x 5     | 256            |
+
+    The result is flattened to a vector of size 6400.
+    The result is passed through a fully connected layer that utput size is nb_categoricals x nb_classes vector.
+    The latent is sampled from the Gumbel-Softmax distribution.
+    The result is passed through a fully connected layer that utput size is 6400.
+    The result is unflattened to a vector of size 3 x 3 x 512.
+
+    Decoder:
+
+    | Size      | Channels       |
+    |-----------|----------------|
+    | 5 x 5     | 256            |
+    | 9 x 9     | 128            |
+    | 17 x 17   | 64             |
+    | 33 x 33   | 32             |
+    | 65 x 65   | 16             |
+    | 129 x 129 | 8              |
+    | 129 x 129 | input channels |
+
+    :param nb_classes: Number of classes per categorical distribution
+    :param nb_categoricals: Number of categorical distributions
+    :param in_channels: Number of input channels
+    :param tau: Temparture in gumbel sampling
+    :param hard_sampling: If True, the latent is sampled will be discretized as one-hot vectors
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        num_embeddings: int = 6,
+        commitment_cost: float = 0.25,
+        
+    ) -> None:
+        super(Linear_VQ_VAE, self).__init__()
+        # Encoder
+        self.num_embeddings = num_embeddings
+        self.linear1 = nn.Linear(in_features, self.num_embeddings)
+        self.linear2 = nn.Linear(self.num_embeddings, self.num_embeddings)
+        self.vector_quantizer = VectorQuantizer(self.num_embeddings, 1, commitment_cost)
+
+        # Decoder
+        self.linear3 = nn.Linear(self.num_embeddings, self.num_embeddings)
+        self.linear4 = nn.Linear(self.num_embeddings, in_features)
+
+    def encode(self, x: Tensor) -> Tensor:
+        x = self.linear1(x)
+        x = F.relu(x)
+        x = self.linear2(x)
+        x = x.reshape((-1, self.num_embeddings, 1))
+        return x
+
+    def decode(self, x: Tensor) -> Tensor:
+        x = x.reshape((-1, self.num_embeddings))
+        x = self.linear3(x)
+        x = F.relu(x)
+        x = self.linear4(x)
+        return x
+
+    def get_quantized(self, x: Tensor) -> Tensor:
+        codes = self.encode(x)
+        quantized = self.vector_quantizer.get_quantized(codes)
+        return quantized
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        codes = self.encode(x)
+        vq_loss, quantized, perplexity = self.vector_quantizer(codes)
+        recons = self.decode(quantized)
         return recons, vq_loss, perplexity
