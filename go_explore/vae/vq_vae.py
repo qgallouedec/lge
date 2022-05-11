@@ -24,7 +24,7 @@ class VectorQuantizer(nn.Module):
         self.codebook.weight.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
         self.commitment_cost = commitment_cost
 
-    def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def get_quantized(self, inputs: Tensor) -> Tensor:
         # convert inputs from BCHW -> BHWC
         inputs = inputs.permute(0, 2, 3, 1)
         input_shape = inputs.shape
@@ -37,21 +37,42 @@ class VectorQuantizer(nn.Module):
 
         # Encoding
         encodings_idxs = torch.argmin(distances, dim=1)
-        encodings = F.one_hot(encodings_idxs, num_classes=self.num_embeddings).float()
 
         # Quantize and unflatten
         quantized = self.codebook(encodings_idxs).view(input_shape)
+        return quantized.permute(0, 3, 1, 2)
+
+    def forward(self, inputs: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+        # convert inputs from BCHW -> BHWC
+        inputs = inputs.permute(0, 2, 3, 1)
+        input_shape = inputs.shape
+
+        # Flatten input (B x H x W x C) to (B*H*W x C)
+        flat_input = inputs.reshape(-1, self.embedding_dim)
+
+        # Calculate distances: result size: B*H*W x num_embeddings
+        distances = torch.cdist(flat_input, self.codebook.weight)
+
+        # Encoding
+        encodings_idxs = torch.argmin(distances, dim=1)
+
+        # Quantize and unflatten
+        quantized = self.codebook(encodings_idxs).view(input_shape)
+
         # Loss
         e_latent_loss = F.mse_loss(quantized.detach(), inputs)
         q_latent_loss = F.mse_loss(quantized, inputs.detach())
-        loss = q_latent_loss + self.commitment_cost * e_latent_loss
+        vq_loss = q_latent_loss + self.commitment_cost * e_latent_loss
 
         quantized = inputs + (quantized - inputs).detach()
+
+        # Compute perplexity
+        encodings = F.one_hot(encodings_idxs, num_classes=self.num_embeddings).float()
         avg_probs = torch.mean(encodings, dim=0)
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
         # convert quantized from BHWC -> BCHW
-        return loss, quantized.permute(0, 3, 1, 2), perplexity, encodings
+        return vq_loss, quantized.permute(0, 3, 1, 2), perplexity
 
 
 class VQ_VAE(nn.Module):
@@ -97,9 +118,9 @@ class VQ_VAE(nn.Module):
 
     def __init__(
         self,
-        num_embeddings: int = 512,
+        num_embeddings: int = 8,
+        embedding_dim: int = 4,
         commitment_cost: float = 0.25,
-        embedding_dim: int = 64,
         in_channels: int = 3,
     ) -> None:
         super(VQ_VAE, self).__init__()
@@ -172,10 +193,16 @@ class VQ_VAE(nn.Module):
         x = self.tconv6(x)  # [N x C x 129 x 129]
         return x
 
+    def get_quantized(self, x: Tensor) -> Tensor:
+        latent = self.encode(x)
+        codes = self.pre_vq_conv(latent)
+        quantized = self.vector_quantizer.get_quantized(codes)
+        return quantized
+
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         latent = self.encode(x)
         codes = self.pre_vq_conv(latent)
-        loss, quantized, perplexity, _ = self.vector_quantizer(codes)
+        vq_loss, quantized, perplexity = self.vector_quantizer(codes)
         x = self.post_vq_conv(quantized)
-        recon = self.decode(x)
-        return loss, recon, perplexity
+        recons = self.decode(x)
+        return recons, vq_loss, perplexity
