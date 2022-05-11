@@ -119,7 +119,7 @@ class VQ_VAE(nn.Module):
     def __init__(
         self,
         num_embeddings: int = 8,
-        embedding_dim: int = 4,
+        embedding_dim: int = 64,
         commitment_cost: float = 0.25,
         in_channels: int = 3,
     ) -> None:
