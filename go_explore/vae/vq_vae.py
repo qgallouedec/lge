@@ -142,39 +142,39 @@ class VQ_VAE(nn.Module):
     def encode(self, x: Tensor) -> Tensor:
         # [N x C x 129 x 129]
         x = self.conv1(x)  # [N x 8 x 129 x 129]
+        x = F.relu(x)
         x = self.bn1(x)
-        x = F.relu(x)
         x = self.conv2(x)  # [N x 16 x 65 x 65]
+        x = F.relu(x)
         x = self.bn2(x)
-        x = F.relu(x)
         x = self.conv3(x)  # [N x 32 x 33 x 33]
+        x = F.relu(x)
         x = self.bn3(x)
-        x = F.relu(x)
         x = self.conv4(x)  # [N x 64 x 17 x 17]
+        x = F.relu(x)
         x = self.bn4(x)
-        x = F.relu(x)
         x = self.conv5(x)  # [N x 128 x 9 x 9]
-        x = self.bn5(x)
         x = F.relu(x)
+        x = self.bn5(x)
         x = self.conv6(x)  # [N x 256 x 5 x 5]
         return x
 
     def decode(self, x: Tensor) -> Tensor:
         x = self.tconv1(x)  # [N x 128 x 9 x 9]
+        x = F.relu(x)
         x = self.bn6(x)
-        x = F.relu(x)
         x = self.tconv2(x)  # [N x 64 x 17 x 17]
+        x = F.relu(x)
         x = self.bn7(x)
-        x = F.relu(x)
         x = self.tconv3(x)  # [N x 32 x 33 x 33]
+        x = F.relu(x)
         x = self.bn8(x)
-        x = F.relu(x)
         x = self.tconv4(x)  # [N x 16 x 65 x 65]
+        x = F.relu(x)
         x = self.bn9(x)
-        x = F.relu(x)
         x = self.tconv5(x)  # [N x 8 x 129 x 129]
-        x = self.bn10(x)
         x = F.relu(x)
+        x = self.bn10(x)
         x = self.tconv6(x)  # [N x C x 129 x 129]
         return x
 
@@ -210,37 +210,7 @@ class VQ_VAE(nn.Module):
 
 class Linear_VQ_VAE(nn.Module):
     """
-    Categorical Variational Auto-Encoder.
-
-    Encoder:
-
-    | Size      | Channels       |
-    |-----------|----------------|
-    | 129 x 129 | input channels |
-    | 129 x 129 | 8              |
-    | 65 x 65   | 16             |
-    | 33 x 33   | 32             |
-    | 17 x 17   | 64             |
-    | 9 x 9     | 128            |
-    | 5 x 5     | 256            |
-
-    The result is flattened to a vector of size 6400.
-    The result is passed through a fully connected layer that utput size is nb_categoricals x nb_classes vector.
-    The latent is sampled from the Gumbel-Softmax distribution.
-    The result is passed through a fully connected layer that utput size is 6400.
-    The result is unflattened to a vector of size 3 x 3 x 512.
-
-    Decoder:
-
-    | Size      | Channels       |
-    |-----------|----------------|
-    | 5 x 5     | 256            |
-    | 9 x 9     | 128            |
-    | 17 x 17   | 64             |
-    | 33 x 33   | 32             |
-    | 65 x 65   | 16             |
-    | 129 x 129 | 8              |
-    | 129 x 129 | input channels |
+    Linear VQ Variational Auto-Encoder.
 
     :param nb_classes: Number of classes per categorical distribution
     :param nb_categoricals: Number of categorical distributions
@@ -252,42 +222,105 @@ class Linear_VQ_VAE(nn.Module):
     def __init__(
         self,
         in_features: int,
-        num_embeddings: int = 6,
+        num_embeddings: int = 10,
+        embedding_dim: int = 2,
         commitment_cost: float = 0.25,
-        
     ) -> None:
         super(Linear_VQ_VAE, self).__init__()
-        # Encoder
         self.num_embeddings = num_embeddings
-        self.linear1 = nn.Linear(in_features, self.num_embeddings)
-        self.linear2 = nn.Linear(self.num_embeddings, self.num_embeddings)
-        self.vector_quantizer = VectorQuantizer(self.num_embeddings, 1, commitment_cost)
+        self.embedding_dim = embedding_dim
+
+        # Encoder
+        self.fc1 = nn.Linear(in_features, in_features)
+        self.fc2 = nn.Linear(in_features, in_features)
+
+        self.vector_quantizer = VectorQuantizer(self.num_embeddings, self.embedding_dim, commitment_cost)
 
         # Decoder
-        self.linear3 = nn.Linear(self.num_embeddings, self.num_embeddings)
-        self.linear4 = nn.Linear(self.num_embeddings, in_features)
+        self.fc3 = nn.Linear(in_features, in_features)
+        self.fc4 = nn.Linear(in_features, in_features)
 
     def encode(self, x: Tensor) -> Tensor:
-        x = self.linear1(x)
+        x = self.fc1(x)
         x = F.relu(x)
-        x = self.linear2(x)
-        x = x.reshape((-1, self.num_embeddings, 1))
+        x = self.fc2(x)
         return x
 
     def decode(self, x: Tensor) -> Tensor:
-        x = x.reshape((-1, self.num_embeddings))
-        x = self.linear3(x)
+        x = self.fc3(x)
         x = F.relu(x)
-        x = self.linear4(x)
+        x = self.fc4(x)
         return x
 
     def get_quantized(self, x: Tensor) -> Tensor:
-        codes = self.encode(x)
-        quantized = self.vector_quantizer.get_quantized(codes)
+        latent = self.encode(x)
+        batch_size = latent.shape[0]
+        # (B x L*C) to (B x L x C)
+        codes = latent.view(batch_size, -1, self.embedding_dim)
+        # (B x L x C) to (B*L x C)
+        codes = codes.flatten(start_dim=0, end_dim=1)
+
+        _, quantized, _ = self.vector_quantizer(codes)
         return quantized
 
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-        codes = self.encode(x)
+        latent = self.encode(x)
+        batch_size = latent.shape[0]
+        # (B x L*C) to (B x L x C)
+        codes = latent.view(batch_size, -1, self.embedding_dim)
+        # (B x L x C) to (B*L x C)
+        codes = codes.flatten(start_dim=0, end_dim=1)
+
         vq_loss, quantized, perplexity = self.vector_quantizer(codes)
+
+        # (B*L x C) to (B x L x C)
+        quantized = quantized.view(batch_size, -1, self.embedding_dim)
+        # (B x L x C) to (B x L*C)
+        quantized = quantized.flatten(start_dim=1, end_dim=2)
+
         recons = self.decode(quantized)
         return recons, vq_loss, perplexity
+
+
+# class VQ_VAE(nn.Module):
+#     """Vector Quantized AutoEncoder for mnist"""
+
+#     def __init__(self, hidden=200, num_embeddings=10, embedding_dim=12, vq_coef=0.2, comit_coef=0.4):
+#         super(VQ_VAE, self).__init__()
+
+#         self.embedding_dim = embedding_dim
+#         self.num_embeddings = num_embeddings
+
+#         self.fc1 = nn.Linear(784, 400)
+#         self.fc2 = nn.Linear(400, self.embedding_dim * self.num_embeddings)
+
+#         self.emb = NearestEmbed(num_embeddings, self.embedding_dim)
+
+#         self.fc3 = nn.Linear(self.embedding_dim * self.num_embeddings, 400)
+#         self.fc4 = nn.Linear(400, 784)
+
+#         self.vq_coef = vq_coef
+#         self.comit_coef = comit_coef
+#         self.hidden = hidden
+#         self.ce_loss = 0
+#         self.vq_loss = 0
+#         self.commit_loss = 0
+
+#     def encode(self, x):
+#         x = self.fc1(x)
+#         x = F.relu(x)
+#         x = self.fc2(x)
+#         x = x.view(-1, self.num_embeddings, self.embedding_dim, int(self.hidden / self.embedding_dim))
+#         return x
+
+#     def decode(self, z):
+#         z = self.fc3(z)
+#         z = F.relu(z)
+#         z = self.fc4(z)
+#         return z
+
+#     def forward(self, x):
+#         z_e = self.encode(x.view(-1, 784))
+#         z_q, _ = self.emb(z_e, weight_sg=True).view(-1, self.hidden)
+#         emb, _ = self.emb(z_e.detach()).view(-1, self.hidden)
+#         return self.decode(z_q), z_e, emb
