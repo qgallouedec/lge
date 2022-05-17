@@ -2,7 +2,9 @@ from typing import Iterable, List, Optional, Union
 
 import numpy as np
 import torch
+from gym import Env
 from PIL import Image
+from stable_baselines3.common.callbacks import BaseCallback
 
 
 def indexes(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -134,3 +136,25 @@ def is_image(x: torch.Tensor) -> bool:
         return True
     else:
         return False
+
+
+def human_format(num: int) -> str:
+    num = float("{:.3g}".format(num))
+    magnitude = 0
+    while abs(num) >= 1000:
+        magnitude += 1
+        num /= 1000.0
+    return "{}{}".format("{:f}".format(num).rstrip("0").rstrip("."), ["", "k", "M", "B", "T"][magnitude])
+
+
+class ImageSaver(BaseCallback):
+    def __init__(self, env: Env, save_freq: int) -> None:
+        super(BaseCallback).__init__()
+        self.env = env
+        self.save_freq = save_freq
+
+    def _on_step(self) -> None:
+        if self.n_calls % self.save_freq == 0:
+            img = Image.fromarray(self.env.render("rgb_array"))
+            img.save(human_format(self.n_calls) + ".bmp")
+        return super()._on_step()
