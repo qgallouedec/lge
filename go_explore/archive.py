@@ -25,7 +25,6 @@ class ArchiveBuffer(DictReplayBuffer):
     :param observation_space: Observation space
     :param action_space: Action space
     :param cell_factory: The cell factory
-    :param count_pow: The goal cell is sampled with weight is 1 / count**count_pow
     :param device:
     :param n_envs: Number of parallel environments
     :param optimize_memory_usage: Enable a memory efficient variant
@@ -50,7 +49,6 @@ class ArchiveBuffer(DictReplayBuffer):
         observation_space: spaces.Space,
         action_space: spaces.Space,
         cell_factory: CellFactory,
-        count_pow: float = 0,
         device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
@@ -71,7 +69,6 @@ class ArchiveBuffer(DictReplayBuffer):
         self.n_sampled_goal = n_sampled_goal
         # compute ratio between HER replays and regular replays in percent for online HER sampling
         self.her_ratio = 1 - (1.0 / (self.n_sampled_goal + 1))
-        self.count_pow = count_pow
         self.cell_factory = cell_factory
         self.infos = np.array([[{} for _ in range(self.n_envs)] for _ in range(self.buffer_size)])
 
@@ -184,7 +181,7 @@ class ArchiveBuffer(DictReplayBuffer):
             self.next_observations["goal_cell"][k:upper] = self.cell_factory(self.next_observations["goal"][k:upper])
             k += 256
 
-    def sample_trajectory(self) -> List[np.ndarray]:
+    def sample_trajectory(self, count_pow: float = 0.0, step: int = 1) -> List[np.ndarray]:
         """
         Sample a trajcetory of observations based on the cells counts and trajectories.
 
@@ -202,7 +199,7 @@ class ArchiveBuffer(DictReplayBuffer):
         all_cells = all_cells.reshape(upper_bound * self.n_envs, -1)
         all_cells = th.from_numpy(all_cells).to(self.device)
         _, cells_uid, counts = th.unique(all_cells, return_inverse=True, return_counts=True, dim=0)
-        weights = 1 / th.pow(counts, self.count_pow)
+        weights = 1 / th.pow(counts, count_pow)
         goal_cell_id = multinomial(weights)
         cell_id_traj = cells_uid.view(upper_bound, self.n_envs)
         goal_pos, goal_env = th.where(cell_id_traj == goal_cell_id)
@@ -211,17 +208,10 @@ class ArchiveBuffer(DictReplayBuffer):
         shortest = dist_to.argmin()
         goal_pos, env = goal_pos[shortest].item(), goal_env[shortest].item()
         start = self.ep_start[goal_pos, env]
-        # Loop to avoid consecutive repetition
-        trajectory = [self.next_observations["observation"][start, env]]
-        cell_trajectory = [self.next_observations["cell"][start, env]]
-        for pos in range(start + 1, goal_pos + 1):
-            previous_cell = self.next_observations["cell"][pos - 1, env]
-            cell = self.next_observations["cell"][pos, env]
-            if (previous_cell != cell).any():
-                obs = self.next_observations["observation"][pos, env]
-                trajectory.append(obs)
-                cell_trajectory.append(cell)
-        return np.array(trajectory), np.array(cell_trajectory)
+        trajectory = self.next_observations["observation"][start : goal_pos + 1, env]
+        cell_trajectory = self.next_observations["cell"][start : goal_pos + 1, env]
+        trajectory, cell_trajectory = np.flip(trajectory[::-step], 0), np.flip(cell_trajectory[::-step], 0)
+        return trajectory, cell_trajectory
 
     def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> DictReplayBufferSamples:
         """
