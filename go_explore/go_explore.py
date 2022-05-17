@@ -32,6 +32,7 @@ class Goalify(gym.Wrapper):
         cell_factory: CellFactory,
         nb_random_exploration_steps: int = 30,
         window_size: int = 10,
+        count_pow: float = 2.0,
     ) -> None:
         super().__init__(env)
         # Set a goal-conditionned observation space
@@ -47,6 +48,7 @@ class Goalify(gym.Wrapper):
         self.archive = None  # type: ArchiveBuffer
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
+        self.count_pow = count_pow
 
     def set_archive(self, archive: ArchiveBuffer) -> None:
         """
@@ -62,7 +64,7 @@ class Goalify(gym.Wrapper):
         obs = self.env.reset()
         cell = self.cell_factory(obs)
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        self.goal_trajectory, self.cell_trajectory = self.archive.sample_trajectory()
+        self.goal_trajectory, self.cell_trajectory = self.archive.sample_trajectory(self.count_pow)
         if is_image_space(self.observation_space["goal"]):
             self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
         self._goal_idx = 0
@@ -187,7 +189,7 @@ class BaseGoExplore:
 
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
-        replay_buffer_kwargs.update(dict(cell_factory=cell_factory, count_pow=count_pow))
+        replay_buffer_kwargs.update(dict(cell_factory=cell_factory))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {} if model_kwargs is None else model_kwargs
 
@@ -198,7 +200,7 @@ class BaseGoExplore:
             replay_buffer_kwargs=replay_buffer_kwargs,
             policy_kwargs=policy_kwargs,
             verbose=verbose,
-            **model_kwargs
+            **model_kwargs,
         )
         self.archive = self.model.replay_buffer  # type: ArchiveBuffer
         self.archive.set_env(env)
