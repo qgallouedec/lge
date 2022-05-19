@@ -49,6 +49,7 @@ class Goalify(gym.Wrapper):
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
         self.count_pow = count_pow
+        self.traj_step = 5
 
     def set_archive(self, archive: ArchiveBuffer) -> None:
         """
@@ -64,7 +65,7 @@ class Goalify(gym.Wrapper):
         obs = self.env.reset()
         cell = self.cell_factory(obs)
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        self.goal_trajectory, self.cell_trajectory = self.archive.sample_trajectory(self.count_pow)
+        self.goal_trajectory, self.cell_trajectory = self.archive.sample_trajectory(self.count_pow, self.traj_step)
         if is_image_space(self.observation_space["goal"]):
             self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
         self._goal_idx = 0
