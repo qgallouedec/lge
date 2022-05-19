@@ -149,7 +149,7 @@ def human_format(num: int) -> str:
 
 class ImageSaver(BaseCallback):
     def __init__(self, env: Env, save_freq: int) -> None:
-        super(BaseCallback).__init__()
+        super(ImageSaver, self).__init__()
         self.env = env
         self.save_freq = save_freq
 
