@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 from torch import Tensor, nn
 
@@ -5,6 +7,8 @@ from torch import Tensor, nn
 class InverseModel(nn.Module):
     encoder: nn.Module
     latent_inverse_model: nn.Module
+    latent_size: int
+    obs_shape: Tuple
 
     def forward(self, obs: Tensor, next_obs: Tensor) -> Tensor:
         latent = self.encoder(obs)
@@ -12,12 +16,6 @@ class InverseModel(nn.Module):
         x = torch.concat((latent, next_latent), dim=-1)
         pred_action = self.latent_inverse_model(x)
         return pred_action
-
-    # To be removed
-    def get_quantized_latent(self, obs):
-        latent = self.encoder(obs)
-        quantized = torch.round(latent, decimals=0) + 0.0
-        return quantized
 
 
 class LinearInverseModel(InverseModel):
@@ -42,6 +40,8 @@ class LinearInverseModel(InverseModel):
 
     def __init__(self, obs_size: int, action_size: int, latent_size: int, width: int = 16) -> None:
         super(LinearInverseModel, self).__init__()
+        self.latent_size = latent_size
+        self.obs_shape = (obs_size,)
         # Encoder
         self.encoder = nn.Sequential(
             nn.Linear(obs_size, width),
@@ -110,6 +110,8 @@ class ConvInverseModel(InverseModel):
 
     def __init__(self, action_size: int, latent_size: int) -> None:
         super(ConvInverseModel, self).__init__()
+        self.latent_size = latent_size
+        self.obs_shape = (3, 129, 129)
         # Encoder
         self.encoder = nn.Sequential(  # [N x C x 129 x 129]
             nn.Conv2d(3, 8, kernel_size=3, stride=1, padding=1),  # [N x 8 x 129 x 129]
