@@ -13,7 +13,6 @@ from stable_baselines3.common.type_aliases import MaybeCallback
 
 from go_explore.archive import ArchiveBuffer
 from go_explore.cells import AtariGrayscaleDownscale, CellFactory
-from go_explore.feature_extractor import GoExploreExtractor
 
 
 class Goalify(gym.Wrapper):
