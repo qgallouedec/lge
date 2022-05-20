@@ -1,8 +1,10 @@
 from typing import Iterable, List, Optional, Union
 
+import cv2
+import gym
 import numpy as np
 import torch
-from gym import Env
+from gym import Env, spaces
 from PIL import Image
 from stable_baselines3.common.callbacks import BaseCallback
 
@@ -158,3 +160,50 @@ class ImageSaver(BaseCallback):
             img = Image.fromarray(self.env.render("rgb_array"))
             img.save(human_format(self.n_calls) + ".bmp")
         return super()._on_step()
+
+
+class AtariWrapper(gym.Wrapper):
+    """
+    Convert to grayscale and warp frames to 84x84 (default)
+    as done in the Nature paper and later work.
+
+    :param env: the environment
+    :param width:
+    :param height:
+    """
+
+    def __init__(self, env: gym.Env, width: int = 84, height: int = 84):
+        gym.ObservationWrapper.__init__(self, env)
+        self.width = width
+        self.height = height
+        self.observation_space = spaces.Box(
+            low=0, high=255, shape=(self.height, self.width, 12), dtype=env.observation_space.dtype
+        )
+
+    def step(self, action: np.ndarray) -> np.ndarray:
+        """
+
+        :param frame: environment frame
+        :return: the observation
+        """
+        tot_reward = 0
+        obs_buf = np.zeros((self.height, self.width, 12), dtype=self.observation_space.dtype)
+
+        for frame_idx in range(4):
+            frame, reward, done, info = super().step(action)
+            frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+            obs_buf[:, :, 3 * frame_idx : 3 * (frame_idx + 1)] = frame
+            tot_reward += reward
+        return obs_buf, tot_reward, done, info
+
+    def reset(self):
+        obs_buf = np.zeros((self.height, self.width, 12), dtype=self.observation_space.dtype)
+        frame = super().reset()
+        frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        obs_buf[:, :, 0:3] = frame
+        for frame_idx in range(1, 4):
+            frame, _, _, _ = super().step(0)
+            frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+            obs_buf[:, :, 3 * frame_idx : 3 * (frame_idx + 1)] = frame
+
+        return obs_buf
