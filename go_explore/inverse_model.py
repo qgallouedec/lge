@@ -111,27 +111,20 @@ class ConvInverseModel(InverseModel):
     def __init__(self, action_size: int, latent_size: int) -> None:
         super(ConvInverseModel, self).__init__()
         self.latent_size = latent_size
-        self.obs_shape = (3, 129, 129)
-        # Encoder
-        self.encoder = nn.Sequential(  # [N x C x 129 x 129]
-            nn.Conv2d(3, 8, kernel_size=3, stride=1, padding=1),  # [N x 8 x 129 x 129]
-            nn.ReLU(),
-            nn.BatchNorm2d(8),
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),  # [N x 16 x 65 x 65]
-            nn.ReLU(),
-            nn.BatchNorm2d(16),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),  # [N x 32 x 33 x 33]
+        self.obs_shape = (3, 84, 84)
+        self.encoder = nn.Sequential(  # [N x 12 x 84 x 84]
+            nn.Conv2d(12, 32, kernel_size=4, stride=2),  # [N x 32 x 41 x 41]
             nn.ReLU(),
             nn.BatchNorm2d(32),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),  # [N x 64 x 17 x 17]
+            nn.Conv2d(32, 64, kernel_size=3, stride=2),  # [N x 64 x 20 x 20]
             nn.ReLU(),
             nn.BatchNorm2d(64),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # [N x 128 x 9 x 9]
+            nn.Conv2d(64, 128, kernel_size=4, stride=2),  # [N x 128 x 9 x 9]
             nn.ReLU(),
             nn.BatchNorm2d(128),
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # [N x 256 x 5 x 5]
+            nn.Conv2d(128, 128, kernel_size=3, stride=2),  # [N x 128 x 4 x 4]
             nn.Flatten(),
-            nn.Linear(256 * 5 * 5, 512),
+            nn.Linear(128 * 4 * 4, 512),
             nn.ReLU(),
             nn.Linear(512, latent_size),
         )
