@@ -116,14 +116,16 @@ class ConvInverseModel(InverseModel):
             nn.Conv2d(12, 64, kernel_size=3, stride=1),  # [N x 64 x 82 x 82]
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=4, stride=3),  # [N x 64 x 27 x 27]
-            nn.Conv2d(64, 128, kernel_size=3, stride=1),  # [N x 128 x 25 x 25]
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),  # [N x 128 x 27 x 27]
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=4, stride=3),  # [N x 128 x 8 x 8]
-            nn.Conv2d(128, 128, kernel_size=3, stride=1),  # [N x 128 x 6 x 6]
+            nn.MaxPool2d(kernel_size=3, stride=3),  # [N x 128 x 9 x 9]
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),  # [N x 128 x 9 x 9]
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=3, stride=3),  # [N x 128 x 2 x 2]
+            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),  # [N x 128 x 9 x 9]
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=3, stride=2),  # [N x 128 x 4 x 4]
             nn.Flatten(),
-            nn.Linear(128 * 2 * 2, 256),
+            nn.Linear(128 * 4 * 4, 256),
             nn.ReLU(),
             nn.Linear(256, latent_size),
         )
@@ -133,3 +135,6 @@ class ConvInverseModel(InverseModel):
             nn.ReLU(),
             nn.Linear(128, action_size),
         )
+
+if __name__=="__main__":
+    print(ConvInverseModel(17, 32))
