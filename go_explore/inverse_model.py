@@ -114,17 +114,17 @@ class ConvInverseModel(InverseModel):
         self.latent_size = latent_size
         self.obs_shape = (12, 84, 84)
         self.encoder = nn.Sequential(  # [N x 12 x 84 x 84]
-            nn.Conv2d(12, 64, kernel_size=3, stride=1), # [N x 12 x 84 x 84]
+            nn.Conv2d(12, 64, kernel_size=3, stride=1),  # [64 x 82 x 82]
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=4, stride=3),
-            nn.Conv2d(64, 128, kernel_size=3, stride=1),
+            nn.MaxPool2d(kernel_size=4, stride=3),  # [64 x 27 x 27]
+            nn.Conv2d(64, 128, kernel_size=3, stride=1),  # [128 x 25 x 25]
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=4, stride=3),
-            nn.Conv2d(128, 128, kernel_size=3, stride=1),
+            nn.MaxPool2d(kernel_size=4, stride=3),  # [128 x 8 x 8]
+            nn.Conv2d(128, 128, kernel_size=3, stride=1),  # [128 x 6 x 6]
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=3, stride=3),
+            nn.MaxPool2d(kernel_size=3, stride=3),  # [128 x 3 x 3]
             nn.Flatten(start_dim=1, end_dim=-1),
-            nn.Linear(512, 256),
+            nn.Linear(128 * 3 * 3, 256),
             nn.ReLU(),
             nn.Linear(256, latent_size),
         )
