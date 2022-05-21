@@ -2,6 +2,7 @@ from typing import Tuple
 
 import torch
 from torch import Tensor, nn
+import torch.nn.functional as F
 
 
 class InverseModel(nn.Module):
@@ -55,6 +56,23 @@ class LinearInverseModel(InverseModel):
             nn.ReLU(),
             nn.Linear(width, action_size),
         )
+
+
+class Residual(nn.Module):
+    def __init__(self, in_channels) -> None:
+        super(Residual, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)  # [N x 128 x 9 x 9]
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.conv2 = nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)  # [N x 128 x 9 x 9]
+        self.bn2 = nn.BatchNorm2d(in_channels)
+
+    def forward(self, x):
+        y = self.conv1(x)
+        y = self.bn1(y)
+        y = F.relu(y)
+        y = self.conv2(y)
+        y = self.bn1(y)
+        return x + y
 
 
 class ConvInverseModel(InverseModel):
@@ -115,13 +133,13 @@ class ConvInverseModel(InverseModel):
         self.encoder = nn.Sequential(  # [N x 12 x 84 x 84]
             nn.Conv2d(12, 64, kernel_size=3, stride=1),  # [N x 64 x 82 x 82]
             nn.ReLU(),
+            nn.BatchNorm2d(64),
             nn.MaxPool2d(kernel_size=4, stride=3),  # [N x 64 x 27 x 27]
             nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),  # [N x 128 x 27 x 27]
             nn.ReLU(),
+            nn.BatchNorm2d(128),
             nn.MaxPool2d(kernel_size=3, stride=3),  # [N x 128 x 9 x 9]
-            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),  # [N x 128 x 9 x 9]
-            nn.ReLU(),
-            nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1),  # [N x 128 x 9 x 9]
+            Residual(128),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=3, stride=2),  # [N x 128 x 4 x 4]
             nn.Flatten(),
@@ -135,6 +153,3 @@ class ConvInverseModel(InverseModel):
             nn.ReLU(),
             nn.Linear(128, action_size),
         )
-
-if __name__=="__main__":
-    print(ConvInverseModel(17, 32))
