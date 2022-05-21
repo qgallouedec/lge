@@ -122,7 +122,7 @@ class ConvInverseModel(InverseModel):
             nn.MaxPool2d(kernel_size=4, stride=3),  # [128 x 8 x 8]
             nn.Conv2d(128, 128, kernel_size=3, stride=1),  # [128 x 6 x 6]
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=3, stride=3),  # [128 x 3 x 3]
+            nn.MaxPool2d(kernel_size=2, stride=2),  # [128 x 3 x 3]
             nn.Flatten(start_dim=1, end_dim=-1),
             nn.Linear(128 * 3 * 3, 256),
             nn.ReLU(),
