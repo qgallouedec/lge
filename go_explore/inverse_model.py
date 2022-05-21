@@ -111,25 +111,21 @@ class ConvInverseModel(InverseModel):
     def __init__(self, action_size: int, latent_size: int) -> None:
         super(ConvInverseModel, self).__init__()
         self.latent_size = latent_size
-        self.obs_shape = (3, 84, 84)
+        self.obs_shape = (12, 84, 84)
         self.encoder = nn.Sequential(  # [N x 12 x 84 x 84]
-            nn.Conv2d(12, 32, kernel_size=3, stride=1, padding=1),  # [N x 32 x 84 x 84]
+            nn.Conv2d(12, 64, kernel_size=3, stride=1),  # [N x 64 x 82 x 82]
             nn.ReLU(),
-            nn.BatchNorm2d(32),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2),  # [N x 64 x 41 x 41]
+            nn.MaxPool2d(kernel_size=4, stride=3),  # [N x 64 x 27 x 27]
+            nn.Conv2d(64, 128, kernel_size=3, stride=1),  # [N x 128 x 25 x 25]
             nn.ReLU(),
-            nn.BatchNorm2d(64),
-            nn.Conv2d(64, 128, kernel_size=3, stride=2),  # [N x 128 x 20 x 20]
+            nn.MaxPool2d(kernel_size=4, stride=3),  # [N x 128 x 8 x 8]
+            nn.Conv2d(128, 128, kernel_size=3, stride=1),  # [N x 128 x 6 x 6]
             nn.ReLU(),
-            nn.BatchNorm2d(128),
-            nn.Conv2d(128, 256, kernel_size=4, stride=2),  # [N x 256 x 9 x 9]
-            nn.ReLU(),
-            nn.BatchNorm2d(256),
-            nn.Conv2d(256, 256, kernel_size=3, stride=2),  # [N x 256 x 4 x 4]
+            nn.MaxPool2d(kernel_size=3, stride=3),  # [N x 128 x 2 x 2]
             nn.Flatten(),
-            nn.Linear(256 * 4 * 4, 512),
+            nn.Linear(128 * 2 * 2, 256),
             nn.ReLU(),
-            nn.Linear(512, latent_size),
+            nn.Linear(256, latent_size),
         )
         # Inverse latent model
         self.latent_inverse_model = nn.Sequential(
