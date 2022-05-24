@@ -207,3 +207,24 @@ class AtariWrapper(gym.Wrapper):
             obs_buf[:, :, 3 * frame_idx : 3 * (frame_idx + 1)] = frame
 
         return obs_buf
+
+
+def detect_private_eye_end_frame(obs: np.ndarray) -> bool:
+    """Return whether the agent is at the frame on the border of the ma in PrivateEye."""
+    hmin, hmax = 65, 72
+    lmin, lmax = 54, 60
+
+    # If and only if the agent is in this room in the game, this square shoould be equal to that values:
+    ref = np.array(
+        [
+            [[114, 126, 45], [135, 163, 62], [135, 169, 69], [135, 183, 84], [135, 183, 84], [135, 183, 84]],
+            [[149, 149, 43], [140, 140, 32], [140, 140, 32], [140, 140, 32], [140, 147, 40], [140, 179, 76]],
+            [[170, 170, 53], [191, 191, 55], [191, 191, 55], [191, 191, 55], [191, 191, 55], [191, 191, 55]],
+            [[134, 134, 43], [207, 207, 62], [204, 204, 61], [204, 204, 61], [204, 204, 61], [204, 204, 61]],
+            [[158, 158, 40], [137, 137, 30], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29]],
+            [[134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29]],
+            [[134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29]],
+        ],
+        dtype=np.uint8,
+    )
+    return (obs[hmin:hmax, lmin:lmax] == ref).all()
