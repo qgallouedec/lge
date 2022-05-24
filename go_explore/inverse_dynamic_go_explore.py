@@ -64,6 +64,9 @@ class InverseModelLearner(BaseCallback):
             observations = observations["observation"]
             next_observations = next_observations["observation"]
 
+        observations = observations.float() / 255
+        next_observations = next_observations.float() / 255
+
         # Compute the output image
         self.inverse_model.train()
         pred_actions = self.inverse_model(observations, next_observations)
