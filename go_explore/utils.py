@@ -8,6 +8,27 @@ from gym import Env, spaces
 from PIL import Image
 from stable_baselines3.common.callbacks import BaseCallback
 
+ATARI_ACTIONS = [
+    "NOOP",
+    "FIRE",
+    "UP",
+    "RIGHT",
+    "LEFT",
+    "DOWN",
+    "UPRIGHT",
+    "UPLEFT",
+    "DOWNRIGHT",
+    "DOWNLEFT",
+    "UPFIRE",
+    "RIGHTFIRE",
+    "LEFTFIRE",
+    "DOWNFIRE",
+    "UPRIGHTFIRE",
+    "UPLEFTFIRE",
+    "DOWNRIGHTFIRE",
+    "DOWNLEFTFIRE",
+]
+
 
 def indexes(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """
