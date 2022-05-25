@@ -12,6 +12,7 @@ setup(
         "gym[atari, accept-rom-license]",
         "ale-py==0.7.4",
         "optuna",
+        "opencv-python"
     ],
     extras_require={
         "tests": ["pytest", "black", "isort"],
