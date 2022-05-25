@@ -110,48 +110,6 @@ def build_image(images: List[torch.Tensor]) -> Image:
     return full_image
 
 
-def one_hot(x: np.ndarray, num_classes: int = -1) -> np.ndarray:
-    """
-    Numpy implementation of one_hot.
-
-    :param x: class values of any shape.
-    :param num_classes: Total number of classes. If set to -1, the number
-        of classes will be inferred as one greater than the largest class
-        value in the input array.
-    :return: Array that has one more dimension with 1 values at the
-    index of last dimension indicated by the input, and 0 everywhere
-    else.
-
-    Examples:
-        >>> one_hot(np.arange(0, 5) % 3)
-        array([[1., 0., 0.],
-               [0., 1., 0.],
-               [0., 0., 1.],
-               [1., 0., 0.],
-               [0., 1., 0.]])
-    """
-    num_classes = np.max(x) + 1 if num_classes == -1 else num_classes
-    y = np.eye(num_classes)[x]
-    return y
-
-
-def choice(
-    a: Union[np.ndarray, int],
-    size: Optional[Union[int, Iterable[int]]] = None,
-    p: Optional[np.ndarray] = None,
-):
-    if type(a) is int:
-        a = np.arange(a)
-    if size is None:
-        size = (1,)
-    if p is None:
-        p = np.ones_like(a) / a.shape[0]
-    assert a.shape == p.shape
-
-    x = np.nonzero(np.random.multinomial(1, p, size=size))[1]
-    return a[x]
-
-
 def is_image(x: torch.Tensor) -> bool:
     """Whether the input is an image, or a batch of images"""
     shape = x.shape
