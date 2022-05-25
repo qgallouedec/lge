@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import pytest
-from gym import GoalEnv, spaces
+from gym import Env, GoalEnv, ObservationWrapper, spaces
 from gym.envs.registration import EnvSpec
 from stable_baselines3 import DDPG, DQN, SAC, TD3
 from stable_baselines3.common.env_util import make_vec_env
@@ -15,7 +15,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import CellIsObs, DownscaleObs
+from go_explore.cells import CellFactory, CellIsObs, DownscaleObs
 from go_explore.utils import index
 
 
@@ -208,15 +208,31 @@ class BitFlippingEnv(GoalEnv):
         pass
 
 
+class AlsoReturnCell(ObservationWrapper):
+    def __init__(self, env: Env, cell_factory: CellFactory) -> None:
+        super().__init__(env)
+        self.cell_factory = cell_factory
+        self.observation_space["cell"] = self.cell_factory.cell_space
+        self.observation_space["goal_cell"] = self.cell_factory.cell_space
+
+    def observation(self, observation):
+        observation["cell"] = self.cell_factory(observation["observation"])
+        observation["goal_cell"] = self.cell_factory(observation["goal"])
+        return observation
+
+
 @pytest.mark.parametrize("n_envs", [1, 2])
 @pytest.mark.parametrize("model_class", [SAC, TD3, DDPG, DQN])
 def test_her(n_envs, model_class):
     # Test Hindsight Experience Replay in archive.
+    observation_space = BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN)).observation_space["observation"]
+    cell_factory = CellIsObs(observation_space)
+
     def env_fn():
-        return BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN))
+        return AlsoReturnCell(BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN)), cell_factory)
 
     env = make_vec_env(env_fn, n_envs)
-    cell_factory = CellIsObs(env.observation_space["observation"])
+
     model = model_class(
         "MultiInputPolicy",
         env,
@@ -240,11 +256,14 @@ def test_her(n_envs, model_class):
 
 @pytest.mark.parametrize("model_class", [TD3, DQN])
 def test_multiprocessing(model_class):
-    def env_fn():
-        return BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN))
+    observation_space = BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN)).observation_space["observation"]
+    cell_factory = CellIsObs(observation_space)
 
-    env = make_vec_env(env_fn, n_envs=2, vec_env_cls=SubprocVecEnv)
-    cell_factory = CellIsObs(env.observation_space["observation"])
+    def env_fn():
+        return AlsoReturnCell(BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN)), cell_factory)
+
+    env = make_vec_env(env_fn, n_envs=2)
+
     model = model_class(
         "MultiInputPolicy",
         env,
@@ -274,11 +293,13 @@ def test_goal_selection_strategy_with_model(goal_selection_strategy):
     # Offline sampling is not compatible with multiprocessing
     n_envs = 2
 
+    observation_space = BitFlippingEnv(n_bits=10, continuous=True).observation_space["observation"]
+    cell_factory = CellIsObs(observation_space)
+
     def env_fn():
-        return BitFlippingEnv(n_bits=10, continuous=True)
+        return AlsoReturnCell(BitFlippingEnv(n_bits=10, continuous=True), cell_factory)
 
     env = make_vec_env(env_fn, n_envs)
-    cell_factory = CellIsObs(env.observation_space["observation"])
     normal_action_noise = NormalActionNoise(np.zeros(1), 0.1 * np.ones(1))
 
     model = SAC(
@@ -315,8 +336,14 @@ def test_goal_selection_strategy_with_model(goal_selection_strategy):
 )
 def test_goal_selection_strategy(goal_selection_strategy):
     # Test different goal strategies.
-    env = make_vec_env(BitFlippingEnv, env_kwargs=dict(n_bits=2))
-    cell_factory = CellIsObs(env.observation_space["observation"])
+    observation_space = BitFlippingEnv(n_bits=2, continuous=True).observation_space["observation"]
+    cell_factory = CellIsObs(observation_space)
+
+    def env_fn():
+        return AlsoReturnCell(BitFlippingEnv(n_bits=2, continuous=True), cell_factory)
+
+    env = make_vec_env(env_fn)
+
     buffer = ArchiveBuffer(
         100,
         env.observation_space,
@@ -328,11 +355,18 @@ def test_goal_selection_strategy(goal_selection_strategy):
     buffer.set_env(env)
 
     observations = np.array([[[0, 0]], [[1, 1]], [[2, 2]], [[3, 3]], [[4, 4]], [[5, 5]], [[6, 6]], [[7, 7]]])
+    cells = cell_factory(observations)
     goals = np.array([[[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]]])
+    goal_cells = cell_factory(goals)
     for i in range(7):
         buffer.add(
-            obs={"observation": observations[i], "goal": goals[i]},
-            next_obs={"observation": observations[i + 1], "goal": goals[i + 1]},
+            obs={"observation": observations[i], "cell": cells[i], "goal": goals[i], "goal_cell": goal_cells[i]},
+            next_obs={
+                "observation": observations[i + 1],
+                "cell": cells[i + 1],
+                "goal": goals[i + 1],
+                "goal_cell": goal_cells[i + 1],
+            },
             action=np.array([[0.0]]),
             reward=np.array([-1.0]),
             done=np.array([i == 6]),
@@ -350,15 +384,16 @@ def test_goal_selection_strategy(goal_selection_strategy):
 def test_full_replay_buffer():
     # Test if HER works correctly with a full replay buffer when using online sampling.
     # It should not sample the current episode which is not finished.
-
     n_bits = 10
     n_envs = 2
+    observation_space = BitFlippingEnv(n_bits, continuous=True).observation_space["observation"]
+    cell_factory = CellIsObs(observation_space)
 
     def env_fn():
-        return BitFlippingEnv(n_bits=n_bits, continuous=True)
+        return AlsoReturnCell(BitFlippingEnv(n_bits, continuous=True), cell_factory)
 
     env = make_vec_env(env_fn, n_envs)
-    cell_factory = CellIsObs(env.observation_space["observation"])
+
     # use small buffer size to get the buffer full
     model = SAC(
         "MultiInputPolicy",
@@ -388,11 +423,13 @@ def test_trajectory_manager():
     infos = [{}, {}]
     goal = np.array([[0], [0]])
 
+    space = spaces.Box(-10, 10, (1,))
+    cell_factory = CellIsObs(space)
     archive = ArchiveBuffer(
         buffer_size=100,
-        observation_space=spaces.Dict({"observation": spaces.Box(-10, 10, (1,)), "goal": spaces.Box(-10, 10, (1,))}),
-        action_space=spaces.Box(-10, 10, (1,)),
-        cell_factory=CellIsObs(spaces.Box(-10, 10, (1,))),
+        observation_space=spaces.Dict({"observation": space, "cell": space, "goal": space, "goal_cell": space}),
+        action_space=space,
+        cell_factory=cell_factory,
         n_envs=2,
     )
     trajectories = np.array(
@@ -401,17 +438,24 @@ def test_trajectory_manager():
             [[1], [3], [3], [5], [4]],
         ]
     )
+    cell_trajectories = cell_factory(trajectories)
+    goal_cell = cell_factory(goal)
     for i in range(4):
         archive.add(
-            obs={"observation": trajectories[:, i], "goal": goal},
-            next_obs={"observation": trajectories[:, i + 1], "goal": goal},
+            obs={"observation": trajectories[:, i], "cell": cell_trajectories[:, i], "goal": goal, "goal_cell": goal_cell},
+            next_obs={
+                "observation": trajectories[:, i + 1],
+                "cell": cell_trajectories[:, i + 1],
+                "goal": goal,
+                "goal_cell": goal_cell,
+            },
             action=action,
             reward=reward,
             done=np.ones(2) * (i == 3),
             infos=infos,
         )
 
-    sampled_trajectories = [list(archive.sample_trajectory()) for _ in range(20)]  # list convinient to compare
+    sampled_trajectories = [list(archive.sample_trajectory(count_pow=1.0)[0]) for _ in range(30)]  # list convinient to compare
     possible_trajectories = [
         [[2]],
         # [[2], [3]], # a shortest path exists
@@ -419,8 +463,8 @@ def test_trajectory_manager():
         # [[2], [3], [4], [5]], # a shortest path exists
         # [[1]], # duplicate
         [[3]],
-        # [[3], [3]],  # duplicate when successive cells collapsed
-        [[3], [5]],  # collapase the 3
+        # [[3], [3]], # a shortest path exists
+        [[3], [3], [5]],  # collapase the 3
         # [[3], [3], [5], [4]], # a shortest path exists
     ]
     # Check that all sampled trajectories are valid
@@ -439,11 +483,14 @@ def test_performance_her(goal_selection_strategy):
     # Offline sampling is not compatible with multiprocessing
     n_envs = 2
 
+    observation_space = BitFlippingEnv(n_bits=2, continuous=False).observation_space["observation"]
+    cell_factory = CellIsObs(observation_space)
+
     def env_fn():
-        return BitFlippingEnv(n_bits=10, continuous=False, max_steps=10)
+        return AlsoReturnCell(BitFlippingEnv(n_bits=2, continuous=False), cell_factory)
 
     env = make_vec_env(env_fn, n_envs)
-    cell_factory = CellIsObs(env.observation_space["observation"])
+
     model = DQN(
         "MultiInputPolicy",
         env,
@@ -480,9 +527,10 @@ def test_trajectory_manager_when_updated():
     goal = np.array([[0], [0]])
 
     cell_factory = DownscaleObs(spaces.Box(-10, 10, (1,)))
+    space = spaces.Box(-10, 10, (1,))
     archive = ArchiveBuffer(
         buffer_size=100,
-        observation_space=spaces.Dict({"observation": spaces.Box(-10, 10, (1,)), "goal": spaces.Box(-10, 10, (1,))}),
+        observation_space=spaces.Dict({"observation": space, "cell": space, "goal": space, "goal_cell": space}),
         action_space=spaces.Box(-10, 10, (1,)),
         cell_factory=cell_factory,
         n_envs=2,
@@ -493,42 +541,33 @@ def test_trajectory_manager_when_updated():
             [[0], [1], [2], [3], [4], [5], [6], [7]],
         ]
     )
+    cell_trajectories = cell_factory(trajectories)
+    goal_cell = cell_factory(goal)
     for i in range(7):
         archive.add(
-            obs={"observation": trajectories[:, i], "goal": goal},
-            next_obs={"observation": trajectories[:, i + 1], "goal": goal},
+            obs={"observation": trajectories[:, i], "cell": cell_trajectories[:, i], "goal": goal, "goal_cell": goal_cell},
+            next_obs={
+                "observation": trajectories[:, i + 1],
+                "cell": cell_trajectories[:, i + 1],
+                "goal": goal,
+                "goal_cell": goal_cell,
+            },
             action=action,
             reward=reward,
             done=np.ones(2) * (i == 6),
             infos=infos,
         )
 
-    cell_factory.step = 2
-    archive.when_cell_factory_updated()
-    sampled_trajectories = [list(archive.sample_trajectory()) for _ in range(20)]  # list convinient to compare
+    sampled_trajectories = [list(archive.sample_trajectory(count_pow=1.0, step=2)[0]) for _ in range(30)]
 
     possible_trajectories = [
         [[1]],
-        [[1], [2]],
-        [[1], [2]],
-        [[1], [2], [4]],
-        [[1], [2], [4]],
-        [[1], [2], [4], [6]],
-    ]
-    assert np.all([trajectory in possible_trajectories for trajectory in sampled_trajectories])
-    assert np.all([trajectory in sampled_trajectories for trajectory in possible_trajectories])
-
-    cell_factory.step = 1
-    archive.when_cell_factory_updated()
-    sampled_trajectories = [list(archive.sample_trajectory()) for _ in range(30)]  # list convinient to compare
-    possible_trajectories = [
-        [[1]],
-        [[1], [2]],
-        [[1], [2], [3]],
-        [[1], [2], [3], [4]],
-        [[1], [2], [3], [4], [5]],
-        [[1], [2], [3], [4], [5], [6]],
-        [[1], [2], [3], [4], [5], [6], [7]],
+        [[2]],
+        [[1], [3]],
+        [[2], [4]],
+        [[1], [3], [5]],
+        [[2], [4], [6]],
+        [[1], [3], [5], [7]],
     ]
     assert np.all([trajectory in possible_trajectories for trajectory in sampled_trajectories])
     assert np.all([trajectory in sampled_trajectories for trajectory in possible_trajectories])
