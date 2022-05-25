@@ -56,7 +56,7 @@ def test_get_param_score():
 def test_image_cell():
     cell_factory = AtariGrayscaleDownscale(30, 40)
     cells = cell_factory(images)
-    assert cells.shape == (301, 30 * 40)
+    assert (cells[:, 30 * 40 :] == 0).all()
 
 
 def test_transpose_image_cell():
@@ -128,3 +128,7 @@ def test_downscale_obs_optimization():
     _, counts = th.unique(cell_factory(observations), dim=0, return_counts=True)
     # Best option is to split in two cells, with egal number of observations
     assert (counts == th.tensor([5, 5])).all()
+
+
+if __name__ == "__main__":
+    test_image_cell()
