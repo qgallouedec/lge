@@ -7,7 +7,6 @@ import numpy as np
 import optuna
 import torch
 from gym import spaces
-from torch import nn
 from torchvision.transforms.functional import resize, rgb_to_grayscale
 
 from go_explore.utils import is_image, sample_geometric
