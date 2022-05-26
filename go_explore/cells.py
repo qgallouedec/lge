@@ -249,7 +249,7 @@ class DownscaleObs(CellFactory):
         :return: A tensor of cells
         """
         step = self.step.to(observations.device)
-        cells = torch.floor(observations / step - 0.5) * step
+        cells = torch.round(observations / step) * step
         return cells
 
     def optimize_param(self, samples: torch.Tensor, nb_trials: int = 300) -> float:
