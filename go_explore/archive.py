@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch as th
@@ -181,7 +181,7 @@ class ArchiveBuffer(DictReplayBuffer):
             self.next_observations["goal_cell"][k:upper] = self.cell_factory(self.next_observations["goal"][k:upper])
             k += 256
 
-    def sample_trajectory(self, count_pow: float = 0.0, step: int = 1) -> List[np.ndarray]:
+    def sample_trajectory(self, count_pow: float = 0.0, step: int = 1) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Sample a trajcetory of observations based on the cells counts and trajectories.
 
