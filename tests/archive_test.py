@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import pytest
+import torch
 from gym import Env, GoalEnv, ObservationWrapper, spaces
 from gym.envs.registration import EnvSpec
 from stable_baselines3 import DDPG, DQN, SAC, TD3
@@ -571,3 +572,68 @@ def test_trajectory_manager_when_updated():
     ]
     assert np.all([trajectory in possible_trajectories for trajectory in sampled_trajectories])
     assert np.all([trajectory in sampled_trajectories for trajectory in possible_trajectories])
+
+
+def test_recompute_cells():
+    # Useless for this test
+    action = np.array([[0], [0]])
+    reward = np.array([0, 0])
+    infos = [{}, {}]
+    goal = np.array([[0.0], [0.0]])
+
+    space = spaces.Box(-10, 10, (1,))
+    cell_factory = DownscaleObs(space)
+    archive = ArchiveBuffer(
+        buffer_size=8,
+        observation_space=spaces.Dict({"observation": space, "cell": space, "goal": space, "goal_cell": space}),
+        action_space=space,
+        cell_factory=cell_factory,
+        n_envs=2,
+    )
+    trajectories = np.array(
+        [
+            [[1.0], [1.0]],
+            [[2.0], [3.0]],
+            [[3.0], [3.0]],
+            [[4.0], [5.0]],
+            [[5.0], [4.0]],
+        ],
+    )
+    cell_trajectories = cell_factory(trajectories)
+    goal_cell = cell_factory(goal)
+    for i in range(4):
+        archive.add(
+            obs={"observation": trajectories[i], "cell": cell_trajectories[i], "goal": goal, "goal_cell": goal_cell},
+            next_obs={
+                "observation": trajectories[i + 1],
+                "cell": cell_trajectories[i + 1],
+                "goal": goal,
+                "goal_cell": goal_cell,
+            },
+            action=action,
+            reward=reward,
+            done=np.ones(2) * (i == 3),
+            infos=infos,
+        )
+
+    expected_cells = np.array(
+        [
+            [[1.0], [1.0]],
+            [[2.0], [3.0]],
+            [[3.0], [3.0]],
+            [[4.0], [5.0]],
+        ]
+    )
+    assert (archive.observations["cell"] == expected_cells).all()
+
+    cell_factory.step = 2 * torch.ones(space.shape)
+    archive.recompute_cells()
+    expected_cells = np.array(
+        [
+            [[0.0], [0.0]],
+            [[2.0], [4.0]],
+            [[4.0], [4.0]],
+            [[4.0], [4.0]],
+        ]
+    )
+    assert (archive.observations["cell"] == expected_cells).all()
