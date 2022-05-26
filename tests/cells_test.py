@@ -93,15 +93,6 @@ def test_cell_is_obs():
     assert (cell == th.Tensor([0.5, 0.5])).all()
 
 
-def test_cell_is_obs_optimization():
-    # Nothing should append
-    cell_factory = CellIsObs(spaces.Box(-1, 1, (2,)))
-    cell_before = cell_factory(th.Tensor([0.5, 0.5]))
-    cell_factory.optimize_param(th.Tensor([[0.5, 0.5]]))
-    cell_after = cell_factory(th.Tensor([0.5, 0.5]))
-    assert (cell_before == cell_after).all()
-
-
 def test_downscale_obs():
     cell_factory = DownscaleObs(spaces.Box(-1, 1, (2,)))
     cell = cell_factory(th.Tensor([0.5, 0.5]))
@@ -128,7 +119,3 @@ def test_downscale_obs_optimization():
     _, counts = th.unique(cell_factory(observations), dim=0, return_counts=True)
     # Best option is to split in two cells, with egal number of observations
     assert (counts == th.tensor([5, 5])).all()
-
-
-if __name__ == "__main__":
-    test_image_cell()

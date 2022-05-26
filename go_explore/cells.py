@@ -105,8 +105,8 @@ class AtariGrayscaleDownscale(CellFactory):
     torch.Size([10, 15, 10])  # (N x NEW_H x NEW_W)
     """
 
-    MAX_H = 52
-    MAX_W = 40
+    MAX_H = 42
+    MAX_W = 42
     MAX_NB_SHADES = 127
 
     def __init__(self, height: int = 21, width: int = 16, nb_shades: int = 25) -> None:
@@ -117,7 +117,7 @@ class AtariGrayscaleDownscale(CellFactory):
         self.height = height
         self.width = width
         self.nb_shades = nb_shades
-        self.obs_shape = (210, 160, 3)
+        self.obs_shape = (84, 84, 3)
 
     def compute_cells(self, images: torch.Tensor) -> torch.Tensor:
         """
@@ -254,12 +254,13 @@ class DownscaleObs(CellFactory):
 
     def optimize_param(self, samples: torch.Tensor, nb_trials: int = 300) -> float:
         def objective(trial: optuna.Trial) -> float:
-            self.step = trial.suggest_loguniform("step", 1e-6, 1e4)
+            step = trial.suggest_loguniform("step", 1e-6, 1e4)
+            self.step = torch.ones(self.obs_shape) * step
             cells = self.__call__(samples)
             score = get_param_score(cells)
             return score
 
         study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=nb_trials)
-        self.step = study.best_params["step"]
+        self.step = torch.ones(self.obs_shape) * study.best_params["step"]
         return study.best_value

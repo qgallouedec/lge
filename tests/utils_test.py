@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 from go_explore.utils import index, indexes, multinomial, sample_geometric
 
@@ -28,13 +29,13 @@ def test_index_when_none():
 
 
 def test_multinomial():
-    weights = np.array([1, 2, 3])
-    sample = [multinomial(weights) for _ in range(1000)]
-    _, counts = np.unique(sample, return_counts=True)
+    weights = torch.tensor([1, 2, 3])
+    sample = torch.tensor([multinomial(weights) for _ in range(1000)])
+    _, counts = torch.unique(sample, return_counts=True)
     sampled_dist = counts / counts.sum()
     true_dist = weights / weights.sum()
     # If multinomial implementation is good, you have one chance in 350 that the test fails.
-    assert np.isclose(sampled_dist, true_dist, atol=0.05).all()
+    assert torch.isclose(sampled_dist, true_dist, atol=0.05).all()
 
 
 def test_sample_geometric():
