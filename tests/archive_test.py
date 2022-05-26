@@ -574,6 +574,22 @@ def test_trajectory_manager_when_updated():
     assert np.all([trajectory in sampled_trajectories for trajectory in possible_trajectories])
 
 
+def test_sample_if_empty():
+    cell_factory = CellIsObs(spaces.Box(-10, 10, (1,)))
+    space = spaces.Box(-10, 10, (1,))
+    archive = ArchiveBuffer(
+        buffer_size=100,
+        observation_space=spaces.Dict({"observation": space, "cell": space, "goal": space, "goal_cell": space}),
+        action_space=spaces.Box(-10, 10, (1,)),
+        cell_factory=cell_factory,
+        n_envs=2,
+    )
+    trajectory, cell_trajectory = archive.sample_trajectory()
+    for obs, cell in zip(trajectory, cell_trajectory):
+        assert space.contains(obs)
+        assert space.contains(cell)
+
+
 def test_recompute_cells():
     # Useless for this test
     action = np.array([[0], [0]])
