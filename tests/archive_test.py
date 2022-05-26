@@ -12,7 +12,6 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.type_aliases import GymStepReturn
-from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 from go_explore.archive import ArchiveBuffer
