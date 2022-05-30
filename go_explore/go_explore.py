@@ -13,6 +13,7 @@ from stable_baselines3.common.type_aliases import MaybeCallback
 
 from go_explore.archive import ArchiveBuffer
 from go_explore.cells import AtariGrayscaleDownscale, CellFactory
+from go_explore.feature_extractor import GoExploreExtractor
 
 
 class Goalify(gym.Wrapper):
@@ -32,6 +33,7 @@ class Goalify(gym.Wrapper):
         nb_random_exploration_steps: int = 30,
         window_size: int = 10,
         count_pow: float = 2.0,
+        traj_step: int = 2,
     ) -> None:
         super().__init__(env)
         # Set a goal-conditionned observation space
@@ -48,13 +50,13 @@ class Goalify(gym.Wrapper):
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
         self.count_pow = count_pow
-        self.traj_step = 5
+        self.traj_step = traj_step
 
     def set_archive(self, archive: ArchiveBuffer) -> None:
         """
         Set the archive.
 
-        The archive is used to compute goal traejctories, and to compute the cell for the reward.
+        The archive is used to compute goal trajectories, and to compute the cell for the reward.
 
         :param archive: The archive
         """
@@ -177,7 +179,8 @@ class BaseGoExplore:
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
         cell_factory: CellFactory,
-        count_pow: float = 1.0,
+        count_pow: float = 2.0,
+        traj_step: int = 2,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
@@ -185,20 +188,19 @@ class BaseGoExplore:
     ) -> None:
         # Wrap the env
         def env_func():
-            return Goalify(maybe_make_env(env, verbose), cell_factory)
+            return Goalify(maybe_make_env(env, verbose), cell_factory, count_pow=count_pow, traj_step=traj_step)
 
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
         replay_buffer_kwargs.update(dict(cell_factory=cell_factory))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
-        model_kwargs = {} if model_kwargs is None else model_kwargs
-
+        model_kwargs = {"learning_starts": 3000} if model_kwargs is None else model_kwargs
         self.model = model_class(
             "MultiInputPolicy",
             env,
             replay_buffer_class=ArchiveBuffer,
             replay_buffer_kwargs=replay_buffer_kwargs,
-            policy_kwargs=policy_kwargs,
+            # policy_kwargs=policy_kwargs,
             verbose=verbose,
             **model_kwargs,
         )
@@ -233,7 +235,7 @@ class GoExploreOriginal(BaseGoExplore):
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
-        count_pow: float = 1.0,
+        count_pow: float = 2.0,
         split_factor: float = 0.125,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
