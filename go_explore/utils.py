@@ -207,3 +207,29 @@ def detect_private_eye_end_frame(obs: np.ndarray) -> bool:
         dtype=np.uint8,
     )
     return (obs[hmin:hmax, lmin:lmax] == ref).all()
+
+
+def round(input: torch.Tensor, decimals: float) -> torch.Tensor:
+    """
+    Rounding, but extended to every float.
+
+    :param input: Input tensor
+    :type input: torch.Tensor
+    :param decimals: Decimals, can be float
+    :type decimals: float
+    :return: The rounded tensor
+    :rtype: torch.Tensor
+
+    Example:
+    >>> a
+    tensor([0.0000, 0.4000, 0.8000, 1.2000, 1.6000])
+    >>> torch.round(a, decimals=0.8)
+    Traceback (most recent call last):
+      File "<stdin>", line 1, in <module>
+    TypeError: round() received an invalid combination of arguments - got (Tensor, decimals=float), but expected one of:
+     * (Tensor input, *, Tensor out)
+     * (Tensor input, *, int decimals, Tensor out)
+    >>> round(a, decimals=0.2)
+    tensor([0.0000, 0.6310, 0.6310, 1.2619, 1.8929])
+    """
+    return torch.round(input * 10**decimals) / 10**decimals

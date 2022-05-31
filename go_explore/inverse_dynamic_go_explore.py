@@ -14,18 +14,7 @@ from go_explore.archive import ArchiveBuffer
 from go_explore.cells import CellFactory
 from go_explore.go_explore import BaseGoExplore
 from go_explore.inverse_model import ConvInverseModel, InverseModel, LinearInverseModel
-from go_explore.utils import ImageSaver, is_image
-
-# class RecomputeCell(BaseCallback):
-#     def __init__(self, archive: ArchiveBuffer, freq: int, first_update: int, verbose: int = 0):
-#         super().__init__(verbose)
-#         self.archive = archive
-#         self.freq = freq
-#         self.first_update = first_update
-
-#     def _on_step(self):
-#         if self.n_calls == self.first_update or (self.n_calls - self.first_update) % self.freq == 0:
-#             self.archive.recompute_cells()
+from go_explore.utils import ImageSaver, is_image, round
 
 
 class InverseModelLearner(BaseCallback):
@@ -107,7 +96,7 @@ class InverseModelCelling(CellFactory):
         observations = observations.float()
         self.inverse_model.eval()
         latent = self.inverse_model.encoder(observations)  # TODO: handle image observation by /255
-        quantized_latent = torch.round(latent, decimals=0) + 0.0
+        quantized_latent = round(latent, decimals=0) + 0.0
         return quantized_latent
 
 
