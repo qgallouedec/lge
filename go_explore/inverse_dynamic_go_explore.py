@@ -16,16 +16,16 @@ from go_explore.go_explore import BaseGoExplore
 from go_explore.inverse_model import ConvInverseModel, InverseModel, LinearInverseModel
 from go_explore.utils import ImageSaver, is_image
 
+# class RecomputeCell(BaseCallback):
+#     def __init__(self, archive: ArchiveBuffer, freq: int, first_update: int, verbose: int = 0):
+#         super().__init__(verbose)
+#         self.archive = archive
+#         self.freq = freq
+#         self.first_update = first_update
 
-class RecomputeCell(BaseCallback):
-    def __init__(self, archive: ArchiveBuffer, freq: int, verbose: int = 0):
-        super().__init__(verbose)
-        self.archive = archive
-        self.freq = freq
-
-    def _on_step(self):
-        if self.n_calls % self.freq == 0:
-            self.archive.recompute_cells()
+#     def _on_step(self):
+#         if self.n_calls == self.first_update or (self.n_calls - self.first_update) % self.freq == 0:
+#             self.archive.recompute_cells()
 
 
 class InverseModelLearner(BaseCallback):
@@ -35,21 +35,26 @@ class InverseModelLearner(BaseCallback):
         buffer: ArchiveBuffer,
         batch_size: int = 128,
         lr: float = 1e-3,
-        train_freq: int = 4_000,
-        gradient_steps: int = 4_000,
+        train_freq: int = 10_000,
+        gradient_steps: int = 10_000,
+        first_update: int = 3_000,
+        verbose: int = 0,
     ):
-        super().__init__()
+        super().__init__(verbose)
         self.inverse_model = inverse_model
         self.buffer = buffer
         self.batch_size = batch_size
         self.train_freq = train_freq
         self.gradient_steps = gradient_steps
+        self.first_update = first_update
+
         self.optimizer = optim.Adam(self.inverse_model.parameters(), lr=lr)
 
     def _on_step(self):
-        if self.n_calls % self.train_freq == 0:
+        if self.n_calls == self.first_update or (self.n_calls - self.first_update) % self.train_freq == 0:
             for _ in range(self.gradient_steps):
                 self.train_once()
+            self.buffer.recompute_cells()
 
     def train_once(self):
         try:
@@ -132,7 +137,7 @@ class GoExploreInverseModel(BaseGoExplore):
             model_class, env, cell_factory, count_pow, traj_step, n_envs, replay_buffer_kwargs, model_kwargs, verbose
         )
 
-    def explore(self, total_timesteps: int, update_cell_factory_freq=3_000, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int, update_cell_factory_freq=10_000, reset_num_timesteps: bool = False) -> None:
         """
         Run exploration.
 
@@ -142,9 +147,12 @@ class GoExploreInverseModel(BaseGoExplore):
         """
         callback = [
             InverseModelLearner(
-                self.inverse_model, self.archive, train_freq=update_cell_factory_freq, gradient_steps=update_cell_factory_freq
+                self.inverse_model,
+                self.archive,
+                train_freq=update_cell_factory_freq,
+                gradient_steps=update_cell_factory_freq,
+                first_update=3_000,
             ),
-            RecomputeCell(self.archive, update_cell_factory_freq),
             ImageSaver(self.model.env, save_freq=5000),
         ]
         super().explore(total_timesteps, callback=callback, reset_num_timesteps=reset_num_timesteps)
