@@ -2,6 +2,7 @@ import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import torch
 import torch as th
 from gym import spaces
 from stable_baselines3.common.buffers import DictReplayBuffer
@@ -287,22 +288,11 @@ class ArchiveBuffer(DictReplayBuffer):
             next_obs["goal"] = new_goals
             next_obs["goal_cell"] = new_goal_cells
         # Compute new reward
-        rewards = self.env.env_method(
-            "compute_reward",
-            # here we use the new goal
-            next_obs["cell"],
-            # the new state depends on the previous state and action
-            # s_{t+1} = f(s_t, a_t)
-            # so the next observation depends also on the previous state and action
-            # because we are in a GoalEnv:
-            # r_t = reward(s_t, a_t) = reward(next_obs, goal)
-            # therefore we have to use next_obs["observation"] and not obs["observation"]
-            obs["goal_cell"],
-            self.infos[batch_inds, env_indices],
-            # we use the method of the first environment assuming that all environments are identical.
-            indices=[0],
-        )
-        rewards = rewards[0].astype(np.float32)  # env_method returns a list containing one element
+        self.cell_factory.inverse_model.eval()
+        latent = self.cell_factory.inverse_model.encoder(torch.Tensor(next_obs["observation"])).detach().cpu().numpy()
+        goal_latent = self.cell_factory.inverse_model.encoder(torch.Tensor(obs["goal"])).detach().cpu().numpy()
+        dist = np.linalg.norm(goal_latent - latent, axis=1)
+        rewards = (dist < 0.5).astype(np.float32) - 1
 
         obs = self._normalize_obs(obs)
         next_obs = self._normalize_obs(next_obs)

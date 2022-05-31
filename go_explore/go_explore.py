@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, Type
 
 import gym
 import numpy as np
+import torch
 from gym import Env, spaces
 from stable_baselines3.common.base_class import maybe_make_env
 from stable_baselines3.common.callbacks import BaseCallback
@@ -88,7 +89,8 @@ class Goalify(gym.Wrapper):
         # Compute reward (has to be done before moving to next goal)
         cell = self.cell_factory(obs)
         goal_cell = self.cell_trajectory[self._goal_idx]
-        reward = float(self.compute_reward(cell, goal_cell))
+        goal = self.goal_trajectory[self._goal_idx]
+        reward = float(self.compute_reward(obs, goal))
 
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
         self.maybe_move_to_next_goal(cell)
@@ -107,11 +109,11 @@ class Goalify(gym.Wrapper):
         dict_obs = self._get_dict_obs(obs, cell)
         return dict_obs, reward, done, info
 
-    def compute_reward(self, cell: np.ndarray, goal_cell: np.ndarray, info: Optional[Dict] = None) -> np.ndarray:
-        is_success = self.is_success(cell, goal_cell)
-        return is_success - 1
+    def compute_reward(self, obs: np.ndarray, goal: np.ndarray, info: Optional[Dict] = None) -> np.ndarray:
+        is_success = self.is_success(obs, goal)
+        return is_success.astype(np.float32) - 1
 
-    def is_success(self, cell: np.ndarray, goal_cell: np.ndarray) -> np.ndarray:
+    def is_success(self, obs: np.ndarray, goal: np.ndarray) -> np.ndarray:
         """
         Return True when the observation and the goal observation are in the same cell.
 
@@ -119,7 +121,15 @@ class Goalify(gym.Wrapper):
         :param goal: The goal observation
         :return: Success or not
         """
-        return np.isclose(cell, goal_cell, atol=0.001).all(-1)
+        self.cell_factory.inverse_model.eval()
+        obs = torch.Tensor(obs).unsqueeze(0)
+        goal = torch.Tensor(goal)
+        if len(goal.shape) == 1:
+            goal = goal.unsqueeze(0)
+        latent = self.cell_factory.inverse_model.encoder(obs).detach().cpu().numpy()
+        goal_latent = self.cell_factory.inverse_model.encoder(goal).detach().cpu().numpy()
+        dist = np.linalg.norm(goal_latent - latent, axis=1)
+        return dist < 0.5
 
     def maybe_move_to_next_goal(self, cell: np.ndarray) -> None:
         """
