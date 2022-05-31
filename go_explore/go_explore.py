@@ -122,8 +122,9 @@ class Goalify(gym.Wrapper):
         :return: Success or not
         """
         self.cell_factory.inverse_model.eval()
-        obs = torch.Tensor(obs).unsqueeze(0)
-        goal = torch.Tensor(goal)
+        device  = self.archive.device
+        obs = torch.Tensor(obs).unsqueeze(0).to(device)
+        goal = torch.Tensor(goal).to(device)
         if len(goal.shape) == 1:
             goal = goal.unsqueeze(0)
         latent = self.cell_factory.inverse_model.encoder(obs).detach().cpu().numpy()

@@ -289,8 +289,8 @@ class ArchiveBuffer(DictReplayBuffer):
             next_obs["goal_cell"] = new_goal_cells
         # Compute new reward
         self.cell_factory.inverse_model.eval()
-        latent = self.cell_factory.inverse_model.encoder(torch.Tensor(next_obs["observation"])).detach().cpu().numpy()
-        goal_latent = self.cell_factory.inverse_model.encoder(torch.Tensor(obs["goal"])).detach().cpu().numpy()
+        latent = self.cell_factory.inverse_model.encoder(self.to_torch(next_obs["observation"])).detach().cpu().numpy()
+        goal_latent = self.cell_factory.inverse_model.encoder(self.to_torch(obs["goal"])).detach().cpu().numpy()
         dist = np.linalg.norm(goal_latent - latent, axis=1)
         rewards = (dist < 0.5).astype(np.float32) - 1
 
