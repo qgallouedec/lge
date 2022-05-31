@@ -48,7 +48,6 @@ class LinearInverseModel(InverseModel):
             nn.Linear(obs_size, width),
             nn.ReLU(),
             nn.Linear(width, latent_size),
-            nn.BatchNorm1d(latent_size),
         )
         # Inverse latent model
         self.latent_inverse_model = nn.Sequential(
