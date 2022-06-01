@@ -26,6 +26,8 @@ class ArchiveBuffer(DictReplayBuffer):
     :param observation_space: Observation space
     :param action_space: Action space
     :param cell_factory: The cell factory
+    :param distance_threshold: when the current state and the goa state are under this distance in
+        latent space, the agent gets a reward
     :param device:
     :param n_envs: Number of parallel environments
     :param optimize_memory_usage: Enable a memory efficient variant
@@ -50,6 +52,7 @@ class ArchiveBuffer(DictReplayBuffer):
         observation_space: spaces.Space,
         action_space: spaces.Space,
         cell_factory: CellFactory,
+        distance_threshold: float = 1.0,
         device: Union[th.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
@@ -72,6 +75,8 @@ class ArchiveBuffer(DictReplayBuffer):
         self.her_ratio = 1 - (1.0 / (self.n_sampled_goal + 1))
         self.cell_factory = cell_factory
         self.infos = np.array([[{} for _ in range(self.n_envs)] for _ in range(self.buffer_size)])
+
+        self.distance_threshold = distance_threshold
 
         if isinstance(goal_selection_strategy, str):
             goal_selection_strategy = KEY_TO_GOAL_STRATEGY[goal_selection_strategy.lower()]
@@ -292,7 +297,7 @@ class ArchiveBuffer(DictReplayBuffer):
         latent = self.cell_factory.inverse_model.encoder(self.to_torch(next_obs["observation"])).detach().cpu().numpy()
         goal_latent = self.cell_factory.inverse_model.encoder(self.to_torch(obs["goal"])).detach().cpu().numpy()
         dist = np.linalg.norm(goal_latent - latent, axis=1)
-        rewards = (dist < 0.5).astype(np.float32) - 1
+        rewards = (dist < self.distance_threshold).astype(np.float32) - 1
 
         obs = self._normalize_obs(obs)
         next_obs = self._normalize_obs(next_obs)
