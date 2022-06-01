@@ -37,7 +37,7 @@ class InverseModelLearner(BaseCallback):
         self.gradient_steps = gradient_steps
         self.first_update = first_update
 
-        self.optimizer = optim.Adam(self.inverse_model.parameters(), lr=lr)
+        self.optimizer = optim.Adam(self.inverse_model.parameters(), lr=lr, weight_decay=1e-5)
 
     def _on_step(self):
         if self.n_calls == self.first_update or (self.n_calls - self.first_update) % self.train_freq == 0:
@@ -81,10 +81,11 @@ class InverseModelLearner(BaseCallback):
 class InverseModelCelling(CellFactory):
     """"""
 
-    def __init__(self, inverse_model: InverseModel) -> None:
+    def __init__(self, inverse_model: InverseModel, decimals: float = 1.0) -> None:
         self.inverse_model = inverse_model
         self.obs_shape = self.inverse_model.obs_shape
         self.cell_space = spaces.Box(0, 1, (self.inverse_model.latent_size,))
+        self.decimals = decimals
 
     def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
         """
@@ -96,7 +97,7 @@ class InverseModelCelling(CellFactory):
         observations = observations.float()
         self.inverse_model.eval()
         latent = self.inverse_model.encoder(observations)  # TODO: handle image observation by /255
-        quantized_latent = round(latent, decimals=0) + 0.0
+        quantized_latent = round(latent, decimals=self.decimals) + 0.0
         return quantized_latent
 
 
@@ -109,6 +110,8 @@ class GoExploreInverseModel(BaseGoExplore):
         env: Env,
         count_pow: float = 2.0,
         traj_step: int = 2,
+        distance_threshold: float = 1.0,
+        decimals: float = 0.0,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
@@ -121,9 +124,18 @@ class GoExploreInverseModel(BaseGoExplore):
             self.inverse_model = LinearInverseModel(
                 obs_size=env.observation_space.shape[0], action_size=env.action_space.shape[0], latent_size=2
             ).to(get_device("auto"))
-        cell_factory = InverseModelCelling(self.inverse_model)
+        cell_factory = InverseModelCelling(self.inverse_model, decimals=decimals)
         super().__init__(
-            model_class, env, cell_factory, count_pow, traj_step, n_envs, replay_buffer_kwargs, model_kwargs, verbose
+            model_class,
+            env,
+            cell_factory,
+            count_pow,
+            traj_step,
+            distance_threshold,
+            n_envs,
+            replay_buffer_kwargs,
+            model_kwargs,
+            verbose,
         )
 
     def explore(self, total_timesteps: int, update_cell_factory_freq=10_000, reset_num_timesteps: bool = False) -> None:
