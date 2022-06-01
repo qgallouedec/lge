@@ -35,6 +35,7 @@ class Goalify(gym.Wrapper):
         window_size: int = 10,
         count_pow: float = 2.0,
         traj_step: int = 2,
+        distance_threshold: float = 1.0,
     ) -> None:
         super().__init__(env)
         # Set a goal-conditionned observation space
@@ -52,6 +53,7 @@ class Goalify(gym.Wrapper):
         self.window_size = window_size
         self.count_pow = count_pow
         self.traj_step = traj_step
+        self.distance_threshold = distance_threshold
 
     def set_archive(self, archive: ArchiveBuffer) -> None:
         """
@@ -122,7 +124,7 @@ class Goalify(gym.Wrapper):
         :return: Success or not
         """
         self.cell_factory.inverse_model.eval()
-        device  = self.archive.device
+        device = self.archive.device
         obs = torch.Tensor(obs).unsqueeze(0).to(device)
         goal = torch.Tensor(goal).to(device)
         if len(goal.shape) == 1:
@@ -130,7 +132,7 @@ class Goalify(gym.Wrapper):
         latent = self.cell_factory.inverse_model.encoder(obs).detach().cpu().numpy()
         goal_latent = self.cell_factory.inverse_model.encoder(goal).detach().cpu().numpy()
         dist = np.linalg.norm(goal_latent - latent, axis=1)
-        return dist < 0.5
+        return dist < self.distance_threshold
 
     def maybe_move_to_next_goal(self, cell: np.ndarray) -> None:
         """
@@ -192,6 +194,7 @@ class BaseGoExplore:
         cell_factory: CellFactory,
         count_pow: float = 2.0,
         traj_step: int = 2,
+        distance_threshold: float = 1.0,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
@@ -199,11 +202,17 @@ class BaseGoExplore:
     ) -> None:
         # Wrap the env
         def env_func():
-            return Goalify(maybe_make_env(env, verbose), cell_factory, count_pow=count_pow, traj_step=traj_step)
+            return Goalify(
+                maybe_make_env(env, verbose),
+                cell_factory,
+                count_pow=count_pow,
+                traj_step=traj_step,
+                distance_threshold=distance_threshold,
+            )
 
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
-        replay_buffer_kwargs.update(dict(cell_factory=cell_factory))
+        replay_buffer_kwargs.update(dict(cell_factory=cell_factory, distance_threshold=distance_threshold))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {"learning_starts": 3000} if model_kwargs is None else model_kwargs
         self.model = model_class(
