@@ -15,6 +15,7 @@ from stable_baselines3.common.type_aliases import MaybeCallback
 from go_explore.archive import ArchiveBuffer
 from go_explore.cells import AtariGrayscaleDownscale, CellFactory
 from go_explore.feature_extractor import GoExploreExtractor
+from go_explore.inverse_model import InverseModel
 
 
 class Goalify(gym.Wrapper):
@@ -30,7 +31,6 @@ class Goalify(gym.Wrapper):
     def __init__(
         self,
         env: Env,
-        cell_factory: CellFactory,
         nb_random_exploration_steps: int = 30,
         window_size: int = 10,
         count_pow: float = 2.0,
@@ -39,13 +39,10 @@ class Goalify(gym.Wrapper):
     ) -> None:
         super().__init__(env)
         # Set a goal-conditionned observation space
-        self.cell_factory = cell_factory
         self.observation_space = spaces.Dict(
             {
                 "observation": copy.deepcopy(self.env.observation_space),
-                "cell": copy.deepcopy(self.cell_factory.cell_space),
                 "goal": copy.deepcopy(self.env.observation_space),
-                "goal_cell": copy.deepcopy(self.cell_factory.cell_space),
             }
         )
         self.archive = None  # type: ArchiveBuffer
@@ -67,35 +64,46 @@ class Goalify(gym.Wrapper):
 
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
-        cell = self.cell_factory(obs)
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        self.goal_trajectory, self.cell_trajectory = self.archive.sample_trajectory(self.count_pow, self.traj_step)
+        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory(self.count_pow, self.traj_step)
         if is_image_space(self.observation_space["goal"]):
             self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
         self._goal_idx = 0
         self.done_countdown = self.nb_random_exploration_steps
         self._is_last_goal_reached = False  # useful flag
-        dict_obs = self._get_dict_obs(obs, cell)  # turn into dict
+        dict_obs = self._get_dict_obs(obs)  # turn into dict
         return dict_obs
 
-    def _get_dict_obs(self, obs: np.ndarray, cell: np.ndarray) -> Dict[str, np.ndarray]:
+    def _get_dict_obs(self, obs: np.ndarray) -> Dict[str, np.ndarray]:
         return {
             "observation": obs.astype(np.float32),
             "goal": self.goal_trajectory[self._goal_idx].astype(np.float32),
-            "cell": cell.astype(np.float32),
-            "goal_cell": self.cell_trajectory[self._goal_idx].astype(np.float32),
         }
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
         obs, reward, done, info = self.env.step(action)
         # Compute reward (has to be done before moving to next goal)
-        cell = self.cell_factory(obs)
-        goal_cell = self.cell_trajectory[self._goal_idx]
-        goal = self.goal_trajectory[self._goal_idx]
-        reward = float(self.compute_reward(obs, goal))
+        embedding = self.archive.encode(obs).detach().cpu().numpy()
 
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
-        self.maybe_move_to_next_goal(cell)
+        upper_idx = min(self._goal_idx + self.window_size, len(self.goal_trajectory))
+        future_goals = self.emb_trajectory[self._goal_idx : upper_idx]
+        dist = np.linalg.norm(embedding - future_goals, axis=1)
+        future_success = dist < self.distance_threshold
+
+        if future_success.any():
+            furthest_futur_success = future_success.argmax()
+            self._goal_idx += furthest_futur_success + 1
+        if self._goal_idx == len(self.goal_trajectory):
+            self._is_last_goal_reached = True
+            self._goal_idx -= 1
+
+        if future_success.any() and furthest_futur_success == 0:
+            # Agent has just reached the current goal
+            reward = 0
+        else:
+            # Agent has reached another goal, or no goal at all
+            reward = -1
 
         # When the last goal is reached, delay the done to allow some random actions
         if self._is_last_goal_reached:
@@ -108,49 +116,8 @@ class Goalify(gym.Wrapper):
         else:
             info["is_success"] = False
 
-        dict_obs = self._get_dict_obs(obs, cell)
+        dict_obs = self._get_dict_obs(obs)
         return dict_obs, reward, done, info
-
-    def compute_reward(self, obs: np.ndarray, goal: np.ndarray, info: Optional[Dict] = None) -> np.ndarray:
-        is_success = self.is_success(obs, goal)
-        return is_success.astype(np.float32) - 1
-
-    def is_success(self, obs: np.ndarray, goal: np.ndarray) -> np.ndarray:
-        """
-        Return True when the observation and the goal observation are in the same cell.
-
-        :param obs: The observation
-        :param goal: The goal observation
-        :return: Success or not
-        """
-        self.cell_factory.inverse_model.eval()
-        device = self.archive.device
-        obs = torch.Tensor(obs).unsqueeze(0).to(device)
-        goal = torch.Tensor(goal).to(device)
-        if len(goal.shape) == 1:
-            goal = goal.unsqueeze(0)
-        latent = self.cell_factory.inverse_model.encoder(obs).detach().cpu().numpy()
-        goal_latent = self.cell_factory.inverse_model.encoder(goal).detach().cpu().numpy()
-        dist = np.linalg.norm(goal_latent - latent, axis=1)
-        return dist < self.distance_threshold
-
-    def maybe_move_to_next_goal(self, cell: np.ndarray) -> None:
-        """
-        Set the next goal idx if necessary.
-
-        From the paper:
-        "When a cell that was reached occurs multiple times in the window, the next goal
-        is the one that follows the last occurence of this repeated goal cell."
-
-        :param obs: The observation
-        """
-        upper_idx = min(self._goal_idx + self.window_size, len(self.goal_trajectory))
-        future_success = self.is_success(cell, self.cell_trajectory[self._goal_idx : upper_idx])
-        if future_success.any():
-            self._goal_idx += future_success.argmax() + 1
-        if self._goal_idx == len(self.goal_trajectory):
-            self._is_last_goal_reached = True
-            self._goal_idx -= 1
 
 
 class CallEveryNTimesteps(BaseCallback):
@@ -191,7 +158,7 @@ class BaseGoExplore:
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
-        cell_factory: CellFactory,
+        inverse_model: InverseModel,
         count_pow: float = 2.0,
         traj_step: int = 2,
         distance_threshold: float = 1.0,
@@ -204,7 +171,6 @@ class BaseGoExplore:
         def env_func():
             return Goalify(
                 maybe_make_env(env, verbose),
-                cell_factory,
                 count_pow=count_pow,
                 traj_step=traj_step,
                 distance_threshold=distance_threshold,
@@ -212,7 +178,7 @@ class BaseGoExplore:
 
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
-        replay_buffer_kwargs.update(dict(cell_factory=cell_factory, distance_threshold=distance_threshold))
+        replay_buffer_kwargs.update(dict(inverse_model=inverse_model, distance_threshold=distance_threshold))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {"learning_starts": 3000} if model_kwargs is None else model_kwargs
         self.model = model_class(
@@ -220,7 +186,7 @@ class BaseGoExplore:
             env,
             replay_buffer_class=ArchiveBuffer,
             replay_buffer_kwargs=replay_buffer_kwargs,
-            # policy_kwargs=policy_kwargs,
+            policy_kwargs=policy_kwargs,
             verbose=verbose,
             **model_kwargs,
         )

@@ -3,14 +3,13 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torch as th
 from gym import spaces
 from stable_baselines3.common.buffers import DictReplayBuffer
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import KEY_TO_GOAL_STRATEGY, GoalSelectionStrategy
+from go_explore.inverse_model import InverseModel
 
-from go_explore.cells import CellFactory
 from go_explore.utils import multinomial
 
 
@@ -19,13 +18,11 @@ class ArchiveBuffer(DictReplayBuffer):
     Archive buffer.
 
     - HER sampling
-    - Sample trajectory of observations based on cells
-    When you change the cell_factory, you need to call `when_cell_factory_updated`.
+    - Sample trajectory of observations embedding density
 
     :param buffer_size: Max number of element in the buffer
     :param observation_space: Observation space
     :param action_space: Action space
-    :param cell_factory: The cell factory
     :param distance_threshold: when the current state and the goa state are under this distance in
         latent space, the agent gets a reward
     :param device:
@@ -51,9 +48,9 @@ class ArchiveBuffer(DictReplayBuffer):
         buffer_size: int,
         observation_space: spaces.Space,
         action_space: spaces.Space,
-        cell_factory: CellFactory,
+        inverse_model: InverseModel,
         distance_threshold: float = 1.0,
-        device: Union[th.device, str] = "cpu",
+        device: Union[torch.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
         handle_timeout_termination: bool = True,
@@ -73,7 +70,6 @@ class ArchiveBuffer(DictReplayBuffer):
         self.n_sampled_goal = n_sampled_goal
         # compute ratio between HER replays and regular replays in percent for online HER sampling
         self.her_ratio = 1 - (1.0 / (self.n_sampled_goal + 1))
-        self.cell_factory = cell_factory
         self.infos = np.array([[{} for _ in range(self.n_envs)] for _ in range(self.buffer_size)])
 
         self.distance_threshold = distance_threshold
@@ -90,6 +86,14 @@ class ArchiveBuffer(DictReplayBuffer):
         self.ep_start = np.zeros((self.buffer_size, self.n_envs), dtype=np.int64)
         self._current_ep_start = np.zeros(self.n_envs, dtype=np.int64)
         self.ep_length = np.zeros((self.buffer_size, self.n_envs), dtype=np.int64)
+
+        self.inverse_model = inverse_model
+        emb_dim = inverse_model.latent_size
+        self.embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
+        self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
+        self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
+        self.next_goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
+        self.embeddings_pos = 0  # Flag used in sample_traj
 
     def __getstate__(self) -> Dict[str, Any]:
         """
@@ -169,55 +173,55 @@ class ArchiveBuffer(DictReplayBuffer):
                 episode_indices = np.arange(self.pos, episode_end) % self.buffer_size
                 self.ep_length[episode_indices, env_idx] = 0
 
-    def recompute_cells(self) -> None:
+    def recompute_embeddings(self) -> None:
         """
-        Re-compute all the cells.
-
-        Call this function when you change the parametrisation of the cell factory.
-        It computes the new cells.
+        Re-compute all the embeddings.
         """
         upper_bound = self.pos if not self.full else self.buffer_size
         # Recompute 256 by 256 to avoid cuda space allocation error.
         k = 0
         while k < upper_bound:
             upper = min(upper_bound, k + 256)
-            self.observations["cell"][k:upper] = self.cell_factory(self.observations["observation"][k:upper])
-            self.observations["goal_cell"][k:upper] = self.cell_factory(self.observations["goal"][k:upper])
-            self.next_observations["cell"][k:upper] = self.cell_factory(self.next_observations["observation"][k:upper])
-            self.next_observations["goal_cell"][k:upper] = self.cell_factory(self.next_observations["goal"][k:upper])
+            self.embeddings[k:upper] = self.encode(self.observations["observation"][k:upper]).detach().cpu().numpy()
+            self.goal_embeddings[k:upper] = self.encode(self.observations["goal"][k:upper]).detach().cpu().numpy()
+            self.next_embeddings[k:upper] = self.encode(self.next_observations["observation"][k:upper]).detach().cpu().numpy()
+            self.next_goal_embeddings[k:upper] = self.encode(self.next_observations["goal"][k:upper]).detach().cpu().numpy()
             k += 256
+        self.embeddings_pos = upper_bound  # Flag used in sample_traj
+
+    def encode(self, obs: np.ndarray) -> torch.Tensor:
+        obs = self.to_torch(obs).float()
+        self.inverse_model.eval()
+        return self.inverse_model.encoder(obs)
 
     def sample_trajectory(self, count_pow: float = 0.0, step: int = 1) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
-        Sample a trajcetory of observations based on the cells counts and trajectories.
+        Sample a trajcetory of observations based on the embeddings density.
 
-        A goal cell is sampled with weight 1/count**count_pow. Then the shortest
-        trajectory to the cell is computed and returned.
+        A goal is sampled with weight 1/density**count_pow.
 
         :return: A list of observations as array
         """
-        upper_bound = self.pos if not self.full else self.buffer_size
-        if upper_bound == 0:  # no cells yet
-            goal = self.observation_space["goal"].sample()
-            return [goal], [self.cell_factory(goal)]
 
-        all_cells = self.next_observations["cell"][:upper_bound]
-        all_cells = all_cells.reshape(upper_bound * self.n_envs, -1)
-        all_cells = th.from_numpy(all_cells).to(self.device)
-        _, cells_uid, counts = th.unique(all_cells, return_inverse=True, return_counts=True, dim=0)
-        weights = 1 / th.pow(counts, count_pow)
-        goal_cell_id = multinomial(weights)
-        cell_id_traj = cells_uid.view(upper_bound, self.n_envs)
-        goal_pos, goal_env = th.where(cell_id_traj == goal_cell_id)
-        goal_pos, goal_env = goal_pos.cpu().numpy(), goal_env.cpu().numpy()
-        dist_to = goal_pos - self.ep_start[goal_pos, goal_env]
-        shortest = dist_to.argmin()
-        goal_pos, env = goal_pos[shortest].item(), goal_env[shortest].item()
-        start = self.ep_start[goal_pos, env]
-        trajectory = self.next_observations["observation"][start : goal_pos + 1, env]
-        cell_trajectory = self.next_observations["cell"][start : goal_pos + 1, env]
-        trajectory, cell_trajectory = np.flip(trajectory[::-step], 0), np.flip(cell_trajectory[::-step], 0)
-        return trajectory, cell_trajectory
+        if self.embeddings_pos == 0:  # no embeddings computed yet
+            goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
+            return goal, self.encode(goal).detach().cpu().numpy()
+
+        all_embeddings = self.next_embeddings[: self.embeddings_pos]
+        all_embeddings = all_embeddings.reshape(self.embeddings_pos * self.n_envs, -1)
+        all_embeddings = self.to_torch(all_embeddings)
+        dist = torch.cdist(all_embeddings, all_embeddings)
+        dist_nn = dist.topk(10, largest=False)[0]
+        inv_density = dist_nn.sum(1)
+        weights = torch.pow(inv_density, count_pow)
+        goal_id = multinomial(weights)
+        goal_pos = torch.div(goal_id, self.n_envs, rounding_mode='floor').cpu().numpy()
+        goal_env = (goal_id % self.n_envs).cpu().numpy()
+        start = self.ep_start[goal_pos, goal_env]
+        trajectory = self.next_observations["observation"][start : goal_pos + 1, goal_env]
+        emb_trajectory = self.next_embeddings[start : goal_pos + 1, goal_env]
+        trajectory, emb_trajectory = np.flip(trajectory[::-step], 0), np.flip(emb_trajectory[::-step], 0)
+        return trajectory, emb_trajectory
 
     def sample(self, batch_size: int, env: Optional[VecNormalize] = None) -> DictReplayBufferSamples:
         """
@@ -250,16 +254,16 @@ class ArchiveBuffer(DictReplayBuffer):
 
         # Concatenate real and virtual data
         observations = {
-            key: th.cat((real_data.observations[key], virtual_data.observations[key]))
+            key: torch.cat((real_data.observations[key], virtual_data.observations[key]))
             for key in virtual_data.observations.keys()
         }
-        actions = th.cat((real_data.actions, virtual_data.actions))
+        actions = torch.cat((real_data.actions, virtual_data.actions))
         next_observations = {
-            key: th.cat((real_data.next_observations[key], virtual_data.next_observations[key]))
+            key: torch.cat((real_data.next_observations[key], virtual_data.next_observations[key]))
             for key in virtual_data.next_observations.keys()
         }
-        dones = th.cat((real_data.dones, virtual_data.dones))
-        rewards = th.cat((real_data.rewards, virtual_data.rewards))
+        dones = torch.cat((real_data.dones, virtual_data.dones))
+        rewards = torch.cat((real_data.rewards, virtual_data.rewards))
 
         return DictReplayBufferSamples(
             observations=observations,
@@ -284,20 +288,19 @@ class ArchiveBuffer(DictReplayBuffer):
         # Get infos and obs
         obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}
         next_obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()}
+        next_embeddings = self.next_embeddings[batch_inds, env_indices, :]
+        goal_embeddings = self.goal_embeddings[batch_inds, env_indices, :]
         if her_relabeling:
             # Sample and set new goals
-            new_goals, new_goal_cells = self._sample_goals(batch_inds, env_indices)
+            new_goals, goal_embeddings = self._sample_goals(batch_inds, env_indices)
             obs["goal"] = new_goals
-            obs["goal_cell"] = new_goal_cells
             # The goal for the next observation must be the same as the previous one. TODO: Why ?
             next_obs["goal"] = new_goals
-            next_obs["goal_cell"] = new_goal_cells
+
         # Compute new reward
-        self.cell_factory.inverse_model.eval()
-        latent = self.cell_factory.inverse_model.encoder(self.to_torch(next_obs["observation"])).detach().cpu().numpy()
-        goal_latent = self.cell_factory.inverse_model.encoder(self.to_torch(obs["goal"])).detach().cpu().numpy()
-        dist = np.linalg.norm(goal_latent - latent, axis=1)
-        rewards = (dist < self.distance_threshold).astype(np.float32) - 1
+        dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
+        is_success = dist < self.distance_threshold
+        rewards = is_success.astype(np.float32) - 1
 
         obs = self._normalize_obs(obs)
         next_obs = self._normalize_obs(next_obs)
@@ -347,7 +350,7 @@ class ArchiveBuffer(DictReplayBuffer):
         transition_indices = (transition_indices_in_episode + batch_ep_start) % self.buffer_size
         return (
             self.next_observations["observation"][transition_indices, env_indices],
-            self.next_observations["cell"][transition_indices, env_indices],
+            self.next_embeddings[transition_indices, env_indices],
         )
 
     def truncate_last_trajectory(self) -> None:

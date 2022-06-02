@@ -20,8 +20,7 @@ from go_explore.utils import ImageSaver, is_image, round
 class InverseModelLearner(BaseCallback):
     def __init__(
         self,
-        inverse_model: InverseModel,
-        buffer: ArchiveBuffer,
+        archive: ArchiveBuffer,
         batch_size: int = 128,
         lr: float = 1e-3,
         train_freq: int = 10_000,
@@ -30,24 +29,23 @@ class InverseModelLearner(BaseCallback):
         verbose: int = 0,
     ):
         super().__init__(verbose)
-        self.inverse_model = inverse_model
-        self.buffer = buffer
+        self.archive = archive
         self.batch_size = batch_size
         self.train_freq = train_freq
         self.gradient_steps = gradient_steps
         self.first_update = first_update
 
-        self.optimizer = optim.Adam(self.inverse_model.parameters(), lr=lr, weight_decay=1e-5)
+        self.optimizer = optim.Adam(self.archive.inverse_model.parameters(), lr=lr, weight_decay=1e-5)
 
     def _on_step(self):
         if self.n_calls == self.first_update or (self.n_calls - self.first_update) % self.train_freq == 0:
             for _ in range(self.gradient_steps):
                 self.train_once()
-            self.buffer.recompute_cells()
+            self.archive.recompute_embeddings()
 
     def train_once(self):
         try:
-            sample = self.buffer.sample(self.batch_size)
+            sample = self.archive.sample(self.batch_size)
             observations = sample.observations
             next_observations = sample.next_observations
             actions = sample.actions
@@ -63,8 +61,8 @@ class InverseModelLearner(BaseCallback):
             next_observations = next_observations.float() / 255
 
         # Compute the output image
-        self.inverse_model.train()
-        pred_actions = self.inverse_model(observations, next_observations)
+        self.archive.inverse_model.train()
+        pred_actions = self.archive.inverse_model(observations, next_observations)
 
         # Compute the loss
         pred_loss = F.mse_loss(actions, pred_actions)
@@ -119,16 +117,16 @@ class GoExploreInverseModel(BaseGoExplore):
     ) -> None:
         env = maybe_make_env(env, verbose)
         if is_image_space(env.observation_space):
-            self.inverse_model = ConvInverseModel(env.action_space.shape[0], 16).to(get_device("auto"))
+            inverse_model = ConvInverseModel(env.action_space.shape[0], 16).to(get_device("auto"))
         else:
-            self.inverse_model = LinearInverseModel(
+            inverse_model = LinearInverseModel(
                 obs_size=env.observation_space.shape[0], action_size=env.action_space.shape[0], latent_size=2
             ).to(get_device("auto"))
-        cell_factory = InverseModelCelling(self.inverse_model, decimals=decimals)
+        # cell_factory = InverseModelCelling(self.inverse_model, decimals=decimals)
         super().__init__(
             model_class,
             env,
-            cell_factory,
+            inverse_model,
             count_pow,
             traj_step,
             distance_threshold,
@@ -138,7 +136,7 @@ class GoExploreInverseModel(BaseGoExplore):
             verbose,
         )
 
-    def explore(self, total_timesteps: int, update_cell_factory_freq=10_000, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int, update_cell_factory_freq=2_000, reset_num_timesteps: bool = False) -> None:
         """
         Run exploration.
 
@@ -148,11 +146,10 @@ class GoExploreInverseModel(BaseGoExplore):
         """
         callback = [
             InverseModelLearner(
-                self.inverse_model,
                 self.archive,
                 train_freq=update_cell_factory_freq,
                 gradient_steps=update_cell_factory_freq,
-                first_update=3_000,
+                first_update=1_000,
             ),
             ImageSaver(self.model.env, save_freq=5000),
         ]

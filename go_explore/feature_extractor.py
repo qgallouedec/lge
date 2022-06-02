@@ -17,11 +17,15 @@ class GoExploreExtractor(BaseFeaturesExtractor):
         256 to avoid exploding network sizes.
     """
 
-    def __init__(self, observation_space: gym.spaces.Dict, cnn_output_dim: int = 256):
+    def __init__(self, observation_space: gym.spaces.Dict, cnn_output_dim: int = 256, shared_net=False):
         super(GoExploreExtractor, self).__init__(observation_space, features_dim=1)
 
         if is_image_space(observation_space["observation"]):
             self.observation_extractor = NatureCNN(observation_space["observation"], features_dim=cnn_output_dim)
+            if shared_net:
+                self.goal_extractor = self.observation_extractor
+            else:
+                self.goal_extractor = NatureCNN(observation_space["goal"], features_dim=cnn_output_dim)
             observation_feature_size = cnn_output_dim
         else:
             # The observation key is a vector, flatten it if needed
@@ -29,12 +33,18 @@ class GoExploreExtractor(BaseFeaturesExtractor):
             self.observation_extractor = nn.Sequential(
                 nn.Flatten(), nn.Linear(observation_feature_size, observation_feature_size)
             )
+            if shared_net:
+                self.goal_extractor = self.observation_extractor
+            else:
+                self.goal_extractor = nn.Sequential(
+                    nn.Flatten(), nn.Linear(observation_feature_size, observation_feature_size)
+                )
 
         # Update the features dim manually
         self._features_dim = 2 * observation_feature_size
 
     def forward(self, observations: TensorDict) -> th.Tensor:
         features = th.cat(
-            [self.observation_extractor(observations["observation"]), self.observation_extractor(observations["goal"])], dim=1
+            [self.observation_extractor(observations["observation"]), self.goal_extractor(observations["goal"])], dim=1
         )
         return features
