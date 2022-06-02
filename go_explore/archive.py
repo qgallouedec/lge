@@ -93,7 +93,8 @@ class ArchiveBuffer(DictReplayBuffer):
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.next_goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
-        self.inv_density = None
+        self.inv_density = np.zeros((self.buffer_size * self.n_envs), dtype=np.float32)
+        self.embedding_computed = 0
 
     def __getstate__(self) -> Dict[str, Any]:
         """
@@ -191,9 +192,16 @@ class ArchiveBuffer(DictReplayBuffer):
         all_embeddings = self.next_embeddings[:upper_bound]
         all_embeddings = all_embeddings.reshape(upper_bound * self.n_envs, -1)
         all_embeddings = self.to_torch(all_embeddings)
-        dist = torch.cdist(all_embeddings, all_embeddings)
-        dist_nn = dist.topk(30, largest=False)[0]
-        self.inv_density = dist_nn.sum(1)
+        k = 0
+        while k < upper_bound:
+            upper = min(upper_bound, k + 256)
+            embeddings = all_embeddings[k:upper]
+            dist = torch.cdist(embeddings, all_embeddings)
+            dist_nn = dist.topk(30, largest=False)[0]
+            self.inv_density[k:upper] = dist_nn.sum(1)
+            k += 256
+
+        self.embedding_computed = upper_bound
 
     def encode(self, obs: np.ndarray) -> torch.Tensor:
         obs = self.to_torch(obs).float()
@@ -209,11 +217,12 @@ class ArchiveBuffer(DictReplayBuffer):
         :return: A list of observations as array
         """
 
-        if self.inv_density is None:  # no embeddings computed yet
+        if self.embedding_computed == 0:  # no embeddings computed yet
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
 
-        weights = torch.pow(self.inv_density, count_pow)
+        inv_density = self.to_torch(self.inv_density[: self.embedding_computed])
+        weights = torch.pow(inv_density, count_pow)
         goal_id = multinomial(weights)
         goal_pos = torch.div(goal_id, self.n_envs, rounding_mode="floor").cpu().numpy()
         goal_env = (goal_id % self.n_envs).cpu().numpy()
