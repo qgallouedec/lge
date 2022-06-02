@@ -198,7 +198,8 @@ class ArchiveBuffer(DictReplayBuffer):
             embeddings = all_embeddings[k:upper]
             dist = torch.cdist(embeddings, all_embeddings)
             dist_nn = dist.topk(30, largest=False)[0]
-            self.inv_density[k:upper] = dist_nn.sum(1)
+            inv_density = dist_nn.sum(1).detach().cpu().numpy()
+            self.inv_density[k:upper] = inv_density
             k += 256
 
         self.embedding_computed = upper_bound
