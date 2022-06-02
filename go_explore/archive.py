@@ -93,7 +93,7 @@ class ArchiveBuffer(DictReplayBuffer):
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.next_goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
-        self.embeddings_pos = 0  # Flag used in sample_traj
+        self.inv_density = None
 
     def __getstate__(self) -> Dict[str, Any]:
         """
@@ -187,7 +187,13 @@ class ArchiveBuffer(DictReplayBuffer):
             self.next_embeddings[k:upper] = self.encode(self.next_observations["observation"][k:upper]).detach().cpu().numpy()
             self.next_goal_embeddings[k:upper] = self.encode(self.next_observations["goal"][k:upper]).detach().cpu().numpy()
             k += 256
-        self.embeddings_pos = upper_bound  # Flag used in sample_traj
+
+        all_embeddings = self.next_embeddings[:upper_bound]
+        all_embeddings = all_embeddings.reshape(upper_bound * self.n_envs, -1)
+        all_embeddings = self.to_torch(all_embeddings)
+        dist = torch.cdist(all_embeddings, all_embeddings)
+        dist_nn = dist.topk(30, largest=False)[0]
+        self.inv_density = dist_nn.sum(1)
 
     def encode(self, obs: np.ndarray) -> torch.Tensor:
         obs = self.to_torch(obs).float()
@@ -203,19 +209,13 @@ class ArchiveBuffer(DictReplayBuffer):
         :return: A list of observations as array
         """
 
-        if self.embeddings_pos == 0:  # no embeddings computed yet
+        if self.inv_density is None:  # no embeddings computed yet
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
 
-        all_embeddings = self.next_embeddings[: self.embeddings_pos]
-        all_embeddings = all_embeddings.reshape(self.embeddings_pos * self.n_envs, -1)
-        all_embeddings = self.to_torch(all_embeddings)
-        dist = torch.cdist(all_embeddings, all_embeddings)
-        dist_nn = dist.topk(10, largest=False)[0]
-        inv_density = dist_nn.sum(1)
-        weights = torch.pow(inv_density, count_pow)
+        weights = torch.pow(self.inv_density, count_pow)
         goal_id = multinomial(weights)
-        goal_pos = torch.div(goal_id, self.n_envs, rounding_mode='floor').cpu().numpy()
+        goal_pos = torch.div(goal_id, self.n_envs, rounding_mode="floor").cpu().numpy()
         goal_env = (goal_id % self.n_envs).cpu().numpy()
         start = self.ep_start[goal_pos, goal_env]
         trajectory = self.next_observations["observation"][start : goal_pos + 1, goal_env]

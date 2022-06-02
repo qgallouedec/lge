@@ -180,7 +180,7 @@ class BaseGoExplore:
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
         replay_buffer_kwargs.update(dict(inverse_model=inverse_model, distance_threshold=distance_threshold))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
-        model_kwargs = {"learning_starts": 3000} if model_kwargs is None else model_kwargs
+        model_kwargs = {"learning_starts": 3_000} if model_kwargs is None else model_kwargs
         self.model = model_class(
             "MultiInputPolicy",
             env,

@@ -106,10 +106,9 @@ class GoExploreInverseModel(BaseGoExplore):
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
-        count_pow: float = 2.0,
-        traj_step: int = 2,
+        count_pow: float = 0.5,
+        traj_step: int = 3,
         distance_threshold: float = 1.0,
-        decimals: float = 0.0,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
@@ -122,7 +121,6 @@ class GoExploreInverseModel(BaseGoExplore):
             inverse_model = LinearInverseModel(
                 obs_size=env.observation_space.shape[0], action_size=env.action_space.shape[0], latent_size=2
             ).to(get_device("auto"))
-        # cell_factory = InverseModelCelling(self.inverse_model, decimals=decimals)
         super().__init__(
             model_class,
             env,
@@ -136,7 +134,7 @@ class GoExploreInverseModel(BaseGoExplore):
             verbose,
         )
 
-    def explore(self, total_timesteps: int, update_cell_factory_freq=2_000, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int, update_cell_factory_freq=5_000, reset_num_timesteps: bool = False) -> None:
         """
         Run exploration.
 
@@ -151,6 +149,6 @@ class GoExploreInverseModel(BaseGoExplore):
                 gradient_steps=update_cell_factory_freq,
                 first_update=1_000,
             ),
-            ImageSaver(self.model.env, save_freq=5000),
+            ImageSaver(self.model.env, save_freq=5_000),
         ]
         super().explore(total_timesteps, callback=callback, reset_num_timesteps=reset_num_timesteps)
