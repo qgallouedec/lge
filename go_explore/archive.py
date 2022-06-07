@@ -89,10 +89,8 @@ class ArchiveBuffer(DictReplayBuffer):
 
         self.inverse_model = inverse_model
         emb_dim = inverse_model.latent_size
-        self.embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
-        self.next_goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.density = np.zeros((self.buffer_size * self.n_envs), dtype=np.float32)
         self.embedding_computed = 0
 
@@ -183,10 +181,8 @@ class ArchiveBuffer(DictReplayBuffer):
         k = 0
         while k < upper_bound:
             upper = min(upper_bound, k + 256)
-            self.embeddings[k:upper] = self.encode(self.observations["observation"][k:upper]).detach().cpu().numpy()
             self.goal_embeddings[k:upper] = self.encode(self.observations["goal"][k:upper]).detach().cpu().numpy()
             self.next_embeddings[k:upper] = self.encode(self.next_observations["observation"][k:upper]).detach().cpu().numpy()
-            self.next_goal_embeddings[k:upper] = self.encode(self.next_observations["goal"][k:upper]).detach().cpu().numpy()
             k += 256
 
         all_embeddings = self.next_embeddings[:upper_bound]
