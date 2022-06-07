@@ -106,7 +106,7 @@ class GoExploreInverseModel(BaseGoExplore):
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
-        count_pow: float = 0.5,
+        density_pow: float = -2.0,
         traj_step: int = 3,
         distance_threshold: float = 1.0,
         n_envs: int = 1,
@@ -125,7 +125,7 @@ class GoExploreInverseModel(BaseGoExplore):
             model_class,
             env,
             inverse_model,
-            count_pow,
+            density_pow,
             traj_step,
             distance_threshold,
             n_envs,
@@ -134,7 +134,7 @@ class GoExploreInverseModel(BaseGoExplore):
             verbose,
         )
 
-    def explore(self, total_timesteps: int, update_cell_factory_freq=5_000, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int, update_cell_factory_freq=1_000, reset_num_timesteps: bool = False) -> None:
         """
         Run exploration.
 

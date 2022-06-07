@@ -233,3 +233,21 @@ def round(input: torch.Tensor, decimals: float) -> torch.Tensor:
     tensor([0.0000, 0.6310, 0.6310, 1.2619, 1.8929])
     """
     return torch.round(input * 10**decimals) / 10**decimals
+
+
+def estimate_density(x: torch.Tensor, samples: torch.Tensor) -> torch.Tensor:
+    """
+    Estimate the density of x within the dataset
+
+    :param x: Points to evaluate density
+    :type x: torch.Tensor
+    :param dataset: The samples from the distribution to estimate
+    :type dataset: torch.Tensor
+    :return: The estiamte density on x
+    :rtype: torch.Tensor
+    """
+    n, d = samples.shape
+    k = int(2 * n ** (1 / d))
+    cdist = torch.cdist(x, samples)
+    dist_to_kst = cdist.topk(k, largest=False)[0][:, -1]
+    return dist_to_kst ** (-d)

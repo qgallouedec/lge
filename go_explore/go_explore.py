@@ -33,7 +33,7 @@ class Goalify(gym.Wrapper):
         env: Env,
         nb_random_exploration_steps: int = 30,
         window_size: int = 10,
-        count_pow: float = 2.0,
+        density_pow: float = -2.0,
         traj_step: int = 2,
         distance_threshold: float = 1.0,
     ) -> None:
@@ -48,7 +48,7 @@ class Goalify(gym.Wrapper):
         self.archive = None  # type: ArchiveBuffer
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
-        self.count_pow = count_pow
+        self.density_pow = density_pow
         self.traj_step = traj_step
         self.distance_threshold = distance_threshold
 
@@ -65,7 +65,7 @@ class Goalify(gym.Wrapper):
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory(self.count_pow, self.traj_step)
+        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory(self.density_pow, self.traj_step)
         if is_image_space(self.observation_space["goal"]):
             self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
         self._goal_idx = 0
@@ -159,7 +159,7 @@ class BaseGoExplore:
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
         inverse_model: InverseModel,
-        count_pow: float = 2.0,
+        density_pow: float = -2.0,
         traj_step: int = 2,
         distance_threshold: float = 1.0,
         n_envs: int = 1,
@@ -171,7 +171,7 @@ class BaseGoExplore:
         def env_func():
             return Goalify(
                 maybe_make_env(env, verbose),
-                count_pow=count_pow,
+                density_pow=density_pow,
                 traj_step=traj_step,
                 distance_threshold=distance_threshold,
             )
@@ -221,7 +221,7 @@ class GoExploreOriginal(BaseGoExplore):
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
-        count_pow: float = 2.0,
+        density_pow: float = -2.0,
         split_factor: float = 0.125,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
@@ -229,7 +229,7 @@ class GoExploreOriginal(BaseGoExplore):
         verbose: int = 0,
     ) -> None:
         cell_factory = AtariGrayscaleDownscale(height=5, width=5, nb_shades=10)
-        super().__init__(model_class, env, cell_factory, count_pow, n_envs, replay_buffer_kwargs, model_kwargs, verbose)
+        super().__init__(model_class, env, cell_factory, density_pow, n_envs, replay_buffer_kwargs, model_kwargs, verbose)
         self.split_factor = split_factor
 
     def _update_cell_factory_param(self) -> None:

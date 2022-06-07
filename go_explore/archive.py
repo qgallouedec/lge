@@ -10,7 +10,7 @@ from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import KEY_TO_GOAL_STRATEGY, GoalSelectionStrategy
 from go_explore.inverse_model import InverseModel
 
-from go_explore.utils import multinomial
+from go_explore.utils import multinomial, estimate_density
 
 
 class ArchiveBuffer(DictReplayBuffer):
@@ -93,7 +93,7 @@ class ArchiveBuffer(DictReplayBuffer):
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.next_goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
-        self.inv_density = np.zeros((self.buffer_size * self.n_envs), dtype=np.float32)
+        self.density = np.zeros((self.buffer_size * self.n_envs), dtype=np.float32)
         self.embedding_computed = 0
 
     def __getstate__(self) -> Dict[str, Any]:
@@ -196,10 +196,8 @@ class ArchiveBuffer(DictReplayBuffer):
         while k < upper_bound:
             upper = min(upper_bound, k + 256)
             embeddings = all_embeddings[k:upper]
-            dist = torch.cdist(embeddings, all_embeddings)
-            dist_nn = dist.topk(30, largest=False)[0]
-            inv_density = dist_nn.sum(1).detach().cpu().numpy()
-            self.inv_density[k:upper] = inv_density
+            density = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
+            self.density[k:upper] = density
             k += 256
 
         self.embedding_computed = upper_bound
@@ -209,11 +207,11 @@ class ArchiveBuffer(DictReplayBuffer):
         self.inverse_model.eval()
         return self.inverse_model.encoder(obs)
 
-    def sample_trajectory(self, count_pow: float = 0.0, step: int = 1) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def sample_trajectory(self, density_pow: float = 0.0, step: int = 1) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Sample a trajcetory of observations based on the embeddings density.
 
-        A goal is sampled with weight 1/density**count_pow.
+        A goal is sampled with weight density**density_pow.
 
         :return: A list of observations as array
         """
@@ -222,8 +220,8 @@ class ArchiveBuffer(DictReplayBuffer):
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
 
-        inv_density = self.to_torch(self.inv_density[: self.embedding_computed])
-        weights = torch.pow(inv_density, count_pow)
+        density = self.to_torch(self.density[: self.embedding_computed])
+        weights = torch.pow(density, density_pow)
         goal_id = multinomial(weights)
         goal_pos = torch.div(goal_id, self.n_envs, rounding_mode="floor").cpu().numpy()
         goal_env = (goal_id % self.n_envs).cpu().numpy()
