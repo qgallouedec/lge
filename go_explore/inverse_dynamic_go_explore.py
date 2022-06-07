@@ -11,10 +11,9 @@ from stable_baselines3.common.utils import get_device
 from torch import optim
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import CellFactory
 from go_explore.go_explore import BaseGoExplore
-from go_explore.inverse_model import ConvInverseModel, InverseModel, LinearInverseModel
-from go_explore.utils import ImageSaver, is_image, round
+from go_explore.inverse_model import ConvInverseModel, LinearInverseModel
+from go_explore.utils import ImageSaver, is_image
 
 
 class InverseModelLearner(BaseCallback):
@@ -74,29 +73,6 @@ class InverseModelLearner(BaseCallback):
         self.optimizer.step()
 
         self.logger.record("inverse_model/pred_loss", pred_loss.item())
-
-
-class InverseModelCelling(CellFactory):
-    """"""
-
-    def __init__(self, inverse_model: InverseModel, decimals: float = 1.0) -> None:
-        self.inverse_model = inverse_model
-        self.obs_shape = self.inverse_model.obs_shape
-        self.cell_space = spaces.Box(0, 1, (self.inverse_model.latent_size,))
-        self.decimals = decimals
-
-    def compute_cells(self, observations: torch.Tensor) -> torch.Tensor:
-        """
-        Compute the cells.
-
-        :param observations: Observations
-        :return: A tensor of cells
-        """
-        observations = observations.float()
-        self.inverse_model.eval()
-        latent = self.inverse_model.encoder(observations)  # TODO: handle image observation by /255
-        quantized_latent = round(latent, decimals=self.decimals) + 0.0
-        return quantized_latent
 
 
 class GoExploreInverseModel(BaseGoExplore):

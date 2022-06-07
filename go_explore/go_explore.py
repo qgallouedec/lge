@@ -13,7 +13,6 @@ from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.type_aliases import MaybeCallback
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import AtariGrayscaleDownscale, CellFactory
 from go_explore.feature_extractor import GoExploreExtractor
 from go_explore.inverse_model import InverseModel
 
