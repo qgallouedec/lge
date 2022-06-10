@@ -1,32 +1,33 @@
-from typing import Iterable, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import cv2
 import gym
 import numpy as np
 import torch
 from gym import Env, spaces
+from gym.envs.atari import AtariEnv
 from PIL import Image
 from stable_baselines3.common.callbacks import BaseCallback
 
 ATARI_ACTIONS = [
-    "NOOP",
-    "FIRE",
-    "UP",
-    "RIGHT",
-    "LEFT",
-    "DOWN",
-    "UPRIGHT",
-    "UPLEFT",
-    "DOWNRIGHT",
-    "DOWNLEFT",
-    "UPFIRE",
-    "RIGHTFIRE",
-    "LEFTFIRE",
-    "DOWNFIRE",
-    "UPRIGHTFIRE",
-    "UPLEFTFIRE",
-    "DOWNRIGHTFIRE",
-    "DOWNLEFTFIRE",
+    "NOOP",  # 0
+    "FIRE",  # 1
+    "UP",  # 2
+    "RIGHT",  # 3
+    "LEFT",  # 4
+    "DOWN",  # 5
+    "UPRIGHT",  # 6
+    "UPLEFT",  # 7
+    "DOWNRIGHT",  # 8
+    "DOWNLEFT",  # 9
+    "UPFIRE",  # 10
+    "RIGHTFIRE",  # 11
+    "LEFTFIRE",  # 12
+    "DOWNFIRE",  # 13
+    "UPRIGHTFIRE",  # 14
+    "UPLEFTFIRE",  # 15
+    "DOWNRIGHTFIRE",  # 16
+    "DOWNLEFTFIRE",  # 17
 ]
 
 
@@ -113,7 +114,7 @@ def build_image(images: List[torch.Tensor]) -> Image:
 def is_image(x: torch.Tensor) -> bool:
     """Whether the input is an image, or a batch of images"""
     shape = x.shape
-    if len(shape) >= 3 and 3 in shape:
+    if len(shape) >= 3 and 3 in shape or 12 in shape:
         return True
     else:
         return False
@@ -188,25 +189,72 @@ class AtariWrapper(gym.Wrapper):
         return obs_buf
 
 
-def detect_private_eye_end_frame(obs: np.ndarray) -> bool:
-    """Return whether the agent is at the frame on the border of the ma in PrivateEye."""
-    hmin, hmax = 65, 72
-    lmin, lmax = 54, 60
+def get_montezuma_revenge_info(env: AtariEnv) -> Dict:
+    """
+    Get some infos from the RAM of the game.
 
-    # If and only if the agent is in this room in the game, this square shoould be equal to that values:
-    ref = np.array(
-        [
-            [[114, 126, 45], [135, 163, 62], [135, 169, 69], [135, 183, 84], [135, 183, 84], [135, 183, 84]],
-            [[149, 149, 43], [140, 140, 32], [140, 140, 32], [140, 140, 32], [140, 147, 40], [140, 179, 76]],
-            [[170, 170, 53], [191, 191, 55], [191, 191, 55], [191, 191, 55], [191, 191, 55], [191, 191, 55]],
-            [[134, 134, 43], [207, 207, 62], [204, 204, 61], [204, 204, 61], [204, 204, 61], [204, 204, 61]],
-            [[158, 158, 40], [137, 137, 30], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29]],
-            [[134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29]],
-            [[134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29], [134, 134, 29]],
-        ],
-        dtype=np.uint8,
+    :param env: The MontezumaRevenge env
+    :type env: AtariEnv
+    :return: _description_
+    :rtype: _type_
+    """
+    assert env.spec.id == "ALE/MontezumaRevenge-v5", "function only functional with Montezuma Revenge env."
+    ram = env.ale.getRAM()
+    item_str = format(ram[65], "8b")
+    return dict(
+        frame_number=ram[0],
+        room_number=ram[3],
+        x=ram[42],
+        y=ram[43],
+        score=10000 * ram[19] + 100 * ram[20] + ram[21],
+        life_number=ram[58],
+        have_amulet=item_str[7] == "1",
+        have_key1=item_str[6] == "1",
+        have_key2=item_str[5] == "1",
+        have_key3=item_str[4] == "1",
+        have_key4=item_str[3] == "1",
+        have_sword=item_str[2] == "1",
+        have_spare=item_str[1] == "1",
+        have_torch=item_str[0] == "1",
     )
-    return (obs[hmin:hmax, lmin:lmax] == ref).all()
+
+
+class MontezumaRevengeWrapper(AtariWrapper):
+    def step(self, action):
+        obs, reward, done, info = super().step(action)
+        extra_info = get_montezuma_revenge_info(self.env)
+        info = {**info, **extra_info}
+        return obs, reward, done, info
+
+
+def get_private_eye_info(env: AtariEnv) -> Dict:
+    """
+    Get some infos from the RAM of the game.
+
+    :param env: The MontezumaRevenge env
+    :type env: AtariEnv
+    :return: _description_
+    :rtype: _type_
+    """
+    assert env.spec.id == "ALE/PrivateEye-v5", "function only functional with Montezuma Revenge env."
+    ram = env.ale.getRAM()
+    item_str = format(ram[65], "8b")
+    return dict(
+        frame_number=ram[0],
+        room_number=ram[3],
+        x=ram[42],
+        y=ram[43],
+        score=10000 * ram[19] + 100 * ram[20] + ram[21],
+        life_number=ram[58],
+        have_amulet=item_str[7] == "1",
+        have_key1=item_str[6] == "1",
+        have_key2=item_str[5] == "1",
+        have_key3=item_str[4] == "1",
+        have_key4=item_str[3] == "1",
+        have_sword=item_str[2] == "1",
+        have_spare=item_str[1] == "1",
+        have_torch=item_str[0] == "1",
+    )
 
 
 def round(input: torch.Tensor, decimals: float) -> torch.Tensor:
