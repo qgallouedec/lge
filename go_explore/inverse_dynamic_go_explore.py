@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Type
+from typing import Any, Callable, Dict, Optional, Type
 
 import torch
 import torch.nn.functional as F
@@ -21,6 +21,7 @@ class InverseModelLearner(BaseCallback):
         self,
         archive: ArchiveBuffer,
         batch_size: int = 128,
+        criterion: Callable = torch.nn.MSELoss(),
         lr: float = 1e-3,
         train_freq: int = 10_000,
         gradient_steps: int = 10_000,
@@ -34,6 +35,7 @@ class InverseModelLearner(BaseCallback):
         self.gradient_steps = gradient_steps
         self.first_update = first_update
 
+        self.criterion = criterion
         self.optimizer = optim.Adam(self.archive.inverse_model.parameters(), lr=lr, weight_decay=1e-5)
 
     def _on_step(self):
@@ -55,24 +57,30 @@ class InverseModelLearner(BaseCallback):
             observations = observations["observation"]
             next_observations = next_observations["observation"]
 
+        # Convert all to float
+        observations = observations.float()
+        next_observations = next_observations.float()
+
+        # Squeeze needed when cross entropy loss
+        actions = sample.actions.squeeze()
+
         if is_image(observations):
-            observations = observations.float() / 255
-            next_observations = next_observations.float() / 255
+            observations = observations / 255
+            next_observations = next_observations / 255
 
         # Compute the output image
         self.archive.inverse_model.train()
         pred_actions = self.archive.inverse_model(observations, next_observations)
 
         # Compute the loss
-        pred_loss = F.mse_loss(actions, pred_actions)
-        loss = pred_loss
+        loss = self.criterion(pred_actions, actions)
 
         # Step the optimizer
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
-        self.logger.record("inverse_model/pred_loss", pred_loss.item())
+        self.logger.record("inverse_model/pred_loss", loss.item())
 
 
 class GoExploreInverseModel(BaseGoExplore):
@@ -92,7 +100,7 @@ class GoExploreInverseModel(BaseGoExplore):
     ) -> None:
         env = maybe_make_env(env, verbose)
         if is_image_space(env.observation_space):
-            inverse_model = ConvInverseModel(env.action_space.shape[0], 16).to(get_device("auto"))
+            inverse_model = ConvInverseModel(env.action_space.n, 16).to(get_device("auto"))
         else:
             inverse_model = LinearInverseModel(
                 obs_size=env.observation_space.shape[0], action_size=env.action_space.shape[0], latent_size=2
@@ -118,9 +126,14 @@ class GoExploreInverseModel(BaseGoExplore):
         :param update_freq: Cells update frequency
         :param reset_num_timesteps: Whether or not to reset the current timestep number (used in logging), defaults to False
         """
+        if type(self.model.env.action_space) == spaces.Discrete:
+            criterion = torch.nn.CrossEntropyLoss()
+        elif type(self.model.env.action_space) == spaces.Box:
+            criterion = torch.nn.MSELoss()
         callback = [
             InverseModelLearner(
                 self.archive,
+                criterion=criterion,
                 train_freq=update_cell_factory_freq,
                 gradient_steps=update_cell_factory_freq,
                 first_update=1_000,

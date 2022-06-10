@@ -8,9 +8,9 @@ from stable_baselines3.common.buffers import DictReplayBuffer
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import KEY_TO_GOAL_STRATEGY, GoalSelectionStrategy
-from go_explore.inverse_model import InverseModel
 
-from go_explore.utils import multinomial, estimate_density
+from go_explore.inverse_model import InverseModel
+from go_explore.utils import estimate_density, is_image
 
 
 class ArchiveBuffer(DictReplayBuffer):
@@ -197,9 +197,17 @@ class ArchiveBuffer(DictReplayBuffer):
             k += 256
 
         self.embedding_computed = upper_bound
+        self.sorted_density = np.argsort(self.density[: self.embedding_computed])
 
     def encode(self, obs: np.ndarray) -> torch.Tensor:
         obs = self.to_torch(obs).float()
+        if is_image(obs):
+            # Convert all to float
+            obs = obs / 255
+            if obs.shape[-1] == 12:
+                obs = obs.transpose(-1, -3)
+            if len(obs.shape) == 3:
+                obs = obs.unsqueeze(0)
         self.inverse_model.eval()
         return self.inverse_model.encoder(obs)
 
@@ -216,11 +224,9 @@ class ArchiveBuffer(DictReplayBuffer):
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
 
-        density = self.to_torch(self.density[: self.embedding_computed])
-        weights = torch.pow(density, density_pow)
-        goal_id = multinomial(weights)
-        goal_pos = torch.div(goal_id, self.n_envs, rounding_mode="floor").cpu().numpy()
-        goal_env = (goal_id % self.n_envs).cpu().numpy()
+        goal_id = self.sorted_density[np.random.geometric(0.01)]
+        goal_pos = goal_id // self.n_envs
+        goal_env = goal_id % self.n_envs
         start = self.ep_start[goal_pos, goal_env]
         trajectory = self.next_observations["observation"][start : goal_pos + 1, goal_env]
         emb_trajectory = self.next_embeddings[start : goal_pos + 1, goal_env]
