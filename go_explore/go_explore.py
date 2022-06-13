@@ -3,7 +3,6 @@ from typing import Any, Callable, Dict, Optional, Tuple, Type
 
 import gym
 import numpy as np
-import torch
 from gym import Env, spaces
 from stable_baselines3.common.base_class import maybe_make_env
 from stable_baselines3.common.callbacks import BaseCallback
@@ -190,7 +189,6 @@ class BaseGoExplore:
             **model_kwargs,
         )
         self.archive = self.model.replay_buffer  # type: ArchiveBuffer
-        self.archive.set_env(env)
         for _env in self.model.env.envs:
             _env.set_archive(self.archive)
 
