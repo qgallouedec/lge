@@ -1,9 +1,9 @@
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
-from stable_baselines3 import HerReplayBuffer
 import torch
 from gym import spaces
+from stable_baselines3 import HerReplayBuffer
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
