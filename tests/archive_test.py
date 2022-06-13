@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Union
 import numpy as np
 import pytest
 import torch
-from gym import Env, GoalEnv, ObservationWrapper, spaces
+from gym import GoalEnv, spaces
 from gym.envs.registration import EnvSpec
 from stable_baselines3 import DDPG, DQN, SAC, TD3
 from stable_baselines3.common.env_util import make_vec_env
@@ -15,7 +15,7 @@ from stable_baselines3.common.type_aliases import GymStepReturn
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 from go_explore.archive import ArchiveBuffer
-from go_explore.cells import CellFactory, CellIsObs, DownscaleObs
+from go_explore.inverse_model import LinearInverseModel
 from go_explore.utils import index
 
 
@@ -208,30 +208,16 @@ class BitFlippingEnv(GoalEnv):
         pass
 
 
-class AlsoReturnCell(ObservationWrapper):
-    def __init__(self, env: Env, cell_factory: CellFactory) -> None:
-        super().__init__(env)
-        self.cell_factory = cell_factory
-        self.observation_space["cell"] = self.cell_factory.cell_space
-        self.observation_space["goal_cell"] = self.cell_factory.cell_space
-
-    def observation(self, observation):
-        observation["cell"] = self.cell_factory(observation["observation"])
-        observation["goal_cell"] = self.cell_factory(observation["goal"])
-        return observation
-
-
 @pytest.mark.parametrize("n_envs", [1, 2])
 @pytest.mark.parametrize("model_class", [SAC, TD3, DDPG, DQN])
 def test_her(n_envs, model_class):
     # Test Hindsight Experience Replay in archive.
-    observation_space = BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN)).observation_space["observation"]
-    cell_factory = CellIsObs(observation_space)
-
     def env_fn():
-        return AlsoReturnCell(BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN)), cell_factory)
+        return BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN))
 
     env = make_vec_env(env_fn, n_envs)
+    n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
 
     model = model_class(
         "MultiInputPolicy",
@@ -240,7 +226,7 @@ def test_her(n_envs, model_class):
         replay_buffer_kwargs=dict(
             n_sampled_goal=2,
             goal_selection_strategy="future",
-            cell_factory=cell_factory,
+            inverse_model=inverse_model,
         ),
         train_freq=4,
         gradient_steps=n_envs,
@@ -248,7 +234,6 @@ def test_her(n_envs, model_class):
         learning_starts=100,
         buffer_size=int(2e4),
     )
-    model.replay_buffer.set_env(model.env)
 
     model.learn(total_timesteps=150)
     evaluate_policy(model, Monitor(env_fn()))
@@ -256,22 +241,20 @@ def test_her(n_envs, model_class):
 
 @pytest.mark.parametrize("model_class", [TD3, DQN])
 def test_multiprocessing(model_class):
-    observation_space = BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN)).observation_space["observation"]
-    cell_factory = CellIsObs(observation_space)
-
     def env_fn():
-        return AlsoReturnCell(BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN)), cell_factory)
+        return BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN))
 
     env = make_vec_env(env_fn, n_envs=2)
+    n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
 
     model = model_class(
         "MultiInputPolicy",
         env,
         replay_buffer_class=ArchiveBuffer,
-        replay_buffer_kwargs=dict(cell_factory=cell_factory),
+        replay_buffer_kwargs=dict(inverse_model=inverse_model),
         train_freq=4,
     )
-    model.replay_buffer.set_env(model.env)
     model.learn(total_timesteps=150)
 
 
@@ -293,13 +276,13 @@ def test_goal_selection_strategy_with_model(goal_selection_strategy):
     # Offline sampling is not compatible with multiprocessing
     n_envs = 2
 
-    observation_space = BitFlippingEnv(n_bits=10, continuous=True).observation_space["observation"]
-    cell_factory = CellIsObs(observation_space)
-
     def env_fn():
-        return AlsoReturnCell(BitFlippingEnv(n_bits=10, continuous=True), cell_factory)
+        return BitFlippingEnv(n_bits=10, continuous=True)
 
     env = make_vec_env(env_fn, n_envs)
+    n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
+
     normal_action_noise = NormalActionNoise(np.zeros(1), 0.1 * np.ones(1))
 
     model = SAC(
@@ -309,7 +292,7 @@ def test_goal_selection_strategy_with_model(goal_selection_strategy):
         replay_buffer_kwargs=dict(
             goal_selection_strategy=goal_selection_strategy,
             n_sampled_goal=2,
-            cell_factory=cell_factory,
+            inverse_model=inverse_model,
         ),
         train_freq=4,
         gradient_steps=n_envs,
@@ -318,7 +301,6 @@ def test_goal_selection_strategy_with_model(goal_selection_strategy):
         buffer_size=int(1e5),
         action_noise=normal_action_noise,
     )
-    model.replay_buffer.set_env(model.env)
     assert model.action_noise is not None
     model.learn(total_timesteps=150)
 
@@ -337,35 +319,32 @@ def test_goal_selection_strategy_with_model(goal_selection_strategy):
 def test_goal_selection_strategy(goal_selection_strategy):
     # Test different goal strategies.
     observation_space = BitFlippingEnv(n_bits=2, continuous=True).observation_space["observation"]
-    cell_factory = CellIsObs(observation_space)
 
     def env_fn():
-        return AlsoReturnCell(BitFlippingEnv(n_bits=2, continuous=True), cell_factory)
+        return BitFlippingEnv(n_bits=2, continuous=True)
 
     env = make_vec_env(env_fn)
+    n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
 
     buffer = ArchiveBuffer(
         100,
         env.observation_space,
         env.action_space,
-        cell_factory,
+        env,
+        inverse_model,
         goal_selection_strategy=goal_selection_strategy,
         n_sampled_goal=np.inf,  # All goals are virtual
     )
-    buffer.set_env(env)
 
     observations = np.array([[[0, 0]], [[1, 1]], [[2, 2]], [[3, 3]], [[4, 4]], [[5, 5]], [[6, 6]], [[7, 7]]])
-    cells = cell_factory(observations)
     goals = np.array([[[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]], [[8, 8]]])
-    goal_cells = cell_factory(goals)
     for i in range(7):
         buffer.add(
-            obs={"observation": observations[i], "cell": cells[i], "goal": goals[i], "goal_cell": goal_cells[i]},
+            obs={"observation": observations[i], "goal": goals[i]},
             next_obs={
                 "observation": observations[i + 1],
-                "cell": cells[i + 1],
                 "goal": goals[i + 1],
-                "goal_cell": goal_cells[i + 1],
             },
             action=np.array([[0.0]]),
             reward=np.array([-1.0]),
@@ -386,13 +365,13 @@ def test_full_replay_buffer():
     # It should not sample the current episode which is not finished.
     n_bits = 10
     n_envs = 2
-    observation_space = BitFlippingEnv(n_bits, continuous=True).observation_space["observation"]
-    cell_factory = CellIsObs(observation_space)
 
     def env_fn():
-        return AlsoReturnCell(BitFlippingEnv(n_bits, continuous=True), cell_factory)
+        return BitFlippingEnv(n_bits, continuous=True)
 
     env = make_vec_env(env_fn, n_envs)
+    n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
 
     # use small buffer size to get the buffer full
     model = SAC(
@@ -402,7 +381,7 @@ def test_full_replay_buffer():
         replay_buffer_kwargs=dict(
             n_sampled_goal=2,
             goal_selection_strategy="future",
-            cell_factory=cell_factory,
+            inverse_model=inverse_model,
         ),
         gradient_steps=1,
         train_freq=4,
@@ -412,60 +391,65 @@ def test_full_replay_buffer():
         verbose=1,
         seed=757,
     )
-    model.replay_buffer.set_env(model.env)
     model.learn(total_timesteps=100)
 
 
 def test_trajectory_manager():
+    def env_fn():
+        return BitFlippingEnv(1, continuous=True)
+
+    env = make_vec_env(env_fn, 1)
+    inverse_model = LinearInverseModel(obs_size=2, action_size=1, latent_size=2)
     # Useless for this test
     action = np.array([[0], [0]])
     reward = np.array([0, 0])
     infos = [{}, {}]
-    goal = np.array([[0], [0]])
+    goal = np.array([[0, 0], [0, 0]])
 
-    space = spaces.Box(-10, 10, (1,))
-    cell_factory = CellIsObs(space)
+    space = spaces.Box(-10, 10, (2,))
     archive = ArchiveBuffer(
         buffer_size=100,
-        observation_space=spaces.Dict({"observation": space, "cell": space, "goal": space, "goal_cell": space}),
+        observation_space=spaces.Dict({"observation": space, "goal": space}),
         action_space=space,
-        cell_factory=cell_factory,
+        env=env,
+        inverse_model=inverse_model,
         n_envs=2,
     )
     trajectories = np.array(
         [
-            [[1], [2], [3], [4], [5]],
-            [[1], [3], [3], [5], [4]],
+            [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+            [[0, 0], [1, 0], [1, 1], [1, 2], [1, 3], [0, 3], [0, 4]],
         ]
     )
-    cell_trajectories = cell_factory(trajectories)
-    goal_cell = cell_factory(goal)
-    for i in range(4):
+    for i in range(6):
         archive.add(
-            obs={"observation": trajectories[:, i], "cell": cell_trajectories[:, i], "goal": goal, "goal_cell": goal_cell},
+            obs={"observation": trajectories[:, i], "goal": goal},
             next_obs={
                 "observation": trajectories[:, i + 1],
-                "cell": cell_trajectories[:, i + 1],
                 "goal": goal,
-                "goal_cell": goal_cell,
             },
             action=action,
             reward=reward,
-            done=np.ones(2) * (i == 3),
+            done=np.ones(2) * (i == 6),
             infos=infos,
         )
-
-    sampled_trajectories = [list(archive.sample_trajectory(count_pow=1.0)[0]) for _ in range(30)]  # list convinient to compare
+    archive.recompute_embeddings()
+    sampled_trajectories = [
+        list(archive.sample_trajectory()[0].astype(int).tolist()) for _ in range(50)
+    ]  # list convinient to compare
     possible_trajectories = [
-        [[2]],
-        # [[2], [3]], # a shortest path exists
-        [[2], [3], [4]],
-        # [[2], [3], [4], [5]], # a shortest path exists
-        # [[1]], # duplicate
-        [[3]],
-        # [[3], [3]], # a shortest path exists
-        [[3], [3], [5]],  # collapase the 3
-        # [[3], [3], [5], [4]], # a shortest path exists
+        [[0, 1]],
+        [[0, 1], [0, 2]],
+        [[0, 1], [0, 2], [0, 3]],
+        [[0, 1], [0, 2], [0, 3], [0, 4]],
+        [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5]],
+        [[0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6]],
+        [[1, 0]],
+        [[1, 0], [1, 1]],
+        [[1, 0], [1, 1], [1, 2]],
+        [[1, 0], [1, 1], [1, 2], [1, 3]],
+        [[1, 0], [1, 1], [1, 2], [1, 3], [0, 3]],
+        [[1, 0], [1, 1], [1, 2], [1, 3], [0, 3], [0, 4]],
     ]
     # Check that all sampled trajectories are valid
     assert np.all([trajectory in possible_trajectories for trajectory in sampled_trajectories])
@@ -483,13 +467,11 @@ def test_performance_her(goal_selection_strategy):
     # Offline sampling is not compatible with multiprocessing
     n_envs = 2
 
-    observation_space = BitFlippingEnv(n_bits=2, continuous=False).observation_space["observation"]
-    cell_factory = CellIsObs(observation_space)
-
     def env_fn():
-        return AlsoReturnCell(BitFlippingEnv(n_bits=2, continuous=False), cell_factory)
+        return BitFlippingEnv(n_bits=2, continuous=False)
 
-    env = make_vec_env(env_fn, n_envs)
+    env = make_vec_env(env_fn, 1)
+    inverse_model = LinearInverseModel(obs_size=2, action_size=1, latent_size=2)
 
     model = DQN(
         "MultiInputPolicy",
@@ -498,7 +480,7 @@ def test_performance_her(goal_selection_strategy):
         replay_buffer_kwargs=dict(
             n_sampled_goal=5,
             goal_selection_strategy=goal_selection_strategy,
-            cell_factory=cell_factory,
+            inverse_model=inverse_model,
         ),
         verbose=1,
         learning_rate=5e-3,
@@ -511,7 +493,6 @@ def test_performance_her(goal_selection_strategy):
         batch_size=32,
         buffer_size=int(1e5),
     )
-    model.replay_buffer.set_env(model.env)
 
     model.learn(total_timesteps=5000, log_interval=50)
 
@@ -519,136 +500,14 @@ def test_performance_her(goal_selection_strategy):
     assert np.mean(model.ep_success_buffer) > 0.90
 
 
-def test_trajectory_manager_when_updated():
-    # Useless for this test
-    action = np.array([[0], [0]])
-    reward = np.array([0, 0])
-    infos = [{}, {}]
-    goal = np.array([[0], [0]])
-
-    cell_factory = DownscaleObs(spaces.Box(-10, 10, (1,)))
-    space = spaces.Box(-10, 10, (1,))
-    archive = ArchiveBuffer(
-        buffer_size=100,
-        observation_space=spaces.Dict({"observation": space, "cell": space, "goal": space, "goal_cell": space}),
-        action_space=spaces.Box(-10, 10, (1,)),
-        cell_factory=cell_factory,
-        n_envs=2,
-    )
-    trajectories = np.array(
-        [
-            [[0], [1], [2], [3], [4], [5], [6], [7]],
-            [[0], [1], [2], [3], [4], [5], [6], [7]],
-        ]
-    )
-    cell_trajectories = cell_factory(trajectories)
-    goal_cell = cell_factory(goal)
-    for i in range(7):
-        archive.add(
-            obs={"observation": trajectories[:, i], "cell": cell_trajectories[:, i], "goal": goal, "goal_cell": goal_cell},
-            next_obs={
-                "observation": trajectories[:, i + 1],
-                "cell": cell_trajectories[:, i + 1],
-                "goal": goal,
-                "goal_cell": goal_cell,
-            },
-            action=action,
-            reward=reward,
-            done=np.ones(2) * (i == 6),
-            infos=infos,
-        )
-
-    sampled_trajectories = [list(archive.sample_trajectory(count_pow=1.0, step=2)[0]) for _ in range(30)]
-
-    possible_trajectories = [
-        [[1]],
-        [[2]],
-        [[1], [3]],
-        [[2], [4]],
-        [[1], [3], [5]],
-        [[2], [4], [6]],
-        [[1], [3], [5], [7]],
-    ]
-    assert np.all([trajectory in possible_trajectories for trajectory in sampled_trajectories])
-    assert np.all([trajectory in sampled_trajectories for trajectory in possible_trajectories])
-
-
 def test_sample_if_empty():
-    cell_factory = CellIsObs(spaces.Box(-10, 10, (1,)))
     space = spaces.Box(-10, 10, (1,))
     archive = ArchiveBuffer(
         buffer_size=100,
-        observation_space=spaces.Dict({"observation": space, "cell": space, "goal": space, "goal_cell": space}),
+        observation_space=spaces.Dict({"observation": space, "goal": space}),
         action_space=spaces.Box(-10, 10, (1,)),
-        cell_factory=cell_factory,
         n_envs=2,
     )
-    trajectory, cell_trajectory = archive.sample_trajectory()
-    for obs, cell in zip(trajectory, cell_trajectory):
+    trajectory, _ = archive.sample_trajectory()
+    for obs, _ in zip(trajectory):
         assert space.contains(obs)
-        assert space.contains(cell)
-
-
-def test_recompute_cells():
-    # Useless for this test
-    action = np.array([[0], [0]])
-    reward = np.array([0, 0])
-    infos = [{}, {}]
-    goal = np.array([[0.0], [0.0]])
-
-    space = spaces.Box(-10, 10, (1,))
-    cell_factory = DownscaleObs(space)
-    archive = ArchiveBuffer(
-        buffer_size=8,
-        observation_space=spaces.Dict({"observation": space, "cell": space, "goal": space, "goal_cell": space}),
-        action_space=space,
-        cell_factory=cell_factory,
-        n_envs=2,
-    )
-    trajectories = np.array(
-        [
-            [[1.0], [1.0]],
-            [[2.0], [3.0]],
-            [[3.0], [3.0]],
-            [[4.0], [5.0]],
-            [[5.0], [4.0]],
-        ],
-    )
-    cell_trajectories = cell_factory(trajectories)
-    goal_cell = cell_factory(goal)
-    for i in range(4):
-        archive.add(
-            obs={"observation": trajectories[i], "cell": cell_trajectories[i], "goal": goal, "goal_cell": goal_cell},
-            next_obs={
-                "observation": trajectories[i + 1],
-                "cell": cell_trajectories[i + 1],
-                "goal": goal,
-                "goal_cell": goal_cell,
-            },
-            action=action,
-            reward=reward,
-            done=np.ones(2) * (i == 3),
-            infos=infos,
-        )
-
-    expected_cells = np.array(
-        [
-            [[1.0], [1.0]],
-            [[2.0], [3.0]],
-            [[3.0], [3.0]],
-            [[4.0], [5.0]],
-        ]
-    )
-    assert (archive.observations["cell"] == expected_cells).all()
-
-    cell_factory.step = 2 * torch.ones(space.shape)
-    archive.recompute_cells()
-    expected_cells = np.array(
-        [
-            [[0.0], [0.0]],
-            [[2.0], [4.0]],
-            [[4.0], [4.0]],
-            [[4.0], [4.0]],
-        ]
-    )
-    assert (archive.observations["cell"] == expected_cells).all()
