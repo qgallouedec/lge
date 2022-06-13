@@ -103,7 +103,9 @@ def sample_geometric_with_max(p, max_value, size=None):
         if np.all(sample <= max_value):
             return sample
     raise ValueError(
-        "Fail to sample geometric given p = {:.4f} and max_value = {:d} after 10_000 trials. Try to changes these values.".format(p, max_value)
+        "Fail to sample geometric given p = {:.4f} and max_value = {:d} after 10_000 trials. Try to changes these values.".format(
+            p, max_value
+        )
     )
 
 
@@ -318,6 +320,7 @@ def estimate_density(x: torch.Tensor, samples: torch.Tensor) -> torch.Tensor:
     dist_to_kst = cdist.topk(k, largest=False)[0][:, -1]
     return dist_to_kst ** (-d)
 
-if __name__=='__main__':
+
+if __name__ == "__main__":
     p = 0.0001
     sample_geometric_with_max(p, 2)
