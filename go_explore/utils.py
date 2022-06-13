@@ -103,7 +103,8 @@ def sample_geometric_with_max(p, max_value, size=None):
         if np.all(sample <= max_value):
             return sample
     raise ValueError(
-        "Fail to sample geometric given p = {:.4f} and max_value = {:d} after 10_000 trials. Try to changes these values.".format(
+        "Fail to sample geometric given p = {:.4f} and max_value = {:d} after 10_000 trials. \
+        Try to changes these values.".format(
             p, max_value
         )
     )
