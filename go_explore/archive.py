@@ -9,7 +9,7 @@ from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 from go_explore.inverse_model import InverseModel
-from go_explore.utils import estimate_density, is_image
+from go_explore.utils import estimate_density, is_image, sample_geometric_with_max
 
 
 class ArchiveBuffer(HerReplayBuffer):
@@ -97,14 +97,14 @@ class ArchiveBuffer(HerReplayBuffer):
         all_embeddings = all_embeddings.reshape(upper_bound * self.n_envs, -1)
         all_embeddings = self.to_torch(all_embeddings)
         k = 0
-        while k < upper_bound:
-            upper = min(upper_bound, k + 256)
+        while k < upper_bound * self.n_envs:
+            upper = min(upper_bound * self.n_envs, k + 256)
             embeddings = all_embeddings[k:upper]
             density = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             self.density[k:upper] = density
             k += 256
 
-        self.embedding_computed = upper_bound
+        self.embedding_computed = upper_bound * self.n_envs
         self.sorted_density = np.argsort(self.density[: self.embedding_computed])
 
     def encode(self, obs: np.ndarray) -> torch.Tensor:
@@ -132,7 +132,7 @@ class ArchiveBuffer(HerReplayBuffer):
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
 
-        goal_id = self.sorted_density[np.random.geometric(0.01)]
+        goal_id = self.sorted_density[sample_geometric_with_max(0.01, max_value=self.sorted_density.shape[0]) - 1]
         goal_pos = goal_id // self.n_envs
         goal_env = goal_id % self.n_envs
         start = self.ep_start[goal_pos, goal_env]

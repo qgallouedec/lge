@@ -89,6 +89,24 @@ def sample_geometric(mean: int, max_value: int) -> int:
             return value
 
 
+def sample_geometric_with_max(p, max_value, size=None):
+    """
+    Sample follow geometric law, but are below the max_value.
+
+    :param p: The probability of success of an individual trial
+    :param max_value: Maximum value for the sample
+    :param size: Output shape
+    :return: Sampled value
+    """
+    for _ in range(10_000):
+        sample = np.random.geometric(p, size)
+        if np.all(sample <= max_value):
+            return sample
+    raise ValueError(
+        "Fail to sample geometric given p = {:.4f} and max_value = {:d} after 10_000 trials. Try to changes these values.".format(p, max_value)
+    )
+
+
 def build_image(images: List[torch.Tensor]) -> Image:
     """
     Stack and return an image.
@@ -299,3 +317,7 @@ def estimate_density(x: torch.Tensor, samples: torch.Tensor) -> torch.Tensor:
     cdist = torch.cdist(x, samples)
     dist_to_kst = cdist.topk(k, largest=False)[0][:, -1]
     return dist_to_kst ** (-d)
+
+if __name__=='__main__':
+    p = 0.0001
+    sample_geometric_with_max(p, 2)
