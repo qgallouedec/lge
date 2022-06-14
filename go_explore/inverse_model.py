@@ -111,9 +111,9 @@ class ConvInverseModel(InverseModel):
     def __init__(self, action_size: int, latent_size: int) -> None:
         super(ConvInverseModel, self).__init__()
         self.latent_size = latent_size
-        self.obs_shape = (12, 84, 84)
+        self.obs_shape = (3, 84, 84)
         self.encoder = nn.Sequential(  # [N x 12 x 84 x 84]
-            nn.Conv2d(12, 64, kernel_size=3, stride=1),  # [64 x 82 x 82]
+            nn.Conv2d(3, 64, kernel_size=3, stride=1),  # [64 x 82 x 82]
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=4, stride=3),  # [64 x 27 x 27]
             nn.Conv2d(64, 128, kernel_size=3, stride=1),  # [128 x 25 x 25]
@@ -129,7 +129,7 @@ class ConvInverseModel(InverseModel):
         )
         # Inverse latent model
         self.latent_inverse_model = nn.Sequential(
-            nn.Linear(2 * latent_size, 128),
+            nn.Linear(2 * latent_size, 2 * latent_size),
             nn.ReLU(),
-            nn.Linear(128, action_size),
+            nn.Linear(2 * latent_size, action_size),
         )
