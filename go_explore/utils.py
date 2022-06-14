@@ -320,8 +320,3 @@ def estimate_density(x: torch.Tensor, samples: torch.Tensor) -> torch.Tensor:
     cdist = torch.cdist(x, samples)
     dist_to_kst = cdist.topk(k, largest=False)[0][:, -1]
     return dist_to_kst ** (-d)
-
-
-if __name__ == "__main__":
-    p = 0.0001
-    sample_geometric_with_max(p, 2)
