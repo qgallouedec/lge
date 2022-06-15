@@ -178,7 +178,7 @@ class AtariWrapper(gym.Wrapper):
         self.width = width
         self.height = height
         self.observation_space = spaces.Box(
-            low=0, high=255, shape=(self.height, self.width, 12), dtype=env.observation_space.dtype
+            low=0, high=255, shape=(self.height, self.width, 3), dtype=env.observation_space.dtype
         )
 
     def step(self, action: np.ndarray) -> np.ndarray:
@@ -188,24 +188,19 @@ class AtariWrapper(gym.Wrapper):
         :return: the observation
         """
         tot_reward = 0
-        obs_buf = np.zeros((self.height, self.width, 12), dtype=self.observation_space.dtype)
+        obs_buf = np.zeros((self.height, self.width, 3), dtype=self.observation_space.dtype)
 
-        for frame_idx in range(4):
-            frame, reward, done, info = super().step(action)
-            frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
-            obs_buf[:, :, 3 * frame_idx : 3 * (frame_idx + 1)] = frame
-            tot_reward += reward
+        frame, reward, done, info = super().step(action)
+        frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        obs_buf[:, :, :3] = frame
+        tot_reward += reward
         return obs_buf, tot_reward, done, info
 
     def reset(self):
-        obs_buf = np.zeros((self.height, self.width, 12), dtype=self.observation_space.dtype)
+        obs_buf = np.zeros((self.height, self.width, 3), dtype=self.observation_space.dtype)
         frame = super().reset()
         frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        obs_buf[:, :, 0:3] = frame
-        for frame_idx in range(1, 4):
-            frame, _, _, _ = super().step(0)
-            frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
-            obs_buf[:, :, 3 * frame_idx : 3 * (frame_idx + 1)] = frame
+        obs_buf[:, :, :3] = frame
 
         return obs_buf
 
