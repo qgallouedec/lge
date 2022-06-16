@@ -10,33 +10,22 @@ from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 from go_explore.inverse_model import InverseModel
 from go_explore.utils import estimate_density, is_image, sample_geometric_with_max
+from stable_baselines3.common.vec_env import VecTransposeImage
 
 
 class ArchiveBuffer(HerReplayBuffer):
     """
     Archive buffer.
 
-    - HER sampling
-    - Sample trajectory of observations embedding density
-
     :param buffer_size: Max number of element in the buffer
     :param observation_space: Observation space
     :param action_space: Action space
-    :param inverse_model: Inverse model used to compute reward
-    :param distance_threshold: when the current state and the goa state are under this distance in
-        latent space, the agent gets a reward
-    :param device:
+    :param env: The training environment
+    :param inverse_model: Inverse model used to compute embeddings
+    :param distance_threshold: The goal is reached when the distance between the current embedding
+        and the goal embedding is under this threshold
+    :param device: PyTorch device
     :param n_envs: Number of parallel environments
-    :param optimize_memory_usage: Enable a memory efficient variant
-        of the replay buffer which reduces by almost a factor two the memory used,
-        at a cost of more complexity.
-        See https://github.com/DLR-RM/stable-baselines3/issues/37#issuecomment-637501195
-        and https://github.com/DLR-RM/stable-baselines3/pull/28#issuecomment-637559274
-    :param handle_timeout_termination: Handle timeout termination (due to timelimit)
-        separately and treat the task as infinite horizon task.
-        https://github.com/DLR-RM/stable-baselines3/issues/284
-        :param optimize_memory_usage: Enable a memory efficient variant
-        Disabled for now (see https://github.com/DLR-RM/stable-baselines3/pull/243#discussion_r531535702)
     :param n_sampled_goal: Number of virtual transitions to create per real transition,
         by sampling new goals.
     :param goal_selection_strategy: Strategy for sampling goals for replay.
@@ -63,12 +52,10 @@ class ArchiveBuffer(HerReplayBuffer):
             observation_space,
             action_space,
             env,
-            device,
-            n_envs,
-            optimize_memory_usage,
-            handle_timeout_termination,
-            n_sampled_goal,
-            goal_selection_strategy,
+            device=device,
+            n_envs=n_envs,
+            n_sampled_goal=n_sampled_goal,
+            goal_selection_strategy=goal_selection_strategy,
         )
 
         self.distance_threshold = distance_threshold
@@ -77,58 +64,70 @@ class ArchiveBuffer(HerReplayBuffer):
 
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
-        self.density = np.zeros((self.buffer_size * self.n_envs), dtype=np.float32)
-        self.embedding_computed = 0
+
+        # The archive does not compute embedding of every new transition stored. The embeddings are
+        # computed when the method recompute_embeddings() is appealed. To keep track of the number
+        # embedding computed, we use self.self.nb_embeddings_computed
+        self.nb_embeddings_computed = 0
 
     def recompute_embeddings(self) -> None:
         """
-        Re-compute all the embeddings.
+        Re-compute all the embeddings and estiamte the density. This method must
+        be called on a regular basis to keep the density estimation up to date.
         """
         upper_bound = self.pos if not self.full else self.buffer_size
-        # Recompute 256 by 256 to avoid cuda space allocation error.
-        k = 0
-        while k < upper_bound:
-            upper = min(upper_bound, k + 256)
-            self.goal_embeddings[k:upper] = self.encode(self.observations["goal"][k:upper]).detach().cpu().numpy()
-            self.next_embeddings[k:upper] = self.encode(self.next_observations["observation"][k:upper]).detach().cpu().numpy()
-            k += 256
 
+        for env_idx in range(self.n_envs):
+            # Recompute 256 by 256 to avoid cuda space allocation error.
+            k = 0
+            while k < upper_bound:
+                upper = min(upper_bound, k + 256)
+                goal_embedding = self.encode(self.observations["goal"][k:upper][env_idx])
+                self.goal_embeddings[k:upper][env_idx] = goal_embedding.detach().cpu().numpy()
+
+                next_embedding = self.encode(self.next_observations["observation"][k:upper][env_idx])
+                self.next_embeddings[k:upper][env_idx] = next_embedding.detach().cpu().numpy()
+                k += 256
+
+        self.nb_embeddings_computed = upper_bound * self.n_envs
+
+        # Reshape and convert embeddings to torch tensor
         all_embeddings = self.next_embeddings[:upper_bound]
-        all_embeddings = all_embeddings.reshape(upper_bound * self.n_envs, -1)
+        all_embeddings = all_embeddings.reshape(self.nb_embeddings_computed, -1)
         all_embeddings = self.to_torch(all_embeddings)
+
+        # Estimate density based on the embeddings
+        density = np.zeros((self.nb_embeddings_computed), dtype=np.float32)
         k = 0
-        while k < upper_bound * self.n_envs:
-            upper = min(upper_bound * self.n_envs, k + 256)
+        while k < self.nb_embeddings_computed:
+            upper = min(self.nb_embeddings_computed, k + 256)
             embeddings = all_embeddings[k:upper]
-            density = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
-            self.density[k:upper] = density
+            density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             k += 256
 
-        self.embedding_computed = upper_bound * self.n_envs
-        self.sorted_density = np.argsort(self.density[: self.embedding_computed])
+        self.sorted_density = np.argsort(density)
 
     def encode(self, obs: np.ndarray) -> torch.Tensor:
         obs = self.to_torch(obs).float()
         if is_image(obs):
             # Convert all to float
+            assert torch.max(obs) > 1
             obs = obs / 255
-            if obs.shape[-1] == 12:
-                obs = obs.transpose(-1, -3)
+            if obs.shape[-1] == 3:
+                obs = VecTransposeImage.transpose_image(obs)
             if len(obs.shape) == 3:
                 obs = obs.unsqueeze(0)
         self.inverse_model.eval()
         return self.inverse_model.encoder(obs)
 
-    def sample_trajectory(self, density_pow: float = 0.0, step: int = 1) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def sample_trajectory(self, step: int = 1) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Sample a trajcetory of observations based on the embeddings density.
-
-        A goal is sampled with weight density**density_pow.
 
         :return: A list of observations as array
         """
 
-        if self.embedding_computed == 0:  # no embeddings computed yet
+        if self.nb_embeddings_computed == 0:  # no embeddings computed yet
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
 
