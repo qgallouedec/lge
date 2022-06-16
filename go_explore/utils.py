@@ -135,7 +135,7 @@ def build_image(images: List[torch.Tensor]) -> Image:
 def is_image(x: torch.Tensor) -> bool:
     """Whether the input is an image, or a batch of images"""
     shape = x.shape
-    if len(shape) >= 3 and 3 in shape or 12 in shape:
+    if len(shape) >= 3 and 3 in shape:
         return True
     else:
         return False
