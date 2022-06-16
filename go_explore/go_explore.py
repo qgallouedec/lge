@@ -31,7 +31,6 @@ class Goalify(gym.Wrapper):
         env: Env,
         nb_random_exploration_steps: int = 30,
         window_size: int = 10,
-        density_pow: float = -2.0,
         traj_step: int = 2,
         distance_threshold: float = 1.0,
     ) -> None:
@@ -46,7 +45,6 @@ class Goalify(gym.Wrapper):
         self.archive = None  # type: ArchiveBuffer
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
-        self.density_pow = density_pow
         self.traj_step = traj_step
         self.distance_threshold = distance_threshold
 
@@ -63,7 +61,7 @@ class Goalify(gym.Wrapper):
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory(self.density_pow, self.traj_step)
+        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory(self.traj_step)
         if is_image_space(self.observation_space["goal"]):
             self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
         self._goal_idx = 0
@@ -157,7 +155,6 @@ class BaseGoExplore:
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
         inverse_model: InverseModel,
-        density_pow: float = -2.0,
         traj_step: int = 2,
         distance_threshold: float = 1.0,
         n_envs: int = 1,
@@ -169,7 +166,6 @@ class BaseGoExplore:
         def env_func():
             return Goalify(
                 maybe_make_env(env, verbose),
-                density_pow=density_pow,
                 traj_step=traj_step,
                 distance_threshold=distance_threshold,
             )
@@ -178,7 +174,8 @@ class BaseGoExplore:
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
         replay_buffer_kwargs.update(dict(inverse_model=inverse_model, distance_threshold=distance_threshold))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
-        model_kwargs = {"learning_starts": 3_000} if model_kwargs is None else model_kwargs
+        model_kwargs = {} if model_kwargs is None else model_kwargs
+        model_kwargs["learning_starts"] =  3_000
         self.model = model_class(
             "MultiInputPolicy",
             env,
