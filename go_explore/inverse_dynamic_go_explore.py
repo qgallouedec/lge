@@ -90,7 +90,6 @@ class GoExploreInverseModel(BaseGoExplore):
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
-        density_pow: float = -2.0,
         traj_step: int = 3,
         distance_threshold: float = 1.0,
         n_envs: int = 1,
@@ -109,7 +108,6 @@ class GoExploreInverseModel(BaseGoExplore):
             model_class,
             env,
             inverse_model,
-            density_pow,
             traj_step,
             distance_threshold,
             n_envs,
@@ -138,6 +136,6 @@ class GoExploreInverseModel(BaseGoExplore):
                 gradient_steps=update_cell_factory_freq,
                 first_update=1_000,
             ),
-            ImageSaver(self.model.env, save_freq=5_000),
+            # ImageSaver(self.model.env, save_freq=5_000),
         ]
         super().explore(total_timesteps, callback=callback, reset_num_timesteps=reset_num_timesteps)

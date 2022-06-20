@@ -119,7 +119,7 @@ class ArchiveBuffer(HerReplayBuffer):
         self.inverse_model.eval()
         return self.inverse_model.encoder(obs)
 
-    def sample_trajectory(self, density_pow: float = 0.0, step: int = 1) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def sample_trajectory(self, step: int = 1) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Sample a trajcetory of observations based on the embeddings density.
 
@@ -156,7 +156,6 @@ class ArchiveBuffer(HerReplayBuffer):
         obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}
         next_obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()}
         next_embeddings = self.next_embeddings[batch_inds, env_indices, :]
-        goal_embeddings = self.goal_embeddings[batch_inds, env_indices, :]
 
         # Sample and set new goals
         new_goals, goal_embeddings = self._sample_goals(batch_inds, env_indices)
