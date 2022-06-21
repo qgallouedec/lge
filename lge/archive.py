@@ -82,11 +82,11 @@ class ArchiveBuffer(HerReplayBuffer):
             k = 0
             while k < upper_bound:
                 upper = min(upper_bound, k + 256)
-                goal_embedding = self.encode(self.observations["goal"][k:upper][env_idx])
-                self.goal_embeddings[k:upper][env_idx] = goal_embedding.detach().cpu().numpy()
+                goal_embedding = self.encode(self.observations["goal"][k:upper, env_idx])
+                self.goal_embeddings[k:upper, env_idx] = goal_embedding.detach().cpu().numpy()
 
-                next_embedding = self.encode(self.next_observations["observation"][k:upper][env_idx])
-                self.next_embeddings[k:upper][env_idx] = next_embedding.detach().cpu().numpy()
+                next_embedding = self.encode(self.next_observations["observation"][k:upper, env_idx])
+                self.next_embeddings[k:upper, env_idx] = next_embedding.detach().cpu().numpy()
                 k += 256
 
         self.nb_embeddings_computed = upper_bound * self.n_envs
