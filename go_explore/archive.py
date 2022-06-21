@@ -155,7 +155,6 @@ class ArchiveBuffer(HerReplayBuffer):
         obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}
         next_obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()}
         next_embeddings = self.next_embeddings[batch_inds, env_indices, :]
-        goal_embeddings = self.goal_embeddings[batch_inds, env_indices, :]
 
         # Sample and set new goals
         new_goals, goal_embeddings = self._sample_goals(batch_inds, env_indices)
