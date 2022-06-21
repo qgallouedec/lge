@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="go_explore",
+    name="lge",
     packages=find_packages(),
     url="https://github.com/qgallouedec/go-explore",
     description="Implementation of Go-Explore based on stable-baselines3",
