@@ -14,9 +14,9 @@ from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.type_aliases import GymStepReturn
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
-from go_explore.archive import ArchiveBuffer
-from go_explore.inverse_model import LinearInverseModel
-from go_explore.utils import index
+from lge.archive import ArchiveBuffer
+from lge.inverse_model import LinearInverseModel
+from lge.utils import index
 
 
 class BitFlippingEnv(GoalEnv):
@@ -318,8 +318,6 @@ def test_goal_selection_strategy_with_model(goal_selection_strategy):
 )
 def test_goal_selection_strategy(goal_selection_strategy):
     # Test different goal strategies.
-    observation_space = BitFlippingEnv(n_bits=2, continuous=True).observation_space["observation"]
-
     def env_fn():
         return BitFlippingEnv(n_bits=2, continuous=True)
 
@@ -435,7 +433,7 @@ def test_trajectory_manager():
         )
     archive.recompute_embeddings()
     sampled_trajectories = [
-        list(archive.sample_trajectory()[0].astype(int).tolist()) for _ in range(50)
+        list(archive.sample_trajectory()[0].astype(int).tolist()) for _ in range(100)
     ]  # list convinient to compare
     possible_trajectories = [
         [[0, 1]],
@@ -502,12 +500,15 @@ def test_performance_her(goal_selection_strategy):
 
 def test_sample_if_empty():
     space = spaces.Box(-10, 10, (1,))
+    inverse_model = LinearInverseModel(obs_size=1, action_size=1, latent_size=2)
     archive = ArchiveBuffer(
         buffer_size=100,
         observation_space=spaces.Dict({"observation": space, "goal": space}),
         action_space=spaces.Box(-10, 10, (1,)),
+        env=GoalEnv(),
+        inverse_model=inverse_model,
         n_envs=2,
     )
     trajectory, _ = archive.sample_trajectory()
-    for obs, _ in zip(trajectory):
+    for obs in trajectory:
         assert space.contains(obs)

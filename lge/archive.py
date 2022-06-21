@@ -8,8 +8,8 @@ from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
-from go_explore.inverse_model import InverseModel
-from go_explore.utils import estimate_density, is_image, sample_geometric_with_max
+from lge.inverse_model import InverseModel
+from lge.utils import estimate_density, is_image, sample_geometric_with_max
 from stable_baselines3.common.vec_env import VecTransposeImage
 
 

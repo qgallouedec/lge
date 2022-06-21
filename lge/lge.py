@@ -13,10 +13,10 @@ from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.utils import get_device
 from torch import optim
 
-from go_explore.archive import ArchiveBuffer
-from go_explore.feature_extractor import GoExploreExtractor
-from go_explore.inverse_model import ConvInverseModel, LinearInverseModel
-from go_explore.utils import is_image
+from lge.archive import ArchiveBuffer
+from lge.feature_extractor import GoExploreExtractor
+from lge.inverse_model import ConvInverseModel, LinearInverseModel
+from lge.utils import is_image
 
 
 class Goalify(gym.Wrapper):

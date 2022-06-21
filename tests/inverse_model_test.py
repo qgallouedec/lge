@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from gym import spaces
 from torch import optim
 
-from go_explore.inverse_model import ConvInverseModel
+from lge.inverse_model import ConvInverseModel
 
 
 def sample_image():

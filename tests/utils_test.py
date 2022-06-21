@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from go_explore.utils import index, indexes, multinomial, sample_geometric
+from lge.utils import index, indexes, multinomial, sample_geometric
 
 
 def test_indexes():
