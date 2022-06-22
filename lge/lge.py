@@ -5,6 +5,10 @@ import gym
 import numpy as np
 import torch
 from gym import Env, spaces
+from lge.archive import ArchiveBuffer
+from lge.feature_extractor import GoExploreExtractor
+from lge.inverse_model import ConvInverseModel, LinearInverseModel
+from lge.utils import is_image
 from stable_baselines3.common.base_class import maybe_make_env
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
@@ -12,11 +16,6 @@ from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.utils import get_device
 from torch import optim
-
-from lge.archive import ArchiveBuffer
-from lge.feature_extractor import GoExploreExtractor
-from lge.inverse_model import ConvInverseModel, LinearInverseModel
-from lge.utils import is_image
 
 
 class Goalify(gym.Wrapper):
@@ -231,12 +230,15 @@ class LatentGoExplore:
         verbose: int = 0,
     ) -> None:
         env = maybe_make_env(env, verbose)
+        if type(env.action_space) is spaces.Discrete:
+            action_size = env.action_space.n
+        elif type(env.action_space) is spaces.Box:
+            action_size = env.action_space.shape[0]
+        obs_size = env.observation_space.shape[0]
         if is_image_space(env.observation_space):
-            inverse_model = ConvInverseModel(env.action_space.n, latent_size).to(get_device("auto"))
+            inverse_model = ConvInverseModel(action_size, latent_size).to(get_device("auto"))
         else:
-            inverse_model = LinearInverseModel(
-                obs_size=env.observation_space.shape[0], action_size=env.action_space.shape[0], latent_size=latent_size
-            ).to(get_device("auto"))
+            inverse_model = LinearInverseModel(obs_size, action_size, latent_size).to(get_device("auto"))
 
         # Wrap the env
         def env_func():
@@ -251,7 +253,7 @@ class LatentGoExplore:
         replay_buffer_kwargs.update(dict(inverse_model=inverse_model, distance_threshold=distance_threshold))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {} if model_kwargs is None else model_kwargs
-        model_kwargs["learning_starts"] =  3_000
+        model_kwargs["learning_starts"] = 3_000
         self.model = model_class(
             "MultiInputPolicy",
             env,
@@ -282,7 +284,7 @@ class LatentGoExplore:
                 self.archive,
                 criterion=criterion,
                 train_freq=update_cell_factory_freq,
-                gradient_steps=update_cell_factory_freq,
+                gradient_steps=update_cell_factory_freq // 10,
                 first_update=1_000,
             ),
             # ImageSaver(self.model.env, save_freq=5_000),
