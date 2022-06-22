@@ -112,7 +112,7 @@ class ArchiveBuffer(HerReplayBuffer):
             assert torch.max(obs) > 1
             obs = obs / 255
             if obs.shape[-1] == 3:
-                obs = VecTransposeImage.transpose_image(obs)
+                obs = torch.transpose(obs, -1, -3)
             if len(obs.shape) == 3:
                 obs = obs.unsqueeze(0)
         self.inverse_model.eval()
