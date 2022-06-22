@@ -3,14 +3,12 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import torch
 from gym import spaces
-from stable_baselines3 import HerReplayBuffer
-from stable_baselines3.common.type_aliases import DictReplayBufferSamples
-from stable_baselines3.common.vec_env import VecEnv, VecNormalize
-from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
-
 from lge.inverse_model import InverseModel
 from lge.utils import estimate_density, is_image, sample_geometric_with_max
-from stable_baselines3.common.vec_env import VecTransposeImage
+from stable_baselines3 import HerReplayBuffer
+from stable_baselines3.common.type_aliases import DictReplayBufferSamples
+from stable_baselines3.common.vec_env import VecEnv, VecNormalize, VecTransposeImage
+from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 
 class ArchiveBuffer(HerReplayBuffer):
