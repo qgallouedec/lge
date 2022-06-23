@@ -102,7 +102,7 @@ class ArchiveBuffer(HerReplayBuffer):
             embeddings = all_embeddings[k:upper]
             density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             k += 256
-
+        self.density = density
         self.sorted_density = np.argsort(density)
 
     def encode(self, obs: np.ndarray) -> torch.Tensor:
