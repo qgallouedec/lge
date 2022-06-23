@@ -10,7 +10,7 @@ from lge.inverse_model import ConvInverseModel
 
 def sample_image():
     # Sample fake Atari image (stacking of 4 frames)
-    img = np.random.randint(0, 255, (4, 4, 12)).astype(np.float32)
+    img = np.random.randint(0, 255, (4, 4, 3)).astype(np.float32)
     img = cv2.resize(img, (84, 84))  # (4 x 4) to (84 x 84)
     img = np.moveaxis(img, 2, 0)  # (H x W x C) to (C x H x W)
     return img
