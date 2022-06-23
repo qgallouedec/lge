@@ -152,7 +152,7 @@ class InverseModelLearner(BaseCallback):
     def __init__(
         self,
         archive: ArchiveBuffer,
-        batch_size: int = 128,
+        batch_size: int = 32,
         criterion: Callable = torch.nn.MSELoss(),
         lr: float = 1e-3,
         train_freq: int = 10_000,
