@@ -5,10 +5,6 @@ import gym
 import numpy as np
 import torch
 from gym import Env, spaces
-from lge.archive import ArchiveBuffer
-from lge.feature_extractor import GoExploreExtractor
-from lge.inverse_model import ConvInverseModel, LinearInverseModel
-from lge.utils import is_image
 from stable_baselines3.common.base_class import maybe_make_env
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
@@ -16,6 +12,11 @@ from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.utils import get_device
 from torch import optim
+
+from lge.archive import ArchiveBuffer
+from lge.feature_extractor import GoExploreExtractor
+from lge.inverse_model import ConvInverseModel, LinearInverseModel
+from lge.utils import is_image
 
 
 class Goalify(gym.Wrapper):
