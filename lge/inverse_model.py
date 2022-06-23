@@ -45,8 +45,10 @@ class LinearInverseModel(InverseModel):
         self.obs_shape = (obs_size,)
         # Encoder
         self.encoder = nn.Sequential(
+            nn.Dropout(0.2),
             nn.Linear(obs_size, width),
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Linear(width, latent_size),
         )
         # Inverse latent model
