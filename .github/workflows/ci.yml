@@ -25,8 +25,8 @@ jobs:
         pip install pytest-cov
     - name: Check codestyle
       run: |
-        black -l 127 --check go_explore tests
-        isort -l 127 --check go_explore tests
+        black -l 127 --check lge tests
+        isort -l 127 --check lge tests
     - name: Test with pytest
       run: |
         pytest --cov=./ --cov-report=xml
