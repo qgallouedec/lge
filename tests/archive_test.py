@@ -12,11 +12,14 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.noise import NormalActionNoise
 from stable_baselines3.common.type_aliases import GymStepReturn
+from stable_baselines3.common.utils import get_device
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 from lge.archive import ArchiveBuffer
 from lge.inverse_model import LinearInverseModel
 from lge.utils import index
+
+device = get_device()
 
 
 class BitFlippingEnv(GoalEnv):
@@ -217,7 +220,7 @@ def test_her(n_envs, model_class):
 
     env = make_vec_env(env_fn, n_envs)
     n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
-    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2).to(device)
 
     model = model_class(
         "MultiInputPolicy",
@@ -246,7 +249,7 @@ def test_multiprocessing(model_class):
 
     env = make_vec_env(env_fn, n_envs=2)
     n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
-    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2).to(device)
 
     model = model_class(
         "MultiInputPolicy",
@@ -281,7 +284,7 @@ def test_goal_selection_strategy_with_model(goal_selection_strategy):
 
     env = make_vec_env(env_fn, n_envs)
     n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
-    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2).to(device)
 
     normal_action_noise = NormalActionNoise(np.zeros(1), 0.1 * np.ones(1))
 
@@ -323,7 +326,7 @@ def test_goal_selection_strategy(goal_selection_strategy):
 
     env = make_vec_env(env_fn)
     n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
-    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2).to(device)
 
     buffer = ArchiveBuffer(
         100,
@@ -333,6 +336,7 @@ def test_goal_selection_strategy(goal_selection_strategy):
         inverse_model,
         goal_selection_strategy=goal_selection_strategy,
         n_sampled_goal=np.inf,  # All goals are virtual
+        device=device,
     )
 
     observations = np.array([[[0, 0]], [[1, 1]], [[2, 2]], [[3, 3]], [[4, 4]], [[5, 5]], [[6, 6]], [[7, 7]]])
@@ -369,7 +373,7 @@ def test_full_replay_buffer():
 
     env = make_vec_env(env_fn, n_envs)
     n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
-    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2)
+    inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2).to(device)
 
     # use small buffer size to get the buffer full
     model = SAC(
@@ -397,7 +401,7 @@ def test_trajectory_manager():
         return BitFlippingEnv(1, continuous=True)
 
     env = make_vec_env(env_fn, 1)
-    inverse_model = LinearInverseModel(obs_size=2, action_size=1, latent_size=2)
+    inverse_model = LinearInverseModel(obs_size=2, action_size=1, latent_size=2).to(device)
     # Useless for this test
     action = np.array([[0], [0]])
     reward = np.array([0, 0])
@@ -412,6 +416,7 @@ def test_trajectory_manager():
         env=env,
         inverse_model=inverse_model,
         n_envs=2,
+        device=device,
     )
     trajectories = np.array(
         [
@@ -469,7 +474,7 @@ def test_performance_her(goal_selection_strategy):
         return BitFlippingEnv(n_bits=2, continuous=False)
 
     env = make_vec_env(env_fn, 1)
-    inverse_model = LinearInverseModel(obs_size=2, action_size=1, latent_size=2)
+    inverse_model = LinearInverseModel(obs_size=2, action_size=1, latent_size=2).to(device)
 
     model = DQN(
         "MultiInputPolicy",
@@ -500,7 +505,7 @@ def test_performance_her(goal_selection_strategy):
 
 def test_sample_if_empty():
     space = spaces.Box(-10, 10, (1,))
-    inverse_model = LinearInverseModel(obs_size=1, action_size=1, latent_size=2)
+    inverse_model = LinearInverseModel(obs_size=1, action_size=1, latent_size=2).to(device)
     archive = ArchiveBuffer(
         buffer_size=100,
         observation_space=spaces.Dict({"observation": space, "goal": space}),
@@ -508,6 +513,7 @@ def test_sample_if_empty():
         env=GoalEnv(),
         inverse_model=inverse_model,
         n_envs=2,
+        device=device,
     )
     trajectory, _ = archive.sample_trajectory()
     for obs in trajectory:
