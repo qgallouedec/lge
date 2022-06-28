@@ -34,7 +34,6 @@ class Goalify(gym.Wrapper):
         env: Env,
         nb_random_exploration_steps: int = 30,
         window_size: int = 10,
-        traj_step: int = 2,
         distance_threshold: float = 1.0,
     ) -> None:
         super().__init__(env)
@@ -48,7 +47,6 @@ class Goalify(gym.Wrapper):
         self.archive = None  # type: ArchiveBuffer
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
-        self.traj_step = traj_step
         self.distance_threshold = distance_threshold
 
     def set_archive(self, archive: ArchiveBuffer) -> None:
@@ -64,7 +62,7 @@ class Goalify(gym.Wrapper):
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory(self.traj_step)
+        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory()
         if is_image_space(self.observation_space["goal"]):
             self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
         self._goal_idx = 0
@@ -91,13 +89,13 @@ class Goalify(gym.Wrapper):
         future_success = dist < self.distance_threshold
 
         if future_success.any():
-            furthest_futur_success = future_success.argmax()
+            furthest_futur_success = np.where(future_success)[0].max()
             self._goal_idx += furthest_futur_success + 1
         if self._goal_idx == len(self.goal_trajectory):
             self._is_last_goal_reached = True
             self._goal_idx -= 1
 
-        if future_success.any() and furthest_futur_success == 0:
+        if future_success[0]:
             # Agent has just reached the current goal
             reward = 0
         else:
@@ -222,7 +220,6 @@ class LatentGoExplore:
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
-        traj_step: int = 3,
         distance_threshold: float = 1.0,
         latent_size: int = 16,
         n_envs: int = 1,
@@ -245,7 +242,6 @@ class LatentGoExplore:
         def env_func():
             return Goalify(
                 maybe_make_env(env, verbose),
-                traj_step=traj_step,
                 distance_threshold=distance_threshold,
             )
 
@@ -268,7 +264,7 @@ class LatentGoExplore:
         for _env in self.model.env.envs:
             _env.set_archive(self.archive)
 
-    def explore(self, total_timesteps: int, update_cell_factory_freq=1_000, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int, train_freq=1_000, gradient_steps=500, reset_num_timesteps: bool = False) -> None:
         """
         Run exploration.
 
@@ -284,9 +280,9 @@ class LatentGoExplore:
             InverseModelLearner(
                 self.archive,
                 criterion=criterion,
-                train_freq=update_cell_factory_freq,
-                gradient_steps=update_cell_factory_freq // 10,
-                first_update=1_000,
+                train_freq=train_freq,
+                gradient_steps=gradient_steps,
+                first_update=5_000,
             ),
             # ImageSaver(self.model.env, save_freq=5_000),
         ]

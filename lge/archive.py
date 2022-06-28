@@ -1,15 +1,15 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from gym import spaces
 from stable_baselines3 import HerReplayBuffer
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples
-from stable_baselines3.common.vec_env import VecEnv, VecNormalize, VecTransposeImage
+from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 from lge.inverse_model import InverseModel
-from lge.utils import estimate_density, is_image, sample_geometric_with_max
+from lge.utils import estimate_density, is_image, lighten, sample_geometric_with_max
 
 
 class ArchiveBuffer(HerReplayBuffer):
@@ -69,6 +69,34 @@ class ArchiveBuffer(HerReplayBuffer):
         # embedding computed, we use self.self.nb_embeddings_computed
         self.nb_embeddings_computed = 0
 
+    def add(
+        self,
+        obs: Dict[str, np.ndarray],
+        next_obs: Dict[str, np.ndarray],
+        action: np.ndarray,
+        reward: np.ndarray,
+        done: np.ndarray,
+        infos: List[Dict[str, Any]],
+        is_virtual: bool = False,
+    ) -> None:
+        pos = self.pos  # Store before incrementation
+        super().add(obs, next_obs, action, reward, done, infos, is_virtual)
+        for env_idx in range(self.n_envs):
+            if done[env_idx]:
+                episode_start = self.ep_start[pos, env_idx]
+                episode_end = self.pos
+                if episode_end < episode_start:
+                    # Occurs when the buffer becomes full, the storage resumes at the
+                    # beginning of the buffer. This can happen in the middle of an episode.
+                    episode_end += self.buffer_size
+                episode = np.arange(episode_start, episode_end) % self.buffer_size
+
+                goal_embedding = self.encode(self.observations["goal"][episode, env_idx])
+                self.goal_embeddings[episode, env_idx] = goal_embedding.detach().cpu().numpy()
+
+                next_embedding = self.encode(self.next_observations["observation"][episode, env_idx])
+                self.next_embeddings[episode, env_idx] = next_embedding.detach().cpu().numpy()
+
     def recompute_embeddings(self) -> None:
         """
         Re-compute all the embeddings and estiamte the density. This method must
@@ -119,7 +147,7 @@ class ArchiveBuffer(HerReplayBuffer):
         self.inverse_model.eval()
         return self.inverse_model.encoder(obs)
 
-    def sample_trajectory(self, step: int = 1) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def sample_trajectory(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Sample a trajcetory of observations based on the embeddings density.
 
@@ -130,13 +158,14 @@ class ArchiveBuffer(HerReplayBuffer):
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
 
-        goal_id = self.sorted_density[sample_geometric_with_max(0.01, max_value=self.sorted_density.shape[0]) - 1]
+        goal_id = self.sorted_density[sample_geometric_with_max(0.005, max_value=self.sorted_density.shape[0]) - 1]
         goal_pos = goal_id // self.n_envs
         goal_env = goal_id % self.n_envs
         start = self.ep_start[goal_pos, goal_env]
         trajectory = self.next_observations["observation"][start : goal_pos + 1, goal_env]
         emb_trajectory = self.next_embeddings[start : goal_pos + 1, goal_env]
-        trajectory, emb_trajectory = np.flip(trajectory[::-step], 0), np.flip(emb_trajectory[::-step], 0)
+        idxs = lighten(emb_trajectory, self.distance_threshold)
+        trajectory, emb_trajectory = trajectory[idxs], emb_trajectory[idxs]
         return trajectory, emb_trajectory
 
     def _get_virtual_samples(

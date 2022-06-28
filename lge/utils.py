@@ -315,3 +315,17 @@ def estimate_density(x: torch.Tensor, samples: torch.Tensor) -> torch.Tensor:
     cdist = torch.cdist(x, samples)
     dist_to_kst = cdist.topk(k, largest=False)[0][:, -1]
     return dist_to_kst ** (-d)
+
+
+def lighten(arr, threshold):
+    arr = arr[::-1]  # flip array
+    idxs = np.arange(len(arr))[::-1]  # [..., 2, 1, 0]
+    idx = 0
+    while idx + 1 < len(arr):
+        dist = np.linalg.norm(arr[idx] - arr[idx + 1])
+        if dist < threshold:
+            arr = np.delete(arr, idx + 1, 0)
+            idxs = np.delete(idxs, idx + 1, 0)
+        else:
+            idx += 1
+    return idxs[::-1]  # reflip array
