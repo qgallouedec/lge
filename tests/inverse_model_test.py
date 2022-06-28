@@ -28,8 +28,8 @@ def test_train_inverse_dynamic():
     inverse_model = ConvInverseModel(action_size=action_space.n, latent_size=4)
     optimizer = optim.Adam(inverse_model.parameters(), lr=1e-3)
 
-    for _ in range(50):
-        batch_size = 16
+    for _ in range(100):
+        batch_size = 32
         # Sample
         obs_idx = torch.randint(0, 3, size=(batch_size,))
         next_obs_idx = torch.randint(0, 3, size=(batch_size,))
