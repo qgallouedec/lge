@@ -43,7 +43,7 @@ class ArchiveBuffer(HerReplayBuffer):
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
         handle_timeout_termination: bool = True,
-        n_sampled_goal: int = np.inf,
+        n_sampled_goal: int = 4,
         goal_selection_strategy: Union[GoalSelectionStrategy, str] = "future",
     ) -> None:
         super().__init__(
@@ -167,6 +167,45 @@ class ArchiveBuffer(HerReplayBuffer):
         idxs = lighten(emb_trajectory, self.distance_threshold)
         trajectory, emb_trajectory = trajectory[idxs], emb_trajectory[idxs]
         return trajectory, emb_trajectory
+
+    def _get_real_samples(
+        self, batch_inds: np.ndarray, env_indices: np.ndarray, env: Optional[VecNormalize] = None
+    ) -> DictReplayBufferSamples:
+        """
+        Get the samples corresponding to the batch and environment indices.
+
+        :param batch_inds: Indices of the transitions
+        :param env_indices: Indices of the envrionments
+        :param env: associated gym VecEnv to normalize the
+            observations/rewards when sampling, defaults to None
+        :return: Samples
+        """
+        # Normalize if needed and remove extra dimension (we are using only one env for now)
+        obs_ = self._normalize_obs({key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()})
+        next_obs_ = self._normalize_obs({key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()})
+        next_embeddings = self.next_embeddings[batch_inds, env_indices, :]
+        goal_embeddings = self.goal_embeddings[batch_inds, env_indices, :]
+
+        # Compute new reward
+        dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
+        is_success = dist < self.distance_threshold
+        rewards = is_success.astype(np.float32) - 1
+
+        # Convert to torch tensor
+        observations = {key: self.to_torch(obs) for key, obs in obs_.items()}
+        next_observations = {key: self.to_torch(obs) for key, obs in next_obs_.items()}
+
+        return DictReplayBufferSamples(
+            observations=observations,
+            actions=self.to_torch(self.actions[batch_inds, env_indices]),
+            next_observations=next_observations,
+            # Only use dones that are not due to timeouts
+            # deactivated by default (timeouts is initialized as an array of False)
+            dones=self.to_torch(self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(
+                -1, 1
+            ),
+            rewards=self.to_torch(self._normalize_reward(rewards.reshape(-1, 1), env)),
+        )
 
     def _get_virtual_samples(
         self, batch_inds: np.ndarray, env_indices: np.ndarray, env: Optional[VecNormalize] = None
