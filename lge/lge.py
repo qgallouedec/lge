@@ -221,6 +221,7 @@ class LatentGoExplore:
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
         distance_threshold: float = 1.0,
+        p: float = 0.005,
         latent_size: int = 16,
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
@@ -247,7 +248,7 @@ class LatentGoExplore:
 
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
-        replay_buffer_kwargs.update(dict(inverse_model=inverse_model, distance_threshold=distance_threshold))
+        replay_buffer_kwargs.update(dict(inverse_model=inverse_model, distance_threshold=distance_threshold, p=p))
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {} if model_kwargs is None else model_kwargs
         model_kwargs["learning_starts"] = 3_000

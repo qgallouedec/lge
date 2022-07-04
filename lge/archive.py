@@ -39,6 +39,7 @@ class ArchiveBuffer(HerReplayBuffer):
         env: VecEnv,
         inverse_model: InverseModel,
         distance_threshold: float = 1.0,
+        p: float = 0.005,
         device: Union[torch.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
@@ -59,6 +60,7 @@ class ArchiveBuffer(HerReplayBuffer):
 
         self.distance_threshold = distance_threshold
         self.inverse_model = inverse_model
+        self.p = p
         emb_dim = inverse_model.latent_size
 
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
@@ -158,7 +160,7 @@ class ArchiveBuffer(HerReplayBuffer):
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
 
-        goal_id = self.sorted_density[sample_geometric_with_max(0.005, max_value=self.sorted_density.shape[0]) - 1]
+        goal_id = self.sorted_density[sample_geometric_with_max(self.p, max_value=self.sorted_density.shape[0]) - 1]
         goal_pos = goal_id // self.n_envs
         goal_env = goal_id % self.n_envs
         start = self.ep_start[goal_pos, goal_env]
