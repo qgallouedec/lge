@@ -265,7 +265,7 @@ class LatentGoExplore:
         for _env in self.model.env.envs:
             _env.set_archive(self.archive)
 
-    def explore(self, total_timesteps: int, train_freq=1_000, gradient_steps=500, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int, train_freq=5_000, gradient_steps=500, reset_num_timesteps: bool = False) -> None:
         """
         Run exploration.
 
