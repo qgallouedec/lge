@@ -1,9 +1,9 @@
 import gym
-import gym_robotics
 import numpy as np
 import optuna
+import panda_gym
 from stable_baselines3 import SAC
-from toolbox.fetch_utils import cumulative_object_coverage
+from toolbox.panda_utils import cumulative_object_coverage
 
 from lge.lge import LatentGoExplore
 
