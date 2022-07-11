@@ -285,6 +285,5 @@ class LatentGoExplore:
                 gradient_steps=gradient_steps,
                 first_update=5_000,
             ),
-            # ImageSaver(self.model.env, save_freq=5_000),
         ]
         self.model.learn(total_timesteps, callback=callback, reset_num_timesteps=reset_num_timesteps)
