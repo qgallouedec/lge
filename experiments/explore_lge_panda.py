@@ -12,7 +12,7 @@ NUM_TIMESTEPS = 1_000_000
 NUM_RUN = 5
 
 for run_idx in range(NUM_RUN):
-    env = gym.make("PandaNoTask-v1")
+    env = gym.make("PandaNoTask-v0")
     model = LatentGoExplore(SAC, env, distance_threshold=0.5, p=0.01, latent_size=8, verbose=1)
     model.explore(NUM_TIMESTEPS)
     buffer = model.archive
