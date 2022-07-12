@@ -226,6 +226,7 @@ class LatentGoExplore:
         n_envs: int = 1,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         model_kwargs: Optional[Dict[str, Any]] = None,
+        further_explore: bool = True,
         verbose: int = 0,
     ) -> None:
         env = maybe_make_env(env, verbose)
@@ -244,6 +245,7 @@ class LatentGoExplore:
             return Goalify(
                 maybe_make_env(env, verbose),
                 distance_threshold=distance_threshold,
+                nb_random_exploration_steps=30 if further_explore else 0,
             )
 
         env = make_vec_env(env_func, n_envs=n_envs)
