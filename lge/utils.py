@@ -94,20 +94,17 @@ def sample_geometric_with_max(p, max_value, size=None):
     Sample follow geometric law, but are below the max_value.
 
     :param p: The probability of success of an individual trial
-    :param max_value: Maximum value for the sample
+    :param max_value: Maximum value for the sample, included
     :param size: Output shape
     :return: Sampled value
     """
-    for _ in range(10_000):
-        sample = np.random.geometric(p, size)
-        if np.all(sample <= max_value):
-            return sample
-    raise ValueError(
-        "Fail to sample geometric given p = {:.4f} and max_value = {:d} after 10_000 trials. \
-        Try to changes these values.".format(
-            p, max_value
-        )
-    )
+    if p > 0:
+        for _ in range(10_000):
+            sample = np.random.geometric(p, size)
+            if np.all(sample <= max_value):
+                return sample
+    return np.random.randint(0, max_value + 1)
+
 
 
 def build_image(images: List[torch.Tensor]) -> Image:
