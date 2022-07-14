@@ -23,5 +23,5 @@ for run_idx in range(NUM_RUN):
     filename = "results/lge_maze.npy"
     if os.path.exists(filename):
         previous_coverage = np.load(filename)
-        counts = np.concatenate((previous_coverage, coverage))
+        coverage = np.concatenate((previous_coverage, coverage))
     np.save(filename, coverage)

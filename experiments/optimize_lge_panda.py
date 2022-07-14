@@ -18,7 +18,7 @@ def objective(trial: optuna.Trial) -> float:
 
     coverage = np.zeros((NUM_RUN, NUM_TIMESTEPS))
     for run_idx in range(NUM_RUN):
-        env = gym.make("PandaNoTask-v0")
+        env = gym.make("PandaNoTask-v0", nb_objects=1)
         model = LatentGoExplore(SAC, env, distance_threshold=distance_threshold, p=p, latent_size=latent_size, verbose=1)
         model.explore(NUM_TIMESTEPS)
         buffer = model.archive
