@@ -11,12 +11,13 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.utils import get_device
-from torch import optim
 
 from lge.archive import ArchiveBuffer
 from lge.feature_extractor import GoExploreExtractor
-from lge.inverse_model import ConvInverseModel, LinearInverseModel
-from lge.utils import is_image
+from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
+from lge.modules.ae_module import AEModule
+from lge.modules.forward_module import ForwardModule
+from lge.modules.inverse_module import InverseModule
 
 
 class Goalify(gym.Wrapper):
@@ -146,73 +147,6 @@ class CallEveryNTimesteps(BaseCallback):
         return True
 
 
-class InverseModelLearner(BaseCallback):
-    def __init__(
-        self,
-        archive: ArchiveBuffer,
-        batch_size: int = 32,
-        criterion: Callable = torch.nn.MSELoss(),
-        lr: float = 1e-3,
-        train_freq: int = 10_000,
-        gradient_steps: int = 10_000,
-        first_update: int = 3_000,
-        verbose: int = 0,
-    ):
-        super().__init__(verbose)
-        self.archive = archive
-        self.batch_size = batch_size
-        self.train_freq = train_freq
-        self.gradient_steps = gradient_steps
-        self.first_update = first_update
-
-        self.criterion = criterion
-        self.optimizer = optim.Adam(self.archive.inverse_model.parameters(), lr=lr, weight_decay=1e-5)
-
-    def _on_step(self):
-        if self.n_calls == self.first_update or (self.n_calls - self.first_update) % self.train_freq == 0:
-            for _ in range(self.gradient_steps):
-                self.train_once()
-            self.archive.recompute_embeddings()
-
-    def train_once(self):
-        try:
-            sample = self.archive.sample(self.batch_size)
-            observations = sample.observations
-            next_observations = sample.next_observations
-            actions = sample.actions
-        except ValueError:
-            return super()._on_step()
-
-        if type(observations) is dict:
-            observations = observations["observation"]
-            next_observations = next_observations["observation"]
-
-        # Convert all to float
-        observations = observations.float()
-        next_observations = next_observations.float()
-
-        # Squeeze needed when cross entropy loss
-        actions = sample.actions.squeeze()
-
-        if is_image(observations):
-            observations = observations / 255
-            next_observations = next_observations / 255
-
-        # Compute the output image
-        self.archive.inverse_model.train()
-        pred_actions = self.archive.inverse_model(observations, next_observations)
-
-        # Compute the loss
-        loss = self.criterion(pred_actions, actions)
-
-        # Step the optimizer
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
-        self.logger.record("inverse_model/pred_loss", loss.item())
-
-
 class LatentGoExplore:
     """ """
 
@@ -220,6 +154,7 @@ class LatentGoExplore:
         self,
         model_class: Type[OffPolicyAlgorithm],
         env: Env,
+        module_type: str = "inverse",
         distance_threshold: float = 1.0,
         p: float = 0.005,
         reduce_traj: bool = True,
@@ -237,9 +172,14 @@ class LatentGoExplore:
             action_size = env.action_space.shape[0]
         obs_size = env.observation_space.shape[0]
         if is_image_space(env.observation_space):
-            inverse_model = ConvInverseModel(action_size, latent_size).to(get_device("auto"))
+            raise NotImplementedError()
         else:
-            inverse_model = LinearInverseModel(obs_size, action_size, latent_size).to(get_device("auto"))
+            if module_type == "inverse":
+                self.module = InverseModule(obs_size, action_size, latent_size, device=get_device("auto"))
+            elif module_type == "forward":
+                self.module = ForwardModule(obs_size, action_size, latent_size, device=get_device("auto"))
+            elif module_type == "ae":
+                self.module = AEModule(obs_size, latent_size, device=get_device("auto"))
 
         # Wrap the env
         def env_func():
@@ -252,7 +192,7 @@ class LatentGoExplore:
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
         replay_buffer_kwargs.update(
-            dict(inverse_model=inverse_model, distance_threshold=distance_threshold, p=p, reduce_traj=reduce_traj)
+            dict(encoder=self.module.encoder, distance_threshold=distance_threshold, p=p, reduce_traj=reduce_traj)
         )
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {} if model_kwargs is None else model_kwargs
@@ -282,8 +222,17 @@ class LatentGoExplore:
             criterion = torch.nn.CrossEntropyLoss()
         elif type(self.model.env.action_space) == spaces.Box:
             criterion = torch.nn.MSELoss()
+
+        if isinstance(self.module, InverseModule):
+            learner_class = InverseModuleLearner
+        elif isinstance(self.module, ForwardModule):
+            learner_class = ForwardModuleLearner
+        elif isinstance(self.module, AEModule):
+            learner_class = AEModuleLearner
+
         callback = [
-            InverseModelLearner(
+            learner_class(
+                self.module,
                 self.archive,
                 criterion=criterion,
                 train_freq=train_freq,
