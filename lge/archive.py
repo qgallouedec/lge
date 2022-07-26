@@ -8,7 +8,7 @@ from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
-from lge.inverse_model import InverseModel
+from lge.modules.common import Encoder
 from lge.utils import estimate_density, is_image, lighten, sample_geometric_with_max
 
 
@@ -37,7 +37,7 @@ class ArchiveBuffer(HerReplayBuffer):
         observation_space: spaces.Space,
         action_space: spaces.Space,
         env: VecEnv,
-        inverse_model: InverseModel,
+        encoder: Encoder,
         distance_threshold: float = 1.0,
         p: float = 0.005,
         reduce_traj: bool = True,
@@ -60,13 +60,12 @@ class ArchiveBuffer(HerReplayBuffer):
         )
 
         self.distance_threshold = distance_threshold
-        self.inverse_model = inverse_model
+        self.encoder = encoder
         self.p = p
-        emb_dim = inverse_model.latent_size
         self.reduce_traj = reduce_traj
 
-        self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
-        self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, emb_dim), dtype=np.float32)
+        self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
+        self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
 
         # The archive does not compute embedding of every new transition stored. The embeddings are
         # computed when the method recompute_embeddings() is appealed. To keep track of the number
@@ -148,8 +147,11 @@ class ArchiveBuffer(HerReplayBuffer):
                 obs = torch.transpose(obs, -1, -3)
             if len(obs.shape) == 3:
                 obs = obs.unsqueeze(0)
-        self.inverse_model.eval()
-        return self.inverse_model.encoder(obs)
+        else:
+            if len(obs.shape) == 1:
+                obs = obs.unsqueeze(0)
+        self.encoder.eval()
+        return self.encoder(obs)
 
     def sample_trajectory(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
