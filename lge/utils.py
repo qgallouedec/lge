@@ -106,7 +106,6 @@ def sample_geometric_with_max(p, max_value, size=None):
     return np.random.randint(0, max_value + 1)
 
 
-
 def build_image(images: List[torch.Tensor]) -> Image:
     """
     Stack and return an image.
