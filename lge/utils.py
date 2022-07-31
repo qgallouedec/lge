@@ -8,6 +8,7 @@ from gym import Env, spaces
 from gym.envs.atari import AtariEnv
 from PIL import Image
 from stable_baselines3.common.callbacks import BaseCallback
+from torch import Tensor
 
 ATARI_ACTIONS = [
     "NOOP",  # 0
@@ -62,7 +63,7 @@ def index(a: np.ndarray, b: np.ndarray) -> Optional[int]:
         return idxs[0]
 
 
-def multinomial(weights: torch.Tensor) -> torch.Tensor:
+def multinomial(weights: Tensor) -> Tensor:
     p = weights / weights.sum()
     idx = torch.multinomial(p, 1)[0]
     return idx
@@ -106,7 +107,7 @@ def sample_geometric_with_max(p, max_value, size=None):
     return np.random.randint(0, max_value + 1)
 
 
-def build_image(images: List[torch.Tensor]) -> Image:
+def build_image(images: List[Tensor]) -> Image:
     """
     Stack and return an image.
 
@@ -128,7 +129,7 @@ def build_image(images: List[torch.Tensor]) -> Image:
     return full_image
 
 
-def is_image(x: torch.Tensor) -> bool:
+def is_image(x: Tensor) -> bool:
     """Whether the input is an image, or a batch of images"""
     shape = x.shape
     if len(shape) >= 3 and 3 in shape:
@@ -269,16 +270,16 @@ def get_private_eye_info(env: AtariEnv) -> Dict:
     )
 
 
-def round(input: torch.Tensor, decimals: float) -> torch.Tensor:
+def round(input: Tensor, decimals: float) -> Tensor:
     """
     Rounding, but extended to every float.
 
     :param input: Input tensor
-    :type input: torch.Tensor
+    :type input: Tensor
     :param decimals: Decimals, can be float
     :type decimals: float
     :return: The rounded tensor
-    :rtype: torch.Tensor
+    :rtype: Tensor
 
     Example:
     >>> a
@@ -295,16 +296,16 @@ def round(input: torch.Tensor, decimals: float) -> torch.Tensor:
     return torch.round(input * 10**decimals) / 10**decimals
 
 
-def estimate_density(x: torch.Tensor, samples: torch.Tensor) -> torch.Tensor:
+def estimate_density(x: Tensor, samples: Tensor) -> Tensor:
     """
     Estimate the density of x within the dataset
 
     :param x: Points to evaluate density
-    :type x: torch.Tensor
+    :type x: Tensor
     :param dataset: The samples from the distribution to estimate
-    :type dataset: torch.Tensor
+    :type dataset: Tensor
     :return: The estiamte density on x
-    :rtype: torch.Tensor
+    :rtype: Tensor
     """
     n, d = samples.shape
     k = int(2 * n ** (1 / d))

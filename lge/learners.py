@@ -2,7 +2,7 @@ from typing import Callable
 
 import torch
 from stable_baselines3.common.callbacks import BaseCallback
-from torch import optim
+from torch import Tensor, optim
 
 from lge.archive import ArchiveBuffer
 from lge.modules.ae_module import AEModule
@@ -77,7 +77,7 @@ class BaseLearner(BaseCallback):
 
         self.logger.record("module/loss", loss.item())
 
-    def compute_loss(self, observations: torch.Tensor, next_observations: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+    def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         raise NotImplementedError()
 
 
@@ -96,7 +96,7 @@ class InverseModuleLearner(BaseLearner):
     ):
         super().__init__(module, archive, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
 
-    def compute_loss(self, observations: torch.Tensor, next_observations: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+    def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         pred_actions = self.module(observations, next_observations)
         loss = self.criterion(pred_actions, actions)
         return loss
@@ -117,7 +117,7 @@ class ForwardModuleLearner(BaseLearner):
     ):
         super().__init__(module, archive, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
 
-    def compute_loss(self, observations: torch.Tensor, next_observations: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+    def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         pred_next_observations = self.module(observations, actions)
         loss = self.criterion(pred_next_observations, next_observations)
         return loss
@@ -138,7 +138,7 @@ class AEModuleLearner(BaseLearner):
     ):
         super().__init__(module, archive, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
 
-    def compute_loss(self, observations: torch.Tensor, next_observations: torch.Tensor, actions: torch.Tensor) -> torch.Tensor:
+    def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         pred_next_observations = self.module(next_observations)  # we use next obs here
         loss = self.criterion(pred_next_observations, next_observations)
         return loss

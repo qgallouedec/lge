@@ -7,6 +7,7 @@ from stable_baselines3 import HerReplayBuffer
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
+from torch import Tensor
 
 from lge.modules.common import Encoder
 from lge.utils import estimate_density, is_image, lighten, sample_geometric_with_max
@@ -137,7 +138,7 @@ class ArchiveBuffer(HerReplayBuffer):
         self.density = density
         self.sorted_density = np.argsort(density)
 
-    def encode(self, obs: np.ndarray) -> torch.Tensor:
+    def encode(self, obs: np.ndarray) -> Tensor:
         obs = self.to_torch(obs).float()
         if is_image(obs):
             # Convert all to float
@@ -153,7 +154,7 @@ class ArchiveBuffer(HerReplayBuffer):
         self.encoder.eval()
         return self.encoder(obs)
 
-    def sample_trajectory(self) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def sample_trajectory(self, coef: float = 1.0) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Sample a trajcetory of observations based on the embeddings density.
 
@@ -171,7 +172,7 @@ class ArchiveBuffer(HerReplayBuffer):
         trajectory = self.next_observations["observation"][start : goal_pos + 1, goal_env]
         emb_trajectory = self.next_embeddings[start : goal_pos + 1, goal_env]
         if self.reduce_traj:
-            idxs = lighten(emb_trajectory, self.distance_threshold)
+            idxs = lighten(emb_trajectory, self.distance_threshold * coef)
         else:
             idxs = np.arange(len(emb_trajectory))
 
