@@ -154,7 +154,7 @@ class ArchiveBuffer(HerReplayBuffer):
         self.encoder.eval()
         return self.encoder(obs)
 
-    def sample_trajectory(self, coef: float = 1.0) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+    def sample_trajectory(self, lighten_dist_coef: float = 1.0) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
         Sample a trajcetory of observations based on the embeddings density.
 
@@ -172,7 +172,7 @@ class ArchiveBuffer(HerReplayBuffer):
         trajectory = self.next_observations["observation"][start : goal_pos + 1, goal_env]
         emb_trajectory = self.next_embeddings[start : goal_pos + 1, goal_env]
         if self.reduce_traj:
-            idxs = lighten(emb_trajectory, self.distance_threshold * coef)
+            idxs = lighten(emb_trajectory, self.distance_threshold * lighten_dist_coef)
         else:
             idxs = np.arange(len(emb_trajectory))
 

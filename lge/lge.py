@@ -36,6 +36,7 @@ class Goalify(gym.Wrapper):
         nb_random_exploration_steps: int = 30,
         window_size: int = 10,
         distance_threshold: float = 1.0,
+        lighten_dist_coef: float = 1.0,
     ) -> None:
         super().__init__(env)
         # Set a goal-conditionned observation space
@@ -49,6 +50,7 @@ class Goalify(gym.Wrapper):
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
         self.distance_threshold = distance_threshold
+        self.lighten_dist_coef = lighten_dist_coef
 
     def set_archive(self, archive: ArchiveBuffer) -> None:
         """
@@ -63,7 +65,7 @@ class Goalify(gym.Wrapper):
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
         assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory()
+        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory(self.lighten_dist_coef)
         if is_image_space(self.observation_space["goal"]):
             self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
         self._goal_idx = 0
@@ -157,6 +159,7 @@ class LatentGoExplore:
         module_type: str = "inverse",
         distance_threshold: float = 1.0,
         p: float = 0.005,
+        lighten_dist_coef: float = 1.0,
         reduce_traj: bool = True,
         latent_size: int = 16,
         n_envs: int = 1,
@@ -186,7 +189,8 @@ class LatentGoExplore:
             return Goalify(
                 maybe_make_env(env, verbose),
                 distance_threshold=distance_threshold,
-                nb_random_exploration_steps=30 if further_explore else 0,
+                nb_random_exploration_steps=50 if further_explore else 0,
+                lighten_dist_coef=lighten_dist_coef,
             )
 
         env = make_vec_env(env_func, n_envs=n_envs)
