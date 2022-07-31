@@ -32,7 +32,6 @@ class BaseNetwork(nn.Module):
         # Iterate through the shared layers and build the shared parts of the network
         for layer_dim in net_arch:
             layers.append(nn.Linear(previous_layer_dim, layer_dim))  # add linear of size layer
-            layers.append(nn.BatchNorm1d(layer_dim))
             layers.append(activation_fn())
             previous_layer_dim = layer_dim
         layers.append(nn.Linear(previous_layer_dim, output_size))
