@@ -13,7 +13,16 @@ NUM_RUN = 5
 
 for run_idx in range(NUM_RUN):
     env = gym.make("PandaNoTask-v0", nb_objects=1)
-    model = LatentGoExplore(SAC, env, distance_threshold=0.5, p=0.01, latent_size=8, verbose=1)
+    model = LatentGoExplore(
+        SAC,
+        env,
+        latent_size=8,
+        module_type="ae",
+        distance_threshold=0.2,
+        p=0.01,
+        lighten_dist_coef=1.0,
+        verbose=1,
+    )
     model.explore(NUM_TIMESTEPS)
     buffer = model.archive
     observations = buffer.next_observations["observation"][: buffer.pos if not buffer.full else buffer.buffer_size]
