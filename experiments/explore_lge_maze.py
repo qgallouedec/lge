@@ -13,7 +13,7 @@ NUM_RUN = 5
 
 for run_idx in range(NUM_RUN):
     env = gym.make("ContinuousMaze-v0")
-    model = LatentGoExplore(SAC, env, distance_threshold=0.4, p=0.01, latent_size=4, verbose=1)
+    model = LatentGoExplore(SAC, env, distance_threshold=1.0, p=0.05, latent_size=16, verbose=1)
     model.explore(NUM_TIMESTEPS)
     buffer = model.archive
     observations = buffer.next_observations["observation"][: buffer.pos if not buffer.full else buffer.buffer_size]
