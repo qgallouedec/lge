@@ -2,7 +2,7 @@ import gym
 import numpy as np
 import optuna
 import panda_gym
-from stable_baselines3 import SAC
+from stable_baselines3 import DDPG
 from toolbox.panda_utils import cumulative_object_coverage
 
 from lge.lge import LatentGoExplore
@@ -21,7 +21,7 @@ def objective(trial: optuna.Trial) -> float:
     for run_idx in range(NUM_RUN):
         env = gym.make("PandaNoTask-v0", nb_objects=1)
         model = LatentGoExplore(
-            SAC,
+            DDPG,
             env,
             distance_threshold=distance_threshold,
             p=p,
@@ -42,7 +42,7 @@ def objective(trial: optuna.Trial) -> float:
 
 if __name__ == "__main__":
     study = optuna.create_study(
-        storage="sqlite:///optuna.db", study_name="lge_panda_ae_no_vel_coef", load_if_exists=True, direction="maximize"
+        storage="sqlite:///optuna.db", study_name="lge_panda_ddpg", load_if_exists=True, direction="maximize"
     )
     study.optimize(objective, n_trials=30)
     print(study.best_params, study.best_value)
