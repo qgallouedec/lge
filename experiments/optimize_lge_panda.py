@@ -3,9 +3,10 @@ import numpy as np
 import optuna
 import panda_gym
 from stable_baselines3 import DDPG
+from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from toolbox.panda_utils import cumulative_object_coverage
 
-from lge.lge import LatentGoExplore
+from lge import LatentGoExplore
 
 NUM_TIMESTEPS = 300_000
 NUM_RUN = 3
@@ -28,7 +29,7 @@ def objective(trial: optuna.Trial) -> float:
             lighten_dist_coef=lighten_dist_coef,
             module_type="ae",
             latent_size=latent_size,
-            model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
+            model_kwargs=dict(buffer_size=NUM_TIMESTEPS, action_noise=OrnsteinUhlenbeckActionNoise(np.zeros(4), np.ones(1))),
             verbose=1,
         )
         model.explore(NUM_TIMESTEPS)
