@@ -29,7 +29,12 @@ def objective(trial: optuna.Trial) -> float:
             lighten_dist_coef=lighten_dist_coef,
             module_type="ae",
             latent_size=latent_size,
-            model_kwargs=dict(buffer_size=NUM_TIMESTEPS, action_noise=OrnsteinUhlenbeckActionNoise(np.zeros(4), np.ones(1))),
+            model_kwargs=dict(
+                buffer_size=NUM_TIMESTEPS,
+                action_noise=OrnsteinUhlenbeckActionNoise(
+                    np.zeros(env.action_space.shape[0]), np.ones(env.action_space.shape[0])
+                ),
+            ),
             verbose=1,
         )
         model.explore(NUM_TIMESTEPS)
@@ -43,7 +48,7 @@ def objective(trial: optuna.Trial) -> float:
 
 if __name__ == "__main__":
     study = optuna.create_study(
-        storage="sqlite:///optuna.db", study_name="lge_panda_ddpg", load_if_exists=True, direction="maximize"
+        storage="sqlite:///optuna.db", study_name="lge_panda", load_if_exists=True, direction="maximize"
     )
     study.optimize(objective, n_trials=30)
     print(study.best_params, study.best_value)
