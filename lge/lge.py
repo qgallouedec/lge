@@ -201,6 +201,8 @@ class LatentGoExplore:
         policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {} if model_kwargs is None else model_kwargs
         model_kwargs["learning_starts"] = 3_000
+        model_kwargs["train_freq"] = 1
+        model_kwargs["gradient_steps"] = 1
         self.model = model_class(
             "MultiInputPolicy",
             env,
