@@ -45,7 +45,7 @@ if __name__ == "__main__":
 
     study = optuna.create_study(
         storage="sqlite:///optuna.db",
-        study_name="lge_maze_no_noise",
+        study_name="lge_maze",
         load_if_exists=True,
         direction="maximize",
         sampler=TPESampler(n_startup_trials=25),
