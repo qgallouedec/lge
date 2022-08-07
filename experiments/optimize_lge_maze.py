@@ -3,7 +3,6 @@ import gym_continuous_maze
 import numpy as np
 import optuna
 from stable_baselines3 import DDPG
-from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from toolbox.maze_grid import compute_coverage
 
 from lge import LatentGoExplore
@@ -29,12 +28,7 @@ def objective(trial: optuna.Trial) -> float:
             lighten_dist_coef=lighten_dist_coef,
             module_type="inverse",
             latent_size=latent_size,
-            model_kwargs=dict(
-                buffer_size=NUM_TIMESTEPS,
-                action_noise=OrnsteinUhlenbeckActionNoise(
-                    np.zeros(env.action_space.shape[0]), np.ones(env.action_space.shape[0])
-                ),
-            ),
+            model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
             verbose=1,
         )
         model.explore(NUM_TIMESTEPS)
@@ -47,8 +41,14 @@ def objective(trial: optuna.Trial) -> float:
 
 
 if __name__ == "__main__":
+    from optuna.samplers import TPESampler
+
     study = optuna.create_study(
-        storage="sqlite:///optuna.db", study_name="lge_maze", load_if_exists=True, direction="maximize"
+        storage="sqlite:///optuna.db",
+        study_name="lge_maze_no_noise",
+        load_if_exists=True,
+        direction="maximize",
+        sampler=TPESampler(n_startup_trials=25),
     )
-    study.optimize(objective, n_trials=30)
+    study.optimize(objective, n_trials=50)
     print(study.best_params, study.best_value)

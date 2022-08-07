@@ -4,7 +4,6 @@ import gym
 import numpy as np
 import panda_gym
 from stable_baselines3 import DDPG
-from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from toolbox.panda_utils import cumulative_object_coverage
 
 from lge import LatentGoExplore
@@ -22,10 +21,7 @@ for run_idx in range(NUM_RUN):
         distance_threshold=0.2,
         p=0.01,
         lighten_dist_coef=1.0,
-        model_kwargs=dict(
-            buffer_size=NUM_TIMESTEPS,
-            action_noise=OrnsteinUhlenbeckActionNoise(np.zeros(env.action_space.shape[0]), np.ones(env.action_space.shape[0])),
-        ),
+        model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
         verbose=1,
     )
     model.explore(NUM_TIMESTEPS)

@@ -4,7 +4,6 @@ import gym
 import gym_continuous_maze
 import numpy as np
 from stable_baselines3 import DDPG
-from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from toolbox.maze_grid import compute_coverage
 
 from lge import LatentGoExplore
@@ -21,10 +20,7 @@ for run_idx in range(NUM_RUN):
         p=0.05,
         latent_size=16,
         lighten_dist_coef=1.0,
-        model_kwargs=dict(
-            buffer_size=NUM_TIMESTEPS,
-            action_noise=OrnsteinUhlenbeckActionNoise(np.zeros(env.action_space.shape[0]), np.ones(env.action_space.shape[0])),
-        ),
+        model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
         verbose=1,
     )
     model.explore(NUM_TIMESTEPS)
