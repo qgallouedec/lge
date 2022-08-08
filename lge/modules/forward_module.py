@@ -19,9 +19,9 @@ class ForwardModel(BaseNetwork):
 
     def __init__(
         self,
-        latent_size: int,
-        action_size: int,
         obs_size: int,
+        action_size: int,
+        latent_size: int,
         net_arch: List[int],
         activation_fn: Type[nn.Module],
         device: Union[torch.device, str] = "auto",
@@ -49,7 +49,7 @@ class ForwardModule(BaseModule):
             •---------•         •---------------•
     obs --> | Encoder | ------> |               |
             •---------•         | Forward model | --> predicted next observation
-                        action --> |               |
+                     action --> |               |
                                 •---------------•
     """
 
