@@ -26,7 +26,7 @@ def objective(trial: optuna.Trial) -> float:
             distance_threshold=distance_threshold,
             p=p,
             lighten_dist_coef=lighten_dist_coef,
-            module_type="ae",
+            module_type="forward",
             latent_size=latent_size,
             model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
             verbose=1,
@@ -41,8 +41,14 @@ def objective(trial: optuna.Trial) -> float:
 
 
 if __name__ == "__main__":
+    from optuna.samplers import TPESampler
+
     study = optuna.create_study(
-        storage="sqlite:///optuna.db", study_name="lge_panda", load_if_exists=True, direction="maximize"
+        storage="sqlite:///optuna.db",
+        study_name="lge_panda",
+        load_if_exists=True,
+        direction="maximize",
+        sampler=TPESampler(n_startup_trials=25),
     )
-    study.optimize(objective, n_trials=30)
+    study.optimize(objective, n_trials=50)
     print(study.best_params, study.best_value)
