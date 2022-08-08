@@ -9,7 +9,7 @@ from toolbox.maze_grid import compute_coverage
 from lge import LatentGoExplore
 
 NUM_TIMESTEPS = 100_000
-NUM_RUN = 5
+NUM_RUN = 1
 
 for run_idx in range(NUM_RUN):
     env = gym.make("ContinuousMaze-v0")
