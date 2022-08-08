@@ -17,7 +17,7 @@ for run_idx in range(NUM_RUN):
         DDPG,
         env,
         latent_size=8,
-        module_type="ae",
+        module_type="forward",
         distance_threshold=0.2,
         p=0.01,
         lighten_dist_coef=1.0,
