@@ -1,4 +1,4 @@
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Tuple, Type, Union
 
 import torch
 from torch import Tensor, nn
@@ -6,7 +6,7 @@ from torch import Tensor, nn
 from lge.modules.common import BaseModule, BaseNetwork, Encoder
 
 
-class ForwardModel(BaseNetwork):
+class ForwardModel(nn.Module):
     """
     Forward model. Predict the next latent representation based on observation and action.
 
@@ -16,7 +16,6 @@ class ForwardModel(BaseNetwork):
     :param activation_fn: The activation function to use for the networks
     :param device:
     """
-
     def __init__(
         self,
         obs_size: int,
@@ -26,12 +25,18 @@ class ForwardModel(BaseNetwork):
         activation_fn: Type[nn.Module],
         device: Union[torch.device, str] = "auto",
     ) -> None:
-        super().__init__(latent_size + action_size, obs_size, net_arch, activation_fn, device)
+        super().__init__()
+        self.net = BaseNetwork(latent_size + action_size, latent_size, net_arch, activation_fn, device)
+        self.mean_net = nn.Linear(latent_size, obs_size).to(device)
+        self.log_std_net = nn.Linear(latent_size, obs_size).to(device)
 
-    def forward(self, latent: Tensor, action: Tensor) -> Tensor:
-        x = torch.concat((latent, action), dim=-1)
-        pred_obs = self.net(x)
-        return pred_obs
+    def forward(self, latent: Tensor, action: Tensor) -> Tuple[Tensor, Tensor]:
+        x = self.net(torch.concat((latent, action), dim=-1))
+        mean = self.mean_net(x)
+        log_std = self.log_std_net(x)
+        log_std = torch.clamp(log_std, min=-20, max=2)
+        std = torch.ones_like(mean) * log_std.exp()
+        return mean, std
 
 
 class ForwardModule(BaseModule):
