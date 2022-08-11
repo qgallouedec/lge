@@ -4,7 +4,7 @@ import gym
 import numpy as np
 import panda_gym
 from stable_baselines3 import DDPG
-from toolbox.panda_utils import cumulative_object_coverage
+from toolbox.panda_utils import compute_coverage
 
 from lge import LatentGoExplore
 
@@ -18,16 +18,16 @@ for run_idx in range(NUM_RUN):
         env,
         latent_size=8,
         module_type="forward",
-        distance_threshold=0.2,
-        p=0.01,
-        lighten_dist_coef=1.0,
+        distance_threshold=1.0,
+        p=0.001,
+        lighten_dist_coef=0.0,
         model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
         verbose=1,
     )
     model.explore(NUM_TIMESTEPS)
     buffer = model.archive
     observations = buffer.next_observations["observation"][: buffer.pos if not buffer.full else buffer.buffer_size]
-    coverage = cumulative_object_coverage(observations)
+    coverage = compute_coverage(observations)
     coverage = np.expand_dims(coverage, 0)
 
     filename = "results/lge_panda.npy"
