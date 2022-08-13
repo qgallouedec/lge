@@ -170,7 +170,23 @@ def estimate_density(x: Tensor, samples: Tensor) -> Tensor:
     return dist_to_kst ** (-d)
 
 
-def lighten(arr, threshold):
+def lighten(arr: np.ndarray, threshold: float) -> np.ndarray:
+    """
+    Returns the indexes of the input array such that all successive elements are
+    at least distant from the threshold value. It keeps the last one in place.
+
+    Example:
+    >>> arr = np.array([4.0, 5.0, 5.1, 6.0, 7.0])
+    >>> idxs = lighten(arr, threshold=1.0)
+    >>> idxs
+    array([0, 1, 3, 4])
+    >>> arr[idxs]
+    array([4., 5., 6., 7.])
+
+    :param arr: Input array
+    :param threshold: Distance threshold
+    :return: List of indexes
+    """
     arr = arr[::-1]  # flip array
     idxs = np.arange(len(arr))[::-1]  # [..., 2, 1, 0]
     idx = 0
