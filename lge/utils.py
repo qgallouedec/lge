@@ -135,9 +135,7 @@ def round(input: Tensor, decimals: float) -> Tensor:
     Rounding, but extended to every float.
 
     :param input: Input tensor
-    :type input: Tensor
     :param decimals: Decimals, can be float
-    :type decimals: float
     :return: The rounded tensor
     :rtype: Tensor
 
@@ -161,9 +159,7 @@ def estimate_density(x: Tensor, samples: Tensor) -> Tensor:
     Estimate the density of x within the dataset
 
     :param x: Points to evaluate density
-    :type x: Tensor
     :param dataset: The samples from the distribution to estimate
-    :type dataset: Tensor
     :return: The estiamte density on x
     :rtype: Tensor
     """
