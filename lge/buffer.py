@@ -5,6 +5,7 @@ import torch
 from gym import spaces
 from stable_baselines3 import HerReplayBuffer
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples
+from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 from torch import Tensor
@@ -56,7 +57,7 @@ class LGEBuffer(HerReplayBuffer):
             observation_space,
             action_space,
             env,
-            device=device,
+            device=get_device(device),
             n_envs=n_envs,
             n_sampled_goal=n_sampled_goal,
             goal_selection_strategy=goal_selection_strategy,
