@@ -28,7 +28,7 @@ class AEModule(BaseModule):
         net_arch: Optional[List[int]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
         device: Union[torch.device, str] = "auto",
-    ):
+    ) -> None:
         super().__init__()
         self.obs_shape = (obs_size,)
         if net_arch is None:

@@ -17,7 +17,7 @@ class GoExploreExtractor(BaseFeaturesExtractor):
         256 to avoid exploding network sizes.
     """
 
-    def __init__(self, observation_space: gym.spaces.Dict, cnn_output_dim: int = 256, shared_net=False):
+    def __init__(self, observation_space: gym.spaces.Dict, cnn_output_dim: int = 256, shared_net=False) -> None:
         super(GoExploreExtractor, self).__init__(observation_space, features_dim=1)
 
         if is_image_space(observation_space["observation"]):

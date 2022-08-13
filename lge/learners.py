@@ -39,7 +39,7 @@ class BaseLearner(BaseCallback):
         gradient_steps: int = 10_000,
         first_update: int = 3_000,
         verbose: int = 0,
-    ):
+    ) -> None:
         super().__init__(verbose)
         self.module = module
         self.archive = archive
@@ -108,7 +108,7 @@ class InverseModuleLearner(BaseLearner):
         gradient_steps: int = 10000,
         first_update: int = 3000,
         verbose: int = 0,
-    ):
+    ) -> None:
         super().__init__(module, archive, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
@@ -129,7 +129,7 @@ class ForwardModuleLearner(BaseLearner):
         gradient_steps: int = 10000,
         first_update: int = 3000,
         verbose: int = 0,
-    ):
+    ) -> None:
         super().__init__(module, archive, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
@@ -153,7 +153,7 @@ class AEModuleLearner(BaseLearner):
         gradient_steps: int = 10000,
         first_update: int = 3000,
         verbose: int = 0,
-    ):
+    ) -> None:
         super().__init__(module, archive, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:

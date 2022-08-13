@@ -170,7 +170,7 @@ class AtariWrapper(gym.Wrapper):
     :param height:
     """
 
-    def __init__(self, env: gym.Env, width: int = 84, height: int = 84):
+    def __init__(self, env: gym.Env, width: int = 84, height: int = 84) -> None:
         gym.ObservationWrapper.__init__(self, env)
         self.width = width
         self.height = height

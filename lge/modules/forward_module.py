@@ -67,7 +67,7 @@ class ForwardModule(BaseModule):
         net_arch: Optional[List[int]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
         device: Union[torch.device, str] = "auto",
-    ):
+    ) -> None:
         super().__init__()
         if net_arch is None:
             net_arch = [64, 64]
