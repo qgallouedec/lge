@@ -16,6 +16,7 @@ class ForwardModel(nn.Module):
     :param activation_fn: The activation function to use for the networks
     :param device:
     """
+
     def __init__(
         self,
         obs_size: int,
