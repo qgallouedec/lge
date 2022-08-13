@@ -9,8 +9,6 @@ setup(
     install_requires=[
         "stable_baselines3 @ git+https://git@github.com/qgallouedec/stable-baselines3@IM_and_Vec_HER",
         "torchvision",
-        "gym[atari, accept-rom-license]",
-        "ale-py==0.7.4",
         "optuna",
         "opencv-python",
     ],

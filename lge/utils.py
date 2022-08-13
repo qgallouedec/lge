@@ -1,35 +1,11 @@
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
-import cv2
-import gym
 import numpy as np
 import torch
-from gym import Env, spaces
-from gym.envs.atari import AtariEnv
+from gym import Env
 from PIL import Image
 from stable_baselines3.common.callbacks import BaseCallback
 from torch import Tensor
-
-ATARI_ACTIONS = [
-    "NOOP",  # 0
-    "FIRE",  # 1
-    "UP",  # 2
-    "RIGHT",  # 3
-    "LEFT",  # 4
-    "DOWN",  # 5
-    "UPRIGHT",  # 6
-    "UPLEFT",  # 7
-    "DOWNRIGHT",  # 8
-    "DOWNLEFT",  # 9
-    "UPFIRE",  # 10
-    "RIGHTFIRE",  # 11
-    "LEFTFIRE",  # 12
-    "DOWNFIRE",  # 13
-    "UPRIGHTFIRE",  # 14
-    "UPLEFTFIRE",  # 15
-    "DOWNRIGHTFIRE",  # 16
-    "DOWNLEFTFIRE",  # 17
-]
 
 
 def indexes(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -152,116 +128,6 @@ class ImageSaver(BaseCallback):
             img = Image.fromarray(self.env.render("rgb_array"))
             img.save(human_format(self.n_calls) + ".bmp")
         return super()._on_step()
-
-
-class AtariWrapper(gym.Wrapper):
-    """
-    Convert to grayscale and warp frames to 84x84 (default)
-    as done in the Nature paper and later work.
-
-    :param env: the environment
-    :param width:
-    :param height:
-    """
-
-    def __init__(self, env: gym.Env, width: int = 84, height: int = 84) -> None:
-        gym.ObservationWrapper.__init__(self, env)
-        self.width = width
-        self.height = height
-        self.observation_space = spaces.Box(
-            low=0, high=255, shape=(self.height, self.width, 3), dtype=env.observation_space.dtype
-        )
-
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
-        """
-
-        :param frame: environment frame
-        :return: the observation
-        """
-        tot_reward = 0
-        obs_buf = np.zeros((self.height, self.width, 3), dtype=self.observation_space.dtype)
-
-        frame, reward, done, info = super().step(action)
-        frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        obs_buf[:, :, :3] = frame
-        tot_reward += reward
-        return obs_buf, tot_reward, done, info
-
-    def reset(self):
-        obs_buf = np.zeros((self.height, self.width, 3), dtype=self.observation_space.dtype)
-        frame = super().reset()
-        frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
-        obs_buf[:, :, :3] = frame
-
-        return obs_buf
-
-
-def get_montezuma_revenge_info(env: AtariEnv) -> Dict:
-    """
-    Get some infos from the RAM of the game.
-
-    :param env: The MontezumaRevenge env
-    :type env: AtariEnv
-    :return: _description_
-    :rtype: _type_
-    """
-    assert env.spec.id == "ALE/MontezumaRevenge-v5", "function only functional with Montezuma Revenge env."
-    ram = env.ale.getRAM()
-    item_str = format(ram[65], "8b")
-    return dict(
-        frame_number=ram[0],
-        room_number=ram[3],
-        x=ram[42],
-        y=ram[43],
-        score=10000 * ram[19] + 100 * ram[20] + ram[21],
-        life_number=ram[58],
-        have_amulet=item_str[7] == "1",
-        have_key1=item_str[6] == "1",
-        have_key2=item_str[5] == "1",
-        have_key3=item_str[4] == "1",
-        have_key4=item_str[3] == "1",
-        have_sword=item_str[2] == "1",
-        have_spare=item_str[1] == "1",
-        have_torch=item_str[0] == "1",
-    )
-
-
-class MontezumaRevengeWrapper(AtariWrapper):
-    def step(self, action):
-        obs, reward, done, info = super().step(action)
-        extra_info = get_montezuma_revenge_info(self.env)
-        info = {**info, **extra_info}
-        return obs, reward, done, info
-
-
-def get_private_eye_info(env: AtariEnv) -> Dict:
-    """
-    Get some infos from the RAM of the game.
-
-    :param env: The MontezumaRevenge env
-    :type env: AtariEnv
-    :return: _description_
-    :rtype: _type_
-    """
-    assert env.spec.id == "ALE/PrivateEye-v5", "function only functional with Montezuma Revenge env."
-    ram = env.ale.getRAM()
-    item_str = format(ram[65], "8b")
-    return dict(
-        frame_number=ram[0],
-        room_number=ram[3],
-        x=ram[42],
-        y=ram[43],
-        score=10000 * ram[19] + 100 * ram[20] + ram[21],
-        life_number=ram[58],
-        have_amulet=item_str[7] == "1",
-        have_key1=item_str[6] == "1",
-        have_key2=item_str[5] == "1",
-        have_key3=item_str[4] == "1",
-        have_key4=item_str[3] == "1",
-        have_sword=item_str[2] == "1",
-        have_spare=item_str[1] == "1",
-        have_torch=item_str[0] == "1",
-    )
 
 
 def round(input: Tensor, decimals: float) -> Tensor:
