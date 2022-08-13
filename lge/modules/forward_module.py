@@ -8,13 +8,14 @@ from lge.modules.common import BaseModule, BaseNetwork, Encoder
 
 class ForwardModel(nn.Module):
     """
-    Forward model. Predict the next latent representation based on observation and action.
+    Forward model. Takes latent representation and action as input and predicts the next observation.
 
+    :param obs_size: Observation size
+    :param action_size: Action size
     :param latent_size: Feature size
     :param net_arch: The specification of the network
-    :param action_size: Action size
     :param activation_fn: The activation function to use for the networks
-    :param device:
+    :param device: PyTorch device, defaults to "auto"
     """
 
     def __init__(
@@ -42,21 +43,20 @@ class ForwardModel(nn.Module):
 
 class ForwardModule(BaseModule):
     """
-    Forward module. From the observation and the action, predicts the next feature representation.
+    Forward module. Takes observation and action as input and predicts the next observation.
 
-    :param obs_size: Observation dimension
+    :param obs_size: Observation size
     :param action_size: Action size
     :param latent_size: Feature size, defaults to 16
     :param net_arch: The specification of the network, default to [64, 64]
     :param activation_fn: The activation function to use for the networks, default to ReLU
-    :param device:
+    :param device: PyTorch device, defaults to "auto"
 
-
-            •---------•         •---------------•
-    obs --> | Encoder | ------> |               |
-            •---------•         | Forward model | --> predicted next observation
-                     action --> |               |
-                                •---------------•
+                    •---------•         •---------------•
+    observation --> | Encoder | ------> |               |
+                    •---------•         | Forward model | --> predicted next observation
+                             action --> |               |
+                                        •---------------•
     """
 
     def __init__(
@@ -68,7 +68,6 @@ class ForwardModule(BaseModule):
         activation_fn: Type[nn.Module] = nn.ReLU,
         device: Union[torch.device, str] = "auto",
     ):
-
         super().__init__()
         if net_arch is None:
             net_arch = [64, 64]
@@ -78,5 +77,5 @@ class ForwardModule(BaseModule):
 
     def forward(self, obs: Tensor, action: Tensor) -> Tensor:
         latent = self.encoder(obs)
-        pred_obs = self.forward_model(latent, action)
-        return pred_obs
+        mean, std = self.forward_model(latent, action)
+        return mean, std

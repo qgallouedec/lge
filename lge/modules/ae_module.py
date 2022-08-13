@@ -8,17 +8,17 @@ from lge.modules.common import BaseModule, BaseNetwork, Encoder
 
 class AEModule(BaseModule):
     """
-    Auto-encoder module.
+    Auto-encoder module. Takes the observation as input and predicts the observation.
 
     :param obs_size: Observation size
     :param latent_size: Feature size, defaults to 16
     :param net_arch: The specification of the network, default to [64, 64]
     :param activation_fn: The activation function to use for the networks, default to ReLU
-    :param device:
+    :param device: PyTorch device, defaults to "auto"
 
-            •---------•      •---------•
-    obs --> | Encoder | ---> | Decoder |--> predicted observation
-            •---------•      •---------•
+                    •---------•      •---------•
+    observation --> | Encoder | ---> | Decoder |--> predicted observation
+                    •---------•      •---------•
     """
 
     def __init__(

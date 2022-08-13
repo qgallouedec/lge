@@ -9,11 +9,11 @@ class BaseNetwork(nn.Module):
     """
     Base network.
 
-    :param input_size: The input dimension
-    :param output_size: The output dimension
+    :param input_size: The input size
+    :param output_size: The output size
     :param net_arch: The specification of the network
     :param activation_fn: The activation function to use for the networks
-    :param device:
+    :param device: PyTorch device, defaults to "auto"
     """
 
     def __init__(
@@ -27,14 +27,14 @@ class BaseNetwork(nn.Module):
         super().__init__()
         device = get_device(device)
         layers = []
-        previous_layer_dim = input_size
+        previous_layer_size = input_size
 
         # Iterate through the shared layers and build the shared parts of the network
-        for layer_dim in net_arch:
-            layers.append(nn.Linear(previous_layer_dim, layer_dim))  # add linear of size layer
+        for layer_size in net_arch:
+            layers.append(nn.Linear(previous_layer_size, layer_size))  # add linear of size layer
             layers.append(activation_fn())
-            previous_layer_dim = layer_dim
-        layers.append(nn.Linear(previous_layer_dim, output_size))
+            previous_layer_size = layer_size
+        layers.append(nn.Linear(previous_layer_size, output_size))
 
         # Create network
         self.net = nn.Sequential(*layers).to(device)
@@ -44,6 +44,16 @@ class BaseNetwork(nn.Module):
 
 
 class Encoder(BaseNetwork):
+    """
+    Encoder network.
+
+    :param obs_size: Observation size
+    :param latent_size: Feature size
+    :param net_arch: The specification of the network
+    :param activation_fn: The activation function to use for the networks
+    :param device: PyTorch device, defaults to "auto"
+    """
+
     def __init__(
         self,
         obs_size: int,
@@ -57,4 +67,4 @@ class Encoder(BaseNetwork):
 
 
 class BaseModule(nn.Module):
-    encoder: Encoder
+    encoder: Encoder  # A module is expected to contain an encoder.

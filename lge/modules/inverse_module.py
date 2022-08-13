@@ -8,13 +8,13 @@ from lge.modules.common import BaseModule, BaseNetwork, Encoder
 
 class InverseModel(BaseNetwork):
     """
-    Forward model. Predict the next latent representation based on observation and action.
+    Forward model. Takes the latent representation and the next latent representation as input and predicts the action.
 
     :param latent_size: Feature size
     :param action_size: Action size
     :param net_arch: The specification of the network
     :param activation_fn: The activation function to use for the networks
-    :param device:
+    :param device: PyTorch device, defaults to "auto"
     """
 
     def __init__(
@@ -35,23 +35,22 @@ class InverseModel(BaseNetwork):
 
 class InverseModule(BaseModule):
     """
-    Predict the action from the observation and the next observation.
-    The same encoder is used for both observation and next_observation.
-
+    Inverse module. Takes the observation and the next latent representation as input and predicts the action.
 
     :param obs_size: Observation size
     :param action_size: Action size
     :param latent_size: Feature size, defaults to 16
     :param net_arch: The specification of the network, default to [64, 64]
     :param activation_fn: The activation function to use for the networks, default to ReLU
-    :param device:
-                    •---------•
-            obs --> | Encoder | ---.    •---------------•
-                    •---------•    '--> |               |
-                                        | Inverse model | --> predicted action
-                    •---------•    .--> |               |
-       next_obs --> | Encoder | ---'    •---------------•
-                    •---------•
+    :param device: PyTorch device, defaults to "auto"
+
+                         •---------•
+         observation --> | Encoder | ---.    •---------------•
+                         •---------•    '--> |               |
+                                             | Inverse model | --> predicted action
+                         •---------•    .--> |               |
+    next observation --> | Encoder | ---'    •---------------•
+                         •---------•
     """
 
     def __init__(
@@ -62,7 +61,7 @@ class InverseModule(BaseModule):
         net_arch: Optional[List[int]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
         device: Union[torch.device, str] = "auto",
-    ):
+    ) -> None:
         super().__init__()
         if net_arch is None:
             net_arch = [64, 64]
