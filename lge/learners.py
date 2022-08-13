@@ -5,7 +5,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from torch import Tensor, optim
 from torch.distributions import Normal
 
-from lge.archive import ArchiveBuffer
+from lge.buffer import LGEBuffer
 from lge.modules.ae_module import AEModule
 from lge.modules.common import BaseModule
 from lge.modules.forward_module import ForwardModule
@@ -31,7 +31,7 @@ class BaseLearner(BaseCallback):
     def __init__(
         self,
         module: BaseModule,
-        archive: ArchiveBuffer,
+        buffer: LGEBuffer,
         batch_size: int = 32,
         criterion: Callable = torch.nn.MSELoss(),
         lr: float = 1e-3,
@@ -42,7 +42,7 @@ class BaseLearner(BaseCallback):
     ) -> None:
         super().__init__(verbose)
         self.module = module
-        self.archive = archive
+        self.buffer = buffer
         self.batch_size = batch_size
         self.train_freq = train_freq
         self.gradient_steps = gradient_steps
@@ -55,11 +55,11 @@ class BaseLearner(BaseCallback):
         if self.n_calls == self.first_update or (self.n_calls - self.first_update) % self.train_freq == 0:
             for _ in range(self.gradient_steps):
                 self.train_once()
-            self.archive.recompute_embeddings()
+            self.buffer.recompute_embeddings()
 
     def train_once(self):
         try:
-            sample = self.archive.sample(self.batch_size)
+            sample = self.buffer.sample(self.batch_size)
             observations = sample.observations
             next_observations = sample.next_observations
             actions = sample.actions
@@ -100,7 +100,7 @@ class InverseModuleLearner(BaseLearner):
     def __init__(
         self,
         module: InverseModule,
-        archive: ArchiveBuffer,
+        buffer: LGEBuffer,
         batch_size: int = 32,
         criterion: Callable = torch.nn.MSELoss(),
         lr: float = 0.001,
@@ -109,7 +109,7 @@ class InverseModuleLearner(BaseLearner):
         first_update: int = 3000,
         verbose: int = 0,
     ) -> None:
-        super().__init__(module, archive, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
+        super().__init__(module, buffer, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         pred_actions = self.module(observations, next_observations)
@@ -121,7 +121,7 @@ class ForwardModuleLearner(BaseLearner):
     def __init__(
         self,
         module: ForwardModule,
-        archive: ArchiveBuffer,
+        buffer: LGEBuffer,
         batch_size: int = 32,
         criterion: Callable = torch.nn.MSELoss(),
         lr: float = 0.001,
@@ -130,7 +130,7 @@ class ForwardModuleLearner(BaseLearner):
         first_update: int = 3000,
         verbose: int = 0,
     ) -> None:
-        super().__init__(module, archive, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
+        super().__init__(module, buffer, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         mean, std = self.module(observations, actions)
@@ -145,7 +145,7 @@ class AEModuleLearner(BaseLearner):
     def __init__(
         self,
         module: AEModule,
-        archive: ArchiveBuffer,
+        buffer: LGEBuffer,
         batch_size: int = 32,
         criterion: Callable = torch.nn.MSELoss(),
         lr: float = 0.001,
@@ -154,7 +154,7 @@ class AEModuleLearner(BaseLearner):
         first_update: int = 3000,
         verbose: int = 0,
     ) -> None:
-        super().__init__(module, archive, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
+        super().__init__(module, buffer, batch_size, criterion, lr, train_freq, gradient_steps, first_update, verbose)
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         pred_next_observations = self.module(next_observations)  # we use next obs here

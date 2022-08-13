@@ -32,7 +32,7 @@ def objective(trial: optuna.Trial) -> float:
             verbose=1,
         )
         model.explore(NUM_TIMESTEPS)
-        buffer = model.archive
+        buffer = model.replay_buffer
         observations = buffer.next_observations["observation"][: buffer.pos if not buffer.full else buffer.buffer_size]
         coverage[run_idx] = compute_coverage(observations) / (24 * 24) * 100
 

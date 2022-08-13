@@ -15,7 +15,7 @@ from stable_baselines3.common.type_aliases import GymStepReturn
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
-from lge.archive import ArchiveBuffer
+from lge.buffer import LGEBuffer
 from lge.inverse_model import LinearInverseModel
 from lge.utils import index
 
@@ -214,7 +214,7 @@ class BitFlippingEnv(GoalEnv):
 @pytest.mark.parametrize("n_envs", [1, 2])
 @pytest.mark.parametrize("model_class", [SAC, TD3, DDPG, DQN])
 def test_her(n_envs, model_class):
-    # Test Hindsight Experience Replay in archive.
+    # Test Hindsight Experience Replay in LGEBuffer.
     def env_fn():
         return BitFlippingEnv(n_bits=10, continuous=not (model_class == DQN))
 
@@ -225,7 +225,7 @@ def test_her(n_envs, model_class):
     model = model_class(
         "MultiInputPolicy",
         env,
-        replay_buffer_class=ArchiveBuffer,
+        replay_buffer_class=LGEBuffer,
         replay_buffer_kwargs=dict(
             n_sampled_goal=2,
             goal_selection_strategy="future",
@@ -254,7 +254,7 @@ def test_multiprocessing(model_class):
     model = model_class(
         "MultiInputPolicy",
         env,
-        replay_buffer_class=ArchiveBuffer,
+        replay_buffer_class=LGEBuffer,
         replay_buffer_kwargs=dict(inverse_model=inverse_model),
         train_freq=4,
     )
@@ -291,7 +291,7 @@ def test_goal_selection_strategy_with_model(goal_selection_strategy):
     model = SAC(
         "MultiInputPolicy",
         env,
-        replay_buffer_class=ArchiveBuffer,
+        replay_buffer_class=LGEBuffer,
         replay_buffer_kwargs=dict(
             goal_selection_strategy=goal_selection_strategy,
             n_sampled_goal=2,
@@ -328,7 +328,7 @@ def test_goal_selection_strategy(goal_selection_strategy):
     n = env.action_space.n if type(env.action_space) is spaces.Discrete else env.action_space.shape[0]
     inverse_model = LinearInverseModel(env.observation_space["observation"].shape[0], n, latent_size=2).to(device)
 
-    buffer = ArchiveBuffer(
+    buffer = LGEBuffer(
         100,
         env.observation_space,
         env.action_space,
@@ -379,7 +379,7 @@ def test_full_replay_buffer():
     model = SAC(
         "MultiInputPolicy",
         env,
-        replay_buffer_class=ArchiveBuffer,
+        replay_buffer_class=LGEBuffer,
         replay_buffer_kwargs=dict(
             n_sampled_goal=2,
             goal_selection_strategy="future",
@@ -409,7 +409,7 @@ def test_trajectory_manager():
     goal = np.array([[0, 0], [0, 0]])
 
     space = spaces.Box(-10, 10, (2,))
-    archive = ArchiveBuffer(
+    buffer = LGEBuffer(
         buffer_size=100,
         observation_space=spaces.Dict({"observation": space, "goal": space}),
         action_space=space,
@@ -425,7 +425,7 @@ def test_trajectory_manager():
         ]
     )
     for i in range(6):
-        archive.add(
+        buffer.add(
             obs={"observation": trajectories[:, i], "goal": goal},
             next_obs={
                 "observation": trajectories[:, i + 1],
@@ -436,9 +436,9 @@ def test_trajectory_manager():
             done=np.ones(2) * (i == 6),
             infos=infos,
         )
-    archive.recompute_embeddings()
+    buffer.recompute_embeddings()
     sampled_trajectories = [
-        list(archive.sample_trajectory()[0].astype(int).tolist()) for _ in range(100)
+        list(buffer.sample_trajectory()[0].astype(int).tolist()) for _ in range(100)
     ]  # list convinient to compare
     possible_trajectories = [
         [[0, 1]],
@@ -479,7 +479,7 @@ def test_performance_her(goal_selection_strategy):
     model = DQN(
         "MultiInputPolicy",
         env,
-        replay_buffer_class=ArchiveBuffer,
+        replay_buffer_class=LGEBuffer,
         replay_buffer_kwargs=dict(
             n_sampled_goal=5,
             goal_selection_strategy=goal_selection_strategy,
@@ -506,7 +506,7 @@ def test_performance_her(goal_selection_strategy):
 def test_sample_if_empty():
     space = spaces.Box(-10, 10, (1,))
     inverse_model = LinearInverseModel(obs_size=1, action_size=1, latent_size=2).to(device)
-    archive = ArchiveBuffer(
+    buffer = LGEBuffer(
         buffer_size=100,
         observation_space=spaces.Dict({"observation": space, "goal": space}),
         action_space=spaces.Box(-10, 10, (1,)),
@@ -515,6 +515,6 @@ def test_sample_if_empty():
         n_envs=2,
         device=device,
     )
-    trajectory, _ = archive.sample_trajectory()
+    trajectory, _ = buffer.sample_trajectory()
     for obs in trajectory:
         assert space.contains(obs)

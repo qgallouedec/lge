@@ -13,9 +13,9 @@ from lge.modules.common import Encoder
 from lge.utils import estimate_density, is_image, lighten, sample_geometric_with_max
 
 
-class ArchiveBuffer(HerReplayBuffer):
+class LGEBuffer(HerReplayBuffer):
     """
-    Archive buffer.
+    LGE buffer.
 
     :param buffer_size: Max number of element in the buffer
     :param observation_space: Observation space
@@ -24,7 +24,7 @@ class ArchiveBuffer(HerReplayBuffer):
     :param inverse_model: Inverse model used to compute embeddings
     :param distance_threshold: The goal is reached when the distance between the current embedding
         and the goal embedding is under this threshold
-    :param device: PyTorch device
+    :param device: PyTorch device, defaults to "cpu"
     :param n_envs: Number of parallel environments
     :param n_sampled_goal: Number of virtual transitions to create per real transition,
         by sampling new goals.
@@ -66,7 +66,7 @@ class ArchiveBuffer(HerReplayBuffer):
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
 
-        # The archive does not compute embedding of every new transition stored. The embeddings are
+        # The buffer does not compute embedding of every new transition stored. The embeddings are
         # computed when the method recompute_embeddings() is appealed. To keep track of the number
         # embedding computed, we use self.self.nb_embeddings_computed
         self.nb_embeddings_computed = 0

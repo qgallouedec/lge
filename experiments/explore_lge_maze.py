@@ -25,7 +25,7 @@ for run_idx in range(NUM_RUN):
         verbose=1,
     )
     model.explore(NUM_TIMESTEPS)
-    buffer = model.archive
+    buffer = model.replay_buffer
     observations = buffer.next_observations["observation"][: buffer.pos if not buffer.full else buffer.buffer_size]
     coverage = compute_coverage(observations) / (24 * 24) * 100
     coverage = np.expand_dims(coverage, 0)

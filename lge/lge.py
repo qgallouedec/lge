@@ -1,5 +1,5 @@
 import copy
-from typing import Any, Callable, Dict, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
 
 import gym
 import numpy as np
@@ -10,9 +10,8 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
-from stable_baselines3.common.utils import get_device
 
-from lge.archive import ArchiveBuffer
+from lge.buffer import LGEBuffer
 from lge.feature_extractor import GoExploreExtractor
 from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
 from lge.modules.ae_module import AEModule
@@ -46,26 +45,26 @@ class Goalify(gym.Wrapper):
                 "goal": copy.deepcopy(self.env.observation_space),
             }
         )
-        self.archive = None  # type: ArchiveBuffer
+        self.lge_buffer = None  # type: LGEBuffer
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
         self.distance_threshold = distance_threshold
         self.lighten_dist_coef = lighten_dist_coef
 
-    def set_archive(self, archive: ArchiveBuffer) -> None:
+    def set_buffer(self, lge_buffer: LGEBuffer) -> None:
         """
-        Set the archive.
+        Set the buffer.
 
-        The archive is used to compute goal trajectories, and to compute the cell for the reward.
+        The buffer is used to compute goal trajectories, and to compute the cell for the reward.
 
-        :param archive: The archive
+        :param buffer: The LGE buffer
         """
-        self.archive = archive
+        self.lge_buffer = lge_buffer
 
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
-        assert self.archive is not None, "you need to set the archive before reset. Use set_archive()"
-        self.goal_trajectory, self.emb_trajectory = self.archive.sample_trajectory(self.lighten_dist_coef)
+        assert self.lge_buffer is not None, "you need to set the buffer before reset. Use set_buffer()"
+        self.goal_trajectory, self.emb_trajectory = self.lge_buffer.sample_trajectory(self.lighten_dist_coef)
         if is_image_space(self.observation_space["goal"]):
             self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
         self._goal_idx = 0
@@ -83,7 +82,7 @@ class Goalify(gym.Wrapper):
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
         obs, reward, done, info = self.env.step(action)
         # Compute reward (has to be done before moving to next goal)
-        embedding = self.archive.encode(obs).detach().cpu().numpy()
+        embedding = self.lge_buffer.encode(obs).detach().cpu().numpy()
 
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
         upper_idx = min(self._goal_idx + self.window_size, len(self.goal_trajectory))
@@ -166,6 +165,7 @@ class LatentGoExplore:
         model_kwargs: Optional[Dict[str, Any]] = None,
         further_explore: bool = True,
         verbose: int = 0,
+        device: Union[torch.device, str] = "auto",
     ) -> None:
         env = maybe_make_env(env, verbose)
         if type(env.action_space) is spaces.Discrete:
@@ -175,13 +175,14 @@ class LatentGoExplore:
         obs_size = env.observation_space.shape[0]
         if is_image_space(env.observation_space):
             raise NotImplementedError()
-        else:
-            if module_type == "inverse":
-                self.module = InverseModule(obs_size, action_size, latent_size, device=get_device("auto"))
-            elif module_type == "forward":
-                self.module = ForwardModule(obs_size, action_size, latent_size, device=get_device("auto"))
-            elif module_type == "ae":
-                self.module = AEModule(obs_size, latent_size, device=get_device("auto"))
+
+        # Define the "module" used to learn the latent representation
+        if module_type == "inverse":
+            self.module = InverseModule(obs_size, action_size, latent_size, device=device)
+        elif module_type == "forward":
+            self.module = ForwardModule(obs_size, action_size, latent_size, device=device)
+        elif module_type == "ae":
+            self.module = AEModule(obs_size, latent_size, device=device)
 
         # Wrap the env
         def env_func():
@@ -203,15 +204,15 @@ class LatentGoExplore:
         self.model = model_class(
             "MultiInputPolicy",
             env,
-            replay_buffer_class=ArchiveBuffer,
+            replay_buffer_class=LGEBuffer,
             replay_buffer_kwargs=replay_buffer_kwargs,
             policy_kwargs=policy_kwargs,
             verbose=verbose,
             **model_kwargs,
         )
-        self.archive = self.model.replay_buffer  # type: ArchiveBuffer
+        self.replay_buffer = self.model.replay_buffer  # type: LGEBuffer
         for _env in self.model.env.envs:
-            _env.set_archive(self.archive)
+            _env.set_buffer(self.replay_buffer)
 
     def explore(self, total_timesteps: int, train_freq=5_000, gradient_steps=500, reset_num_timesteps: bool = False) -> None:
         """
@@ -236,7 +237,7 @@ class LatentGoExplore:
         callback = [
             learner_class(
                 self.module,
-                self.archive,
+                self.replay_buffer,
                 criterion=criterion,
                 train_freq=train_freq,
                 gradient_steps=gradient_steps,
