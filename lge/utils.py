@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import gym
@@ -107,7 +107,7 @@ def sample_geometric_with_max(p, max_value, size=None):
     return np.random.randint(0, max_value + 1)
 
 
-def build_image(images: List[Tensor]) -> Image:
+def build_image(images: List[Tensor]) -> Image.Image:
     """
     Stack and return an image.
 
@@ -178,7 +178,7 @@ class AtariWrapper(gym.Wrapper):
             low=0, high=255, shape=(self.height, self.width, 3), dtype=env.observation_space.dtype
         )
 
-    def step(self, action: np.ndarray) -> np.ndarray:
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, dict]:
         """
 
         :param frame: environment frame

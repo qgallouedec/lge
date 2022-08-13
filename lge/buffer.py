@@ -269,13 +269,13 @@ class LGEBuffer(HerReplayBuffer):
             rewards=self.to_torch(self._normalize_reward(rewards.reshape(-1, 1), env)),
         )
 
-    def _sample_goals(self, batch_inds: np.ndarray, env_indices: np.ndarray) -> np.ndarray:
+    def _sample_goals(self, batch_inds: np.ndarray, env_indices: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Sample goals based on goal_selection_strategy.
 
         :param batch_inds: Indices of the transitions
         :param env_indices: Indices of the envrionments
-        :return: Samples
+        :return: Goals and their corresponding latent representation
         """
         batch_ep_start = self.ep_start[batch_inds, env_indices]
         batch_ep_length = self.ep_length[batch_inds, env_indices]
