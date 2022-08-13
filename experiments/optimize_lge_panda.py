@@ -12,10 +12,10 @@ NUM_RUN = 3
 
 
 def objective(trial: optuna.Trial) -> float:
-    distance_threshold = trial.suggest_categorical("distance_threshold", [0.1, 0.2, 0.5, 1.0])
-    p = trial.suggest_categorical("p", [0.005, 0.01, 0.02, 0.05, 0.1])
     latent_size = trial.suggest_categorical("latent_size", [4, 8, 16, 32])
+    distance_threshold = trial.suggest_categorical("distance_threshold", [0.1, 0.2, 0.5, 1.0])
     lighten_dist_coef = trial.suggest_categorical("lighten_dist_coef", [0, 1, 2, 4])
+    p = trial.suggest_categorical("p", [0.005, 0.01, 0.02, 0.05, 0.1])
 
     coverage = np.zeros((NUM_RUN, NUM_TIMESTEPS))
     for run_idx in range(NUM_RUN):
@@ -23,11 +23,11 @@ def objective(trial: optuna.Trial) -> float:
         model = LatentGoExplore(
             DDPG,
             env,
-            distance_threshold=distance_threshold,
-            p=p,
-            lighten_dist_coef=lighten_dist_coef,
             module_type="forward",
             latent_size=latent_size,
+            distance_threshold=distance_threshold,
+            lighten_dist_coef=lighten_dist_coef,
+            p=p,
             model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
             verbose=1,
         )

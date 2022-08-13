@@ -16,10 +16,11 @@ for run_idx in range(NUM_RUN):
     model = LatentGoExplore(
         SAC,
         env,
-        distance_threshold=1.0,
-        p=0.05,
+        module_type="inverse",
         latent_size=16,
+        distance_threshold=1.0,
         lighten_dist_coef=1.0,
+        p=0.05,
         model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
         verbose=1,
     )

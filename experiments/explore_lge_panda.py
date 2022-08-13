@@ -16,11 +16,11 @@ for run_idx in range(NUM_RUN):
     model = LatentGoExplore(
         DDPG,
         env,
-        latent_size=8,
         module_type="forward",
+        latent_size=8,
         distance_threshold=1.0,
-        p=0.001,
         lighten_dist_coef=0.0,
+        p=0.001,
         model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
         verbose=1,
     )
