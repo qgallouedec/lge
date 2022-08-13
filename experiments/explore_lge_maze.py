@@ -3,7 +3,7 @@ import os
 import gym
 import gym_continuous_maze
 import numpy as np
-from stable_baselines3 import DDPG
+from stable_baselines3 import SAC
 from toolbox.maze_grid import compute_coverage
 
 from lge import LatentGoExplore
@@ -14,7 +14,7 @@ NUM_RUN = 1
 for run_idx in range(NUM_RUN):
     env = gym.make("ContinuousMaze-v0")
     model = LatentGoExplore(
-        DDPG,
+        SAC,
         env,
         distance_threshold=1.0,
         p=0.05,
