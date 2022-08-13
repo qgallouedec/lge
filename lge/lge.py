@@ -12,7 +12,6 @@ from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
 
 from lge.buffer import LGEBuffer
-from lge.feature_extractor import GoExploreExtractor
 from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
 from lge.modules.ae_module import AEModule
 from lge.modules.forward_module import ForwardModule
@@ -196,7 +195,6 @@ class LatentGoExplore:
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
         replay_buffer_kwargs.update(dict(encoder=self.module.encoder, distance_threshold=distance_threshold, p=p))
-        policy_kwargs = dict(features_extractor_class=GoExploreExtractor)
         model_kwargs = {} if model_kwargs is None else model_kwargs
         model_kwargs["learning_starts"] = 3_000
         model_kwargs["train_freq"] = 1
@@ -206,7 +204,6 @@ class LatentGoExplore:
             env,
             replay_buffer_class=LGEBuffer,
             replay_buffer_kwargs=replay_buffer_kwargs,
-            policy_kwargs=policy_kwargs,
             verbose=verbose,
             **model_kwargs,
         )
