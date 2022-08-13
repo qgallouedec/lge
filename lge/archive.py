@@ -41,7 +41,6 @@ class ArchiveBuffer(HerReplayBuffer):
         encoder: Encoder,
         distance_threshold: float = 1.0,
         p: float = 0.005,
-        reduce_traj: bool = True,
         device: Union[torch.device, str] = "cpu",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
@@ -63,7 +62,6 @@ class ArchiveBuffer(HerReplayBuffer):
         self.distance_threshold = distance_threshold
         self.encoder = encoder
         self.p = p
-        self.reduce_traj = reduce_traj
 
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
@@ -171,11 +169,8 @@ class ArchiveBuffer(HerReplayBuffer):
         start = self.ep_start[goal_pos, goal_env]
         trajectory = self.next_observations["observation"][start : goal_pos + 1, goal_env]
         emb_trajectory = self.next_embeddings[start : goal_pos + 1, goal_env]
-        if self.reduce_traj:
-            idxs = lighten(emb_trajectory, self.distance_threshold * lighten_dist_coef)
-        else:
-            idxs = np.arange(len(emb_trajectory))
-
+        # Lighten trajectory
+        idxs = lighten(emb_trajectory, self.distance_threshold * lighten_dist_coef)
         trajectory, emb_trajectory = trajectory[idxs], emb_trajectory[idxs]
         return trajectory, emb_trajectory
 
