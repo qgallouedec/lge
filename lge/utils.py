@@ -63,12 +63,6 @@ def index(a: np.ndarray, b: np.ndarray) -> Optional[int]:
         return idxs[0]
 
 
-def multinomial(weights: Tensor) -> Tensor:
-    p = weights / weights.sum()
-    idx = torch.multinomial(p, 1)[0]
-    return idx
-
-
 def sample_geometric(mean: int, max_value: int) -> int:
     """
     Geometric sampling with some modifications.
