@@ -2,6 +2,7 @@ from typing import Callable
 
 import torch
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.distributions import sum_independent_dims
 from torch import Tensor, optim
 from torch.distributions import Normal
 
@@ -11,20 +12,6 @@ from lge.modules.common import BaseModule
 from lge.modules.forward_module import ForwardModule
 from lge.modules.inverse_module import InverseModule
 from lge.utils import is_image
-
-
-def sum_independent_dims(tensor: Tensor) -> Tensor:
-    """
-    Continuous actions are usually considered to be independent,
-    so we can sum components of the ``log_prob`` or the entropy.
-    :param tensor: shape: (n_batch, n_actions) or (n_batch,)
-    :return: shape: (n_batch,)
-    """
-    if len(tensor.shape) > 1:
-        tensor = tensor.sum(dim=1)
-    else:
-        tensor = tensor.sum()
-    return tensor
 
 
 class BaseLearner(BaseCallback):
