@@ -21,15 +21,18 @@ class LGEBuffer(HerReplayBuffer):
     :param observation_space: Observation space
     :param action_space: Action space
     :param env: The training environment
-    :param inverse_model: Inverse model used to compute embeddings
-    :param distance_threshold: The goal is reached when the distance between the current embedding
-        and the goal embedding is under this threshold
-    :param device: PyTorch device, defaults to "cpu"
+    :param encoder: Encoder to compute latent representation
+    :param distance_threshold: The goal is reached when the latent distance between
+        the current obs and the goal obs is below this threshold, defaults to 1.0
+    :param p: Geometric parameter for final goal sampling, defaults to 0.005
+    :param device: PyTorch device, defaults to "auto"
     :param n_envs: Number of parallel environments
+    :param optimize_memory_usage: Unused, defaults to False
+    :param handle_timeout_termination: Unsed, defaults to True
     :param n_sampled_goal: Number of virtual transitions to create per real transition,
-        by sampling new goals.
+        by sampling new goals, defaults to 4
     :param goal_selection_strategy: Strategy for sampling goals for replay.
-        One of ['episode', 'final', 'future']
+        One of ['episode', 'final', 'future'], defaults to "future"
     """
 
     def __init__(
@@ -41,7 +44,7 @@ class LGEBuffer(HerReplayBuffer):
         encoder: Encoder,
         distance_threshold: float = 1.0,
         p: float = 0.005,
-        device: Union[torch.device, str] = "cpu",
+        device: Union[torch.device, str] = "auto",
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
         handle_timeout_termination: bool = True,
@@ -101,7 +104,7 @@ class LGEBuffer(HerReplayBuffer):
 
     def recompute_embeddings(self) -> None:
         """
-        Re-compute all the embeddings and estiamte the density. This method must
+        Re-compute all the embeddings and estimate the density. This method must
         be called on a regular basis to keep the density estimation up to date.
         """
         upper_bound = self.pos if not self.full else self.buffer_size
@@ -137,6 +140,12 @@ class LGEBuffer(HerReplayBuffer):
         self.sorted_density = np.argsort(density)
 
     def encode(self, obs: np.ndarray) -> Tensor:
+        """
+        Encode an observation.
+
+        :param obs: The observation to encode
+        :return: The latent representation
+        """
         obs = self.to_torch(obs).float()
         if is_image(obs):
             # Convert all to float
@@ -154,11 +163,12 @@ class LGEBuffer(HerReplayBuffer):
 
     def sample_trajectory(self, lighten_dist_coef: float = 1.0) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
-        Sample a trajcetory of observations based on the embeddings density.
+        Sample a trajcetory of observations based on the latent density.
 
-        :return: A list of observations as array
+        :param lighten_dist_coef: Remove subgoal that are not further than lighten_dist_coef*dist_threshold
+            from the previous subgoal, defaults to 1.0
+        :return: The list of subgoals and their latent representation
         """
-
         if self.nb_embeddings_computed == 0:  # no embeddings computed yet
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
@@ -263,8 +273,9 @@ class LGEBuffer(HerReplayBuffer):
         """
         Sample goals based on goal_selection_strategy.
 
-        :param trans_coord: Coordinates of the transistions within the buffer
-        :return: Return sampled goals
+        :param batch_inds: Indices of the transitions
+        :param env_indices: Indices of the envrionments
+        :return: Samples
         """
         batch_ep_start = self.ep_start[batch_inds, env_indices]
         batch_ep_length = self.ep_length[batch_inds, env_indices]
