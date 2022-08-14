@@ -181,10 +181,13 @@ class LatentGoExplore:
         # Define the "module" used to learn the latent representation
         if module_type == "inverse":
             self.module = InverseModule(obs_size, action_size, latent_size).to(self.device)
+            self.module_learner = InverseModuleLearner(self.module, self.replay_buffer)
         elif module_type == "forward":
             self.module = ForwardModule(obs_size, action_size, latent_size).to(self.device)
+            self.module_learner = ForwardModuleLearner(self.module, self.replay_buffer)
         elif module_type == "ae":
             self.module = AEModule(obs_size, latent_size).to(self.device)
+            self.module_learner = AEModuleLearner(self.module, self.replay_buffer)
 
         # Wrap the env
         def env_func():
@@ -214,28 +217,10 @@ class LatentGoExplore:
         for _env in self.model.env.envs:
             _env.set_buffer(self.replay_buffer)
 
-    def explore(self, total_timesteps: int, train_freq=5_000, gradient_steps=500, reset_num_timesteps: bool = False) -> None:
+    def explore(self, total_timesteps: int) -> None:
         """
         Run exploration.
 
-        :param total_timesteps: Total timestep of exploration
-        :param update_freq: Cells update frequency
-        :param reset_num_timesteps: Whether or not to reset the current timestep number (used in logging), defaults to False
+        :param total_timesteps: Total number of timesteps for exploration
         """
-        # Choose the learner, depending on the module
-        if isinstance(self.module, InverseModule):
-            learner_class = InverseModuleLearner
-        elif isinstance(self.module, ForwardModule):
-            learner_class = ForwardModuleLearner
-        elif isinstance(self.module, AEModule):
-            learner_class = AEModuleLearner
-
-        callback = [
-            learner_class(
-                self.module,
-                self.replay_buffer,
-                train_freq=train_freq,
-                gradient_steps=gradient_steps,
-            ),
-        ]
-        self.model.learn(total_timesteps, callback=callback, reset_num_timesteps=reset_num_timesteps)
+        self.model.learn(total_timesteps, callback=[self.module_learner])
