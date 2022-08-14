@@ -119,35 +119,6 @@ class Goalify(gym.Wrapper):
         return dict_obs, reward, done, info
 
 
-class CallEveryNTimesteps(BaseCallback):
-    """
-    Callback that calls a function every ``call_freq`` timesteps.
-
-    :param func: The function to call
-    :param call_freq: The call timestep frequency, defaults to 1
-    :param verbose: Verbosity level 0: not output 1: info 2: debug, defaults to 0
-    """
-
-    def __init__(self, func: Callable[[], None], call_freq: int = 1, verbose=0) -> None:
-        super(CallEveryNTimesteps, self).__init__(verbose)
-        self.func = func
-        self.call_freq = call_freq
-
-    def _on_step(self) -> bool:
-        """
-        This method will be called by the model after each call to `env.step()`.
-
-        For child callback (of an `EventCallback`), this will be called
-        when the event is triggered.
-
-        :return: (bool) If the callback returns False, training is aborted early.
-        """
-        if self.num_timesteps % self.call_freq == 0:
-            self.func()
-
-        return True
-
-
 class LatentGoExplore:
     """ """
 
