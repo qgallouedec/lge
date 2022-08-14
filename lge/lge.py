@@ -222,11 +222,7 @@ class LatentGoExplore:
         :param update_freq: Cells update frequency
         :param reset_num_timesteps: Whether or not to reset the current timestep number (used in logging), defaults to False
         """
-        if type(self.model.env.action_space) == spaces.Discrete:
-            criterion = torch.nn.CrossEntropyLoss()
-        elif type(self.model.env.action_space) == spaces.Box:
-            criterion = torch.nn.MSELoss()
-
+        # Choose the learner, depending on the module
         if isinstance(self.module, InverseModule):
             learner_class = InverseModuleLearner
         elif isinstance(self.module, ForwardModule):
@@ -238,10 +234,8 @@ class LatentGoExplore:
             learner_class(
                 self.module,
                 self.replay_buffer,
-                criterion=criterion,
                 train_freq=train_freq,
                 gradient_steps=gradient_steps,
-                first_update=5_000,
             ),
         ]
         self.model.learn(total_timesteps, callback=callback, reset_num_timesteps=reset_num_timesteps)
