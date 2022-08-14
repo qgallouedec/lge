@@ -1,12 +1,11 @@
 import copy
-from typing import Any, Callable, Dict, Optional, Tuple, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 import gym
 import numpy as np
 import torch
 from gym import Env, spaces
 from stable_baselines3.common.base_class import maybe_make_env
-from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
@@ -27,6 +26,10 @@ class Goalify(gym.Wrapper):
     :param nb_random_exploration_steps: Number of random exploration steps after the goal is reached, defaults to 30
     :param window_size: Agent can skip goals in the goal trajectory within the limit of ``window_size``
         goals ahead, defaults to 10
+    :param distance_threshold: The goal is reached when the latent distance between
+    the current obs and the goal obs is below this threshold, defaults to 1.0
+    :param lighten_dist_coef: Remove subgoal that are not further than lighten_dist_coef*dist_threshold
+        from the previous subgoal, defaults to 1.0
     """
 
     def __init__(
@@ -55,7 +58,7 @@ class Goalify(gym.Wrapper):
         """
         Set the buffer.
 
-        The buffer is used to compute goal trajectories, and to compute the cell for the reward.
+        The buffer is used to compute goal trajectories, and the latent representation.
 
         :param buffer: The LGE buffer
         """
@@ -120,7 +123,26 @@ class Goalify(gym.Wrapper):
 
 
 class LatentGoExplore:
-    """ """
+    """
+    Latent Go-Explore.
+
+    :param model_class: Off-policy algorithm of the goal-conditioned agent
+     :param env: The environment to learn from
+    :param module_type: Type of module used for learning the representation
+        in ["inverse", "forward", "ae"], defaults to "inverse"
+    :param latent_size: Feature size, defaults to 16
+    :param distance_threshold: The goal is reached when the latent distance between
+        the current obs and the goal obs is below this threshold, defaults to 1.0
+    :param lighten_dist_coef: Remove subgoal that are not further than lighten_dist_coef*dist_threshold
+        from the previous subgoal, defaults to 1.0
+    :param p: Geometric parameter for final goal sampling, defaults to 0.005
+    :param n_envs: Number of parallel environments
+    :param replay_buffer_kwargs: Keyword arguments to pass to the replay buffer on creation, defaults to None
+    :param model_kwargs: Keyword arguments to pass to the model on creation, defaults to None
+    :param further_explore: Whether the agent further explore after reaching the final goal, defaults to True
+    :param verbose: The verbosity level: 0 none, 1 training information, 2 debug, defaults to 0
+    :param device: PyTorch device, defaults to "auto"
+    """
 
     def __init__(
         self,
