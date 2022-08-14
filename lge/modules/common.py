@@ -1,7 +1,5 @@
-from typing import List, Type, Union
+from typing import List, Type
 
-import torch
-from stable_baselines3.common.utils import get_device
 from torch import Tensor, nn
 
 
@@ -13,7 +11,6 @@ class BaseNetwork(nn.Module):
     :param output_size: The output size
     :param net_arch: The specification of the network
     :param activation_fn: The activation function to use for the networks
-    :param device: PyTorch device, defaults to "auto"
     """
 
     def __init__(
@@ -22,10 +19,8 @@ class BaseNetwork(nn.Module):
         output_size: int,
         net_arch: List[int],
         activation_fn: Type[nn.Module],
-        device: Union[torch.device, str] = "auto",
     ) -> None:
         super().__init__()
-        device = get_device(device)
         layers = []
         previous_layer_size = input_size
 
@@ -37,7 +32,7 @@ class BaseNetwork(nn.Module):
         layers.append(nn.Linear(previous_layer_size, output_size))
 
         # Create network
-        self.net = nn.Sequential(*layers).to(device)
+        self.net = nn.Sequential(*layers)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.net(x)
@@ -51,7 +46,6 @@ class Encoder(BaseNetwork):
     :param latent_size: Feature size
     :param net_arch: The specification of the network
     :param activation_fn: The activation function to use for the networks
-    :param device: PyTorch device, defaults to "auto"
     """
 
     def __init__(
@@ -60,9 +54,8 @@ class Encoder(BaseNetwork):
         latent_size: int,
         net_arch: List[int],
         activation_fn: Type[nn.Module],
-        device: Union[torch.device, str] = "auto",
     ) -> None:
-        super().__init__(obs_size, latent_size, net_arch, activation_fn, device)
+        super().__init__(obs_size, latent_size, net_arch, activation_fn)
         self.latent_size = latent_size
 
 

@@ -10,6 +10,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
+from stable_baselines3.common.utils import get_device
 
 from lge.buffer import LGEBuffer
 from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
@@ -175,13 +176,15 @@ class LatentGoExplore:
         if is_image_space(env.observation_space):
             raise NotImplementedError()
 
+        self.device = get_device(device)
+
         # Define the "module" used to learn the latent representation
         if module_type == "inverse":
-            self.module = InverseModule(obs_size, action_size, latent_size, device=device)
+            self.module = InverseModule(obs_size, action_size, latent_size).to(self.device)
         elif module_type == "forward":
-            self.module = ForwardModule(obs_size, action_size, latent_size, device=device)
+            self.module = ForwardModule(obs_size, action_size, latent_size).to(self.device)
         elif module_type == "ae":
-            self.module = AEModule(obs_size, latent_size, device=device)
+            self.module = AEModule(obs_size, latent_size).to(self.device)
 
         # Wrap the env
         def env_func():

@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Type, Union
+from typing import List, Optional, Tuple, Type
 
 import torch
 from torch import Tensor, nn
@@ -15,7 +15,6 @@ class ForwardModel(nn.Module):
     :param latent_size: Feature size
     :param net_arch: The specification of the network
     :param activation_fn: The activation function to use for the networks
-    :param device: PyTorch device, defaults to "auto"
     """
 
     def __init__(
@@ -25,12 +24,11 @@ class ForwardModel(nn.Module):
         latent_size: int,
         net_arch: List[int],
         activation_fn: Type[nn.Module],
-        device: Union[torch.device, str] = "auto",
     ) -> None:
         super().__init__()
-        self.net = BaseNetwork(latent_size + action_size, latent_size, net_arch, activation_fn, device)
-        self.mean_net = nn.Linear(latent_size, obs_size).to(device)
-        self.log_std_net = nn.Linear(latent_size, obs_size).to(device)
+        self.net = BaseNetwork(latent_size + action_size, latent_size, net_arch, activation_fn)
+        self.mean_net = nn.Linear(latent_size, obs_size)
+        self.log_std_net = nn.Linear(latent_size, obs_size)
 
     def forward(self, latent: Tensor, action: Tensor) -> Tuple[Tensor, Tensor]:
         x = self.net(torch.concat((latent, action), dim=-1))
@@ -50,7 +48,6 @@ class ForwardModule(BaseModule):
     :param latent_size: Feature size, defaults to 16
     :param net_arch: The specification of the network, default to [64, 64]
     :param activation_fn: The activation function to use for the networks, default to ReLU
-    :param device: PyTorch device, defaults to "auto"
 
                     •---------•         •---------------•
     observation --> | Encoder | ------> |               |
@@ -66,14 +63,13 @@ class ForwardModule(BaseModule):
         latent_size: int = 16,
         net_arch: Optional[List[int]] = None,
         activation_fn: Type[nn.Module] = nn.ReLU,
-        device: Union[torch.device, str] = "auto",
     ) -> None:
         super().__init__()
         if net_arch is None:
             net_arch = [64, 64]
 
-        self.encoder = Encoder(obs_size, latent_size, net_arch, activation_fn, device)
-        self.forward_model = ForwardModel(obs_size, action_size, latent_size, net_arch, activation_fn, device)
+        self.encoder = Encoder(obs_size, latent_size, net_arch, activation_fn)
+        self.forward_model = ForwardModel(obs_size, action_size, latent_size, net_arch, activation_fn)
 
     def forward(self, obs: Tensor, action: Tensor) -> Tensor:
         latent = self.encoder(obs)
