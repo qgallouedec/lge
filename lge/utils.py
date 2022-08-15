@@ -39,27 +39,6 @@ def index(a: np.ndarray, b: np.ndarray) -> Optional[int]:
         return idxs[0]
 
 
-def sample_geometric(mean: int, max_value: int) -> int:
-    """
-    Geometric sampling with some modifications.
-
-    (1) The sampled value is < max_value.
-    (2) The mean cannot be below max_value/20.
-        If it is the case, the mean is replaced by max_value/20.
-
-    :param mean: Mean of the geometric distribution
-    :param max_value: Maximum value for the sample
-    :return: Sampled value
-    """
-    # Clip the mean by 1/20th of the max value
-    mean = np.clip(mean, a_min=int(max_value / 20), a_max=None)
-    while True:  # loop until a correct value is found
-        # for a geometric distributon, p = 1/mean
-        value = np.random.geometric(1 / mean)
-        if value < max_value:
-            return value
-
-
 def sample_geometric_with_max(p, max_value, size=None):
     """
     Sample follow geometric law, but are below the max_value.
@@ -77,28 +56,6 @@ def sample_geometric_with_max(p, max_value, size=None):
     return np.random.randint(0, max_value + 1)
 
 
-def build_image(images: List[Tensor]) -> Image.Image:
-    """
-    Stack and return an image.
-
-    :param images: List of batch of images. Each element must have size N x 3 x H x W
-    :return: Image.
-    """
-    # Clamp the values to [0, 1]
-    images = [torch.clamp(image, min=0.0, max=1.0) for image in images]
-
-    # Tensor to array, and transpose
-    images = [np.moveaxis(image.detach().cpu().numpy(), 1, 3) for image in images]
-
-    # Stack all images
-    rows = [np.hstack(tuple(image)) for image in images]
-    full_image = np.vstack(rows)
-
-    # Convert to Image
-    full_image = Image.fromarray((full_image.squeeze() * 255).astype(np.uint8), "RGB")
-    return full_image
-
-
 def is_image(x: Tensor) -> bool:
     """Whether the input is an image, or a batch of images"""
     shape = x.shape
@@ -106,28 +63,6 @@ def is_image(x: Tensor) -> bool:
         return True
     else:
         return False
-
-
-def human_format(num: int) -> str:
-    num = float("{:.3g}".format(num))
-    magnitude = 0
-    while abs(num) >= 1000:
-        magnitude += 1
-        num /= 1000.0
-    return "{}{}".format("{:f}".format(num).rstrip("0").rstrip("."), ["", "k", "M", "B", "T"][magnitude])
-
-
-class ImageSaver(BaseCallback):
-    def __init__(self, env: Env, save_freq: int) -> None:
-        super(ImageSaver, self).__init__()
-        self.env = env
-        self.save_freq = save_freq
-
-    def _on_step(self) -> None:
-        if self.n_calls % self.save_freq == 0:
-            img = Image.fromarray(self.env.render("rgb_array"))
-            img.save(human_format(self.n_calls) + ".bmp")
-        return super()._on_step()
 
 
 def round(input: Tensor, decimals: float) -> Tensor:
