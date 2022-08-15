@@ -174,13 +174,10 @@ class LatentGoExplore:
         # Define the "module" used to learn the latent representation
         if module_type == "inverse":
             self.module = InverseModule(obs_size, action_size, latent_size).to(self.device)
-            self.module_learner = InverseModuleLearner(self.module, self.replay_buffer)
         elif module_type == "forward":
             self.module = ForwardModule(obs_size, action_size, latent_size).to(self.device)
-            self.module_learner = ForwardModuleLearner(self.module, self.replay_buffer)
         elif module_type == "ae":
             self.module = AEModule(obs_size, latent_size).to(self.device)
-            self.module_learner = AEModuleLearner(self.module, self.replay_buffer)
 
         # Wrap the env
         def env_func():
@@ -209,6 +206,14 @@ class LatentGoExplore:
         self.replay_buffer = self.model.replay_buffer  # type: LGEBuffer
         for _env in self.model.env.envs:
             _env.set_buffer(self.replay_buffer)
+
+        # Define the learner for module
+        if module_type == "inverse":
+            self.module_learner = InverseModuleLearner(self.module, self.replay_buffer)
+        elif module_type == "forward":
+            self.module_learner = ForwardModuleLearner(self.module, self.replay_buffer)
+        elif module_type == "ae":
+            self.module_learner = AEModuleLearner(self.module, self.replay_buffer)
 
     def explore(self, total_timesteps: int) -> None:
         """
