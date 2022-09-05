@@ -83,9 +83,6 @@ class BaseLearner(BaseCallback):
         observations = observations.float()
         next_observations = next_observations.float()
 
-        # Squeeze needed when cross entropy loss
-        actions = sample.actions.squeeze()
-
         if is_image(observations):
             observations = observations / 255
             next_observations = next_observations / 255
