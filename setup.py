@@ -1,16 +1,16 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
-    name="go_explore",
+    name="lge",
     packages=find_packages(),
     url="https://github.com/qgallouedec/go-explore",
     description="Implementation of Go-Explore based on stable-baselines3",
     long_description=open("README.md").read(),
     install_requires=[
-        "stable_baselines3 @ git+https://git@github.com/qgallouedec/stable-baselines3@action-repeat",
+        "stable_baselines3 @ git+https://git@github.com/qgallouedec/stable-baselines3@IM_and_Vec_HER",
         "torchvision",
-        "gym[atari, accept-rom-license]",
         "optuna",
+        "opencv-python",
     ],
     extras_require={
         "tests": ["pytest", "black", "isort"],

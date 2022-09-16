@@ -21,11 +21,10 @@ pip install -e .
 
 
 ```python
-from go_explore import GoExplore
+from lge import LatentGoExplore
 
-go_explore = GoExplore("MontezumaRevenge-v0")
-go_explore.explore(total_timesteps=100000)
-go_explore.robustify(total_timesteps=1000)
+lge = LatentGoExplore("MontezumaRevenge-v0")
+lge.explore(total_timesteps=100000)
 ```
 
 
