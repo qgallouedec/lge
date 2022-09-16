@@ -1,6 +1,6 @@
 # Latent Go-Explore
 
-[![CI](https://github.com/qgallouedec/go-explore/actions/workflows/ci.yml/badge.svg)](https://github.com/qgallouedec/go-explore/actions/workflows/ci.yml)
+
 [![codecov](https://codecov.io/gh/qgallouedec/go-explore/branch/main/graph/badge.svg?token=f0yjhgL1nj)](https://codecov.io/gh/qgallouedec/go-explore)
 
 Official implementation of Latent Go-Explore (LGE) algorithm.
@@ -36,3 +36,4 @@ Supported envrionments specifications:
 | `Discrete`      | :heavy_check_mark: | :x:                |
 | `MultiDiscrete` | :x:                | :x:                |
 | `MultiBinary`   | :x:                | :x:                |
+
