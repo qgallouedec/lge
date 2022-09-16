@@ -26,12 +26,3 @@ from lge import LatentGoExplore
 lge = LatentGoExplore("MontezumaRevenge-v0")
 lge.explore(total_timesteps=100000)
 ```
-
-
-## Disclaimer
-
-Some components of the algorithm have not been implemented yet:
-
-- (To be filled)
-
-Contributions are welcome.
