@@ -1,10 +1,8 @@
-from typing import List, Optional
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
-from gym import Env
-from PIL import Image
-from stable_baselines3.common.callbacks import BaseCallback
+from gym import spaces
 from torch import Tensor
 
 
@@ -12,9 +10,12 @@ def indexes(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """
     Indexes of a in b.
 
-    :param a: Array of shape (...)
-    :param b: Array of shape (N x ...)
-    :return: Indexes of the occurences of a in b
+    Args:
+        a (np.ndarray): Array of shape (...)
+        b (np.ndarray): Array of shape (N x ...)
+
+    Returns:
+        np.ndarray: Indexes of the occurences of a in b
     """
     if b.shape[0] == 0:
         return np.array([])
@@ -28,9 +29,12 @@ def index(a: np.ndarray, b: np.ndarray) -> Optional[int]:
     """
     Index of first occurence of a in b.
 
-    :param a: Array of shape (...)
-    :param b: Array of shape (N x ...)
-    :return: index of the first occurence of a in b
+    Args:
+        a (np.ndarray): Array of shape (...)
+        b (np.ndarray): Array of shape (N x ...)
+
+    Returns:
+        np.ndarray: index of the first occurence of a in b
     """
     idxs = indexes(a, b)
     if idxs.shape[0] == 0:
@@ -39,26 +43,41 @@ def index(a: np.ndarray, b: np.ndarray) -> Optional[int]:
         return idxs[0]
 
 
-def sample_geometric_with_max(p, max_value, size=None):
+def sample_geometric_with_max(
+    p: float, max_value: int, size: Optional[Union[int, Tuple[int]]] = None
+) -> Union[int, np.ndarray]:
     """
     Sample follow geometric law, but are below the max_value.
 
-    :param p: The probability of success of an individual trial
-    :param max_value: Maximum value for the sample, included
-    :param size: Output shape
-    :return: Sampled value
+    Args:
+        p (int): The probability of success of an individual trial
+        max_value (int): Maximum value for the sample, included
+        size (Optional[Union[int, Tuple[int]]]): Output size. If None, sample a single int
+
+    Returns:
+        Union[int, np.ndarray]: Sampled value
     """
     if p > 0:
         for _ in range(10_000):
             sample = np.random.geometric(p, size)
             if np.all(sample <= max_value):
                 return sample
-    return np.random.randint(0, max_value + 1)
+    return np.random.randint(0, max_value + 1, size)
 
 
 def is_image(x: Tensor) -> bool:
-    """Whether the input is an image, or a batch of images"""
+    """
+    Whether the input is an image, or a batch of images.
+
+    Args:
+        x (Tensor): Input Tensor
+
+    Returns:
+        bool: Whether it's an image
+    """
+
     shape = x.shape
+
     if len(shape) >= 3 and 3 in shape:
         return True
     else:
@@ -131,3 +150,22 @@ def lighten(arr: np.ndarray, threshold: float) -> np.ndarray:
         else:
             idx += 1
     return idxs[::-1]  # reflip array
+
+
+def get_size(space: spaces.Space) -> int:
+    """
+    Get the dimension of the space when flattened.
+
+    :param space: Space
+    :return: The size
+    """
+    if isinstance(space, spaces.Discrete):
+        return space.n
+    elif isinstance(space, spaces.MultiDiscrete):
+        return sum(space.nvec)
+    elif isinstance(space, spaces.MultiBinary):
+        return space.n if isinstance(space.n, int) else sum(space.n)
+    elif isinstance(space, spaces.Box):
+        return np.prod(space.shape)
+    else:
+        raise ValueError
