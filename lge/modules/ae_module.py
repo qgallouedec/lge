@@ -27,7 +27,6 @@ class AEModule(BaseModule):
         activation_fn: Type[nn.Module] = nn.ReLU,
     ) -> None:
         super().__init__()
-        self.obs_shape = (obs_size,)
         if net_arch is None:
             net_arch = [64, 64]
 
