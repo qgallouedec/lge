@@ -72,6 +72,16 @@ class ForwardModule(BaseModule):
         self.forward_model = ForwardModel(obs_size, action_size, latent_size, net_arch, activation_fn)
 
     def forward(self, obs: Tensor, action: Tensor) -> Tensor:
+        """
+        Return the predicted next observation given the observation and action.
+
+        Args:
+            obs (Tensor): Observation
+            action (Tensor): Action
+
+        Returns:
+            Tensor: Predicted next observation
+        """
         latent = self.encoder(obs)
         mean, std = self.forward_model(latent, action)
         return mean, std
