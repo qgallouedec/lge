@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from gym import spaces
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.distributions import sum_independent_dims
+from stable_baselines3.common.preprocessing import preprocess_obs
 from torch import Tensor, optim
 from torch.distributions import Normal
 
@@ -79,13 +80,8 @@ class BaseLearner(BaseCallback):
             observations = observations["observation"]
             next_observations = next_observations["observation"]
 
-        # Convert all to float
-        observations = observations.float()
-        next_observations = next_observations.float()
-
-        if is_image(observations):
-            observations = observations / 255
-            next_observations = next_observations / 255
+        observations = preprocess_obs(observations)
+        next_observations = preprocess_obs(next_observations)
 
         # Compute the loss
         self.module.train()
