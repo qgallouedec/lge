@@ -50,7 +50,7 @@ class BitFlippingEnv(GoalEnv):
         image_obs_space: bool = False,
         channel_first: bool = True,
     ) -> None:
-        super(BitFlippingEnv, self).__init__()
+        super().__init__()
         # Shape of the observation when using image space
         self.image_shape = (1, 36, 36) if channel_first else (36, 36, 1)
         # The achieved goal is determined by the current state
