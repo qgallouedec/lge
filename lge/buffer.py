@@ -12,7 +12,7 @@ from torch import Tensor
 
 from lge.modules.common import Encoder
 from lge.utils import estimate_density, is_image, lighten, sample_geometric_with_max
-
+from lge.utils import preprocess
 
 class LGEBuffer(HerReplayBuffer):
     """
@@ -39,7 +39,7 @@ class LGEBuffer(HerReplayBuffer):
     def __init__(
         self,
         buffer_size: int,
-        observation_space: spaces.Space,
+        observation_space: spaces.Dict,
         action_space: spaces.Space,
         env: VecEnv,
         encoder: Encoder,
@@ -147,18 +147,9 @@ class LGEBuffer(HerReplayBuffer):
         :param obs: The observation to encode
         :return: The latent representation
         """
-        obs = self.to_torch(obs).float()
-        if is_image(obs):
-            # Convert all to float
-            assert torch.max(obs) > 1
-            obs = obs / 255
-            if obs.shape[-1] == 3:
-                obs = torch.transpose(obs, -1, -3)
-            if len(obs.shape) == 3:
-                obs = obs.unsqueeze(0)
-        else:
-            if len(obs.shape) == 1:
-                obs = obs.unsqueeze(0)
+        obs = self.to_torch(obs)
+        obs = preprocess(obs, self.observation_space["observation"])
+        # TODO: maybe turn to batch when needed? Does encoder needs this to work?
         self.encoder.eval()
         return self.encoder(obs)
 

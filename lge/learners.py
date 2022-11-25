@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from gym import spaces
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.distributions import sum_independent_dims
-from stable_baselines3.common.preprocessing import preprocess_obs
 from torch import Tensor, optim
 from torch.distributions import Normal
 
@@ -14,7 +13,7 @@ from lge.modules.ae_module import AEModule
 from lge.modules.common import BaseModule
 from lge.modules.forward_module import ForwardModule
 from lge.modules.inverse_module import InverseModule
-from lge.utils import is_image
+from lge.utils import preprocess
 
 
 class BaseLearner(BaseCallback):
@@ -76,16 +75,13 @@ class BaseLearner(BaseCallback):
             )
             return super()._on_step()
 
-        if type(observations) is dict:
-            observations = observations["observation"]
-            next_observations = next_observations["observation"]
-
-        observations = preprocess_obs(observations)
-        next_observations = preprocess_obs(next_observations)
+        observations = preprocess(observations, observation_space=self.buffer.observation_space)
+        next_observations = preprocess(next_observations, observation_space=self.buffer.observation_space)
+        actions = preprocess(actions, observation_space=self.buffer.action_space)
 
         # Compute the loss
         self.module.train()
-        loss = self.compute_loss(observations, next_observations, actions)
+        loss = self.compute_loss(observations["observation"], next_observations["observation"], actions)
 
         # Step the optimizer
         self.optimizer.zero_grad()
