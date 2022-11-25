@@ -13,9 +13,10 @@ from stable_baselines3.common.utils import get_device
 
 from lge.buffer import LGEBuffer
 from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
-from lge.modules.ae_module import AEModule
-from lge.modules.forward_module import ForwardModule
-from lge.modules.inverse_module import InverseModule
+from lge.modules.ae_module import AEModule, CNNAEModule
+from lge.modules.forward_module import CNNForwardModule, ForwardModule
+from lge.modules.inverse_module import CNNInverseModule, InverseModule
+from lge.utils import get_shape, get_size
 
 
 class Goalify(gym.Wrapper):
@@ -161,23 +162,31 @@ class LatentGoExplore:
         device: Union[torch.device, str] = "auto",
     ) -> None:
         env = maybe_make_env(env, verbose)
+        # Get action size
         if type(env.action_space) is spaces.Discrete:
             action_size = env.action_space.n
         elif type(env.action_space) is spaces.Box:
             action_size = env.action_space.shape[0]
-        obs_size = env.observation_space.shape[0]
-        if is_image_space(env.observation_space):
-            raise NotImplementedError()
 
         self.device = get_device(device)
 
         # Define the "module" used to learn the latent representation
-        if module_type == "inverse":
-            self.module = InverseModule(obs_size, action_size, latent_size).to(self.device)
-        elif module_type == "forward":
-            self.module = ForwardModule(obs_size, action_size, latent_size).to(self.device)
-        elif module_type == "ae":
-            self.module = AEModule(obs_size, latent_size).to(self.device)
+        if is_image_space(env.observation_space):
+            obs_shape = get_shape(env.observation_space)
+            if module_type == "inverse":
+                self.module = CNNInverseModule(obs_shape, action_size, latent_size).to(self.device)
+            elif module_type == "forward":
+                self.module = CNNForwardModule(obs_shape, action_size, latent_size).to(self.device)
+            elif module_type == "ae":
+                self.module = CNNAEModule(obs_shape, latent_size).to(self.device)
+        else:  # Not image
+            obs_size = get_size(env.observation_space)
+            if module_type == "inverse":
+                self.module = InverseModule(obs_size, action_size, latent_size).to(self.device)
+            elif module_type == "forward":
+                self.module = ForwardModule(obs_size, action_size, latent_size).to(self.device)
+            elif module_type == "ae":
+                self.module = AEModule(obs_size, latent_size).to(self.device)
 
         # Wrap the env
         def env_func():
@@ -190,7 +199,9 @@ class LatentGoExplore:
 
         env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
-        replay_buffer_kwargs.update(dict(encoder=self.module.encoder, distance_threshold=distance_threshold, p=p))
+        replay_buffer_kwargs.update(
+            dict(encoder=self.module.encoder, latent_size=latent_size, distance_threshold=distance_threshold, p=p)
+        )
         model_kwargs = {} if model_kwargs is None else model_kwargs
         model_kwargs["learning_starts"] = 3_000
         model_kwargs["train_freq"] = 1
