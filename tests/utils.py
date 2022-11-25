@@ -1,4 +1,4 @@
-from typing import Any, Dict, Mapping, Tuple, Union, Optional
+from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
 import gym
 import numpy as np
@@ -33,8 +33,6 @@ class BitFlippingEnv(gym.Env):
     :param max_steps: Max number of steps, by default, equal to n_bits
     :param discrete_obs_space: Whether to use the discrete observation version or not, by default, it uses the
         ``MultiBinary`` one
-    :param image_obs_space: Use image as input instead of the ``MultiBinary`` one.
-    :param channel_first: Whether to use channel-first or last image.
     """
 
     def __init__(
@@ -43,8 +41,6 @@ class BitFlippingEnv(gym.Env):
         action_type: str = "discrete",
         observation_type: str = "discrete",
         max_steps: Optional[int] = None,
-        discrete_obs_space: bool = False,
-        image_obs_space: bool = False,
         channel_first: bool = True,
     ) -> None:
         super().__init__()
@@ -111,7 +107,7 @@ class BitFlippingEnv(gym.Env):
         if self.observation_type == "discrete":
             # The internal state is the binary representation of the observed one
             # [0, 1, 0, 1] -> 0*8 + 1*4 + 0*2 + 1*1
-            return np.packbits(self.state)[0]
+            return np.packbits(state)[0]  # TODO: Ends with 8... needs to be fixed
         elif self.observation_type in ["image_channel_first", "image_channel_last"]:
             # [0, 1, 0, 1] -> [[[  0], [255], [  0], [255], [  0], [  0], [  0]],
             #                  [[  0], [  0], [  0], [  0], [  0], [  0], [  0]],
@@ -122,9 +118,9 @@ class BitFlippingEnv(gym.Env):
             image = np.concatenate((state * 255, np.zeros(size - len(state))))
             return image.reshape(self.observation_space.shape).astype(np.uint8)
         elif self.observation_type == "mulbinary":
-            return self.state
+            return state
 
-    def obs_to_state(self, obs: Union[int, np.ndarray], batch_size: int) -> np.ndarray:
+    def obs_to_state(self, obs: Union[int, np.ndarray]) -> np.ndarray:
         """
         Convert obs to state.
         """
@@ -153,14 +149,14 @@ class BitFlippingEnv(gym.Env):
 
     def reset(self) -> Union[Dict[str, int], Dict[str, np.ndarray]]:
         self.current_step = 0
-        self.state = np.random.randself.observation_space.sample() # TODO work here
+        self.state = np.random.randint(0, 2, (self.n_bits,), dtype=np.uint8)
         return self._get_obs()
 
     def step(self, action: Union[np.ndarray, int]):
         if self.action_type == "discrete":
-            self.state[action > 0] = 1 - self.state[action > 0]
-        elif self.action_type == "continuous":
             self.state[action] = 1 - self.state[action]
+        elif self.action_type == "continuous":
+            self.state[action > 0] = 1 - self.state[action > 0]
         obs = self._get_obs()
         is_succcess = (self.state == self.goal).all()
         reward = float(is_succcess) - 1
