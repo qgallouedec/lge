@@ -1,8 +1,10 @@
-from typing import Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from gym import spaces
+from stable_baselines3.common.preprocessing import is_image_space, maybe_transpose
 from torch import Tensor
 
 
@@ -169,3 +171,55 @@ def get_size(space: spaces.Space) -> int:
         return np.prod(space.shape)
     else:
         raise ValueError
+
+
+def preprocess(input: Tensor, space: spaces.Space) -> Union[Tensor, Dict[str, Tensor]]:
+    """
+    Preprocess to be to a neural network.
+
+    The input can be batched.
+    For images, it normalizes the values by dividing them by 255 (to have values in [0, 1]), and transpose if needed as
+    PyTorch use channel first format.
+    For discrete observations, it create a one hot vector.
+
+    :param input: Input with shape (N, ...) or (...)
+    :param space: Space
+    :return: The preprocessed tensor.
+    """
+    if isinstance(space, spaces.Box):
+        if is_image_space(space):
+            if space.shape[2] in [1, 3]:  # channel last -> make channel first
+                if len(input.shape) == 3:  # not batched
+                    input = torch.permute(input, (2, 0, 1))
+                elif len(input.shape) == 4:  # batched
+                    input = torch.permute(input, (0, 3, 1, 2))
+            return input.float() / 255.0
+        else:
+            return input.float()
+
+    elif isinstance(space, spaces.Discrete):
+        # One hot encoding and convert to float to avoid errors
+        return F.one_hot(input.long(), num_classes=space.n).float()
+
+    elif isinstance(space, spaces.MultiDiscrete):
+        # Tensor concatenation of one hot encodings of each Categorical sub-space
+        return torch.cat(
+            [
+                F.one_hot(obs_.long(), num_classes=int(space.nvec[idx])).float()
+                for idx, obs_ in enumerate(torch.split(input.long(), 1, dim=-1))
+            ],
+            dim=-1,
+        ).view(*input.shape[:-1], sum(space.nvec))
+
+    elif isinstance(space, spaces.MultiBinary):
+        return input.float()
+
+    elif isinstance(space, spaces.Dict):
+        # Do not modify by reference the original observation
+        preprocessed = {}
+        for key, _obs in input.items():
+            preprocessed[key] = preprocess(_obs, space[key])
+        return preprocessed
+
+    else:
+        raise NotImplementedError(f"Preprocessing not implemented for {space}")

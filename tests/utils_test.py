@@ -3,7 +3,7 @@ import pytest
 import torch
 from gym import spaces
 
-from lge.utils import get_size, index, indexes, round, sample_geometric_with_max
+from lge.utils import get_size, index, indexes, round, sample_geometric_with_max, preprocess
 
 
 def test_indexes():
@@ -62,3 +62,80 @@ def test_get_size():
     # assert get_size(spaces.MultiBinary([3, 2])) == 5
     assert get_size(spaces.Box(-2, 2, shape=(2,))) == 2
     assert get_size(spaces.Box(-2, 2, shape=(2, 2))) == 4
+
+
+def test_preprocess():
+    # Discrete
+    actual = preprocess(torch.tensor(2, dtype=torch.long), spaces.Discrete(3))
+    expected = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32)
+    torch.testing.assert_close(actual, expected)
+
+    # Batched Discrete
+    actual = preprocess(torch.tensor([2, 1], dtype=torch.long), spaces.Discrete(3))
+    expected = torch.tensor([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0]], dtype=torch.float32)
+    torch.testing.assert_close(actual, expected)
+
+    # MultiDiscrete
+    actual = preprocess(torch.tensor([2, 0], dtype=torch.long), spaces.MultiDiscrete([3, 2]))
+    expected = torch.tensor([0.0, 0.0, 1.0, 1.0, 0.0], dtype=torch.float32)
+    torch.testing.assert_close(actual, expected)
+
+    # Batched MultiDiscrete
+    actual = preprocess(torch.tensor([[2, 0], [1, 1]], dtype=torch.long), spaces.MultiDiscrete([3, 2]))
+    expected = torch.tensor([[0.0, 0.0, 1.0, 1.0, 0.0], [0.0, 1.0, 0.0, 0.0, 1.0]], dtype=torch.float32)
+    torch.testing.assert_close(actual, expected)
+
+    # MultiBinary
+    actual = preprocess(torch.tensor([1, 0, 1], dtype=torch.long), spaces.MultiBinary(3))
+    expected = torch.tensor([1.0, 0.0, 1.0], dtype=torch.float32)
+    torch.testing.assert_close(actual, expected)
+
+    # Bached MultiBinary
+    actual = preprocess(torch.tensor([[1, 0, 1], [0, 1, 1]], dtype=torch.long), spaces.MultiBinary(3))
+    expected = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], dtype=torch.float32)
+    torch.testing.assert_close(actual, expected)
+
+    # Multidimensional MultiBinary
+    actual = preprocess(torch.tensor([[1, 0], [1, 1], [0, 1]], dtype=torch.long), spaces.MultiBinary([3, 2]))
+    expected = torch.tensor([[1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], dtype=torch.float32)
+    torch.testing.assert_close(actual, expected)
+
+    # Batched multidimensional MultiBinary
+    actual = preprocess(
+        torch.tensor([[[1, 0], [1, 1], [0, 1]], [[0, 0], [0, 1], [1, 0]]], dtype=torch.long), spaces.MultiBinary([3, 2])
+    )
+    expected = torch.tensor([[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0]]], dtype=torch.float32)
+    torch.testing.assert_close(actual, expected)
+
+    # Box
+    input = torch.tensor([0.7, -0.2, 0.2, 0.6], dtype=torch.float32)
+    actual = preprocess(input, spaces.Box(-2, 2, shape=(4,)))
+    expected = input
+    torch.testing.assert_close(actual, expected)
+
+    # Batched Box
+    input = torch.tensor([[-0.5, -0.6, 0.9, -0.4], [-0.4, -0.4, -0.2, -0.4]], dtype=torch.float32)
+    actual = preprocess(input, spaces.Box(-2, 2, shape=(4,)))
+    expected = input
+    torch.testing.assert_close(actual, expected)
+
+    # Multidimensional Box
+    input = torch.tensor(
+        [[1.2, -0.3, -1.9, -0.1], [-0.3, -0.0, 0.0, -0.0], [0.8, 1.8, -1.3, 1.2]],
+        dtype=torch.float32,
+    )
+    actual = preprocess(input, spaces.Box(-2, 2, shape=(3, 4)))
+    expected = input
+    torch.testing.assert_close(actual, expected)
+
+    # Batched Multidimensional Box
+    input = torch.tensor(
+        [
+            [[1.6, -0.7, 0.8, -0.4], [-0.5, -1.2, 0.0, -0.0], [-0.1, 0.4, -1.2, 1.1]],
+            [[0.0, 0.5, -1.2, -0.3], [-0.8, 1.7, 1.0, 0.1], [1.3, 0.1, -0.2, 0.6]],
+        ],
+        dtype=torch.float32,
+    )
+    actual = preprocess(input, spaces.Box(-2, 2, shape=(3, 4)))
+    expected = input
+    torch.testing.assert_close(actual, expected)
