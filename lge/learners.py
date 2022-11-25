@@ -75,9 +75,9 @@ class BaseLearner(BaseCallback):
             )
             return super()._on_step()
 
-        observations = preprocess(observations, observation_space=self.buffer.observation_space)
-        next_observations = preprocess(next_observations, observation_space=self.buffer.observation_space)
-        actions = preprocess(actions, observation_space=self.buffer.action_space)
+        observations = preprocess(observations, self.buffer.observation_space)
+        next_observations = preprocess(next_observations, self.buffer.observation_space)
+        actions = preprocess(actions, self.buffer.action_space)
 
         # Compute the loss
         self.module.train()
