@@ -3,7 +3,7 @@ import pytest
 import torch
 from gym import spaces
 
-from lge.utils import get_size, index, indexes, round, sample_geometric_with_max, preprocess
+from lge.utils import get_shape, get_size, index, indexes, preprocess, round, sample_geometric_with_max
 
 
 def test_indexes():
@@ -55,90 +55,124 @@ def test_round():
     torch.isclose(y, z, atol=0.0001)
 
 
-def test_get_size():
+def test_get_size_discrete():
     assert get_size(spaces.Discrete(3)) == 3
+
+
+def test_get_size_multidiscrete():
     assert get_size(spaces.MultiDiscrete([3, 2])) == 5
+
+
+def test_get_size_multibinary():
     assert get_size(spaces.MultiBinary(3)) == 3
-    # assert get_size(spaces.MultiBinary([3, 2])) == 5
+
+
+def test_get_size_multidimensional_multibinary():
+    assert get_size(spaces.MultiBinary([3, 2])) == 5
+
+
+def test_get_size_box():
     assert get_size(spaces.Box(-2, 2, shape=(2,))) == 2
+
+
+def test_get_size_multidimensional_box():
     assert get_size(spaces.Box(-2, 2, shape=(2, 2))) == 4
 
 
+def test_get_size_image_bw_channel_first():
+    with pytest.raises(Warning):
+        assert get_size(spaces.Box(0, 255, shape=(1, 36, 36), dtype=np.uint8)) == 36 * 36
+
+
+def test_get_size_image_rgb_channel_first():
+    with pytest.raises(Warning):
+        assert get_size(spaces.Box(0, 255, shape=(3, 36, 36), dtype=np.uint8)) == 36 * 36
+
+
+def test_get_size_image_bw_channel_last():
+    with pytest.raises(Warning):
+        assert get_size(spaces.Box(0, 255, shape=(36, 36, 1), dtype=np.uint8)) == 36 * 36
+
+
+def test_get_size_image_rgb_channel_last():
+    with pytest.raises(Warning):
+        assert get_size(spaces.Box(0, 255, shape=(36, 36, 3), dtype=np.uint8)) == 36 * 36
+
+
+def test_get_shape_discrete():
+    assert get_shape(spaces.Discrete(3)) == (3,)
+
+
+def test_get_shape_multidiscrete():
+    assert get_shape(spaces.MultiDiscrete([3, 2])) == (5,)
+
+
+def test_get_shape_multibinary():
+    assert get_shape(spaces.MultiBinary(3)) == (3,)
+
+
+def test_get_shape_multidimensional_multibinary():
+    assert get_shape(spaces.MultiBinary([3, 2])) == (5,)
+
+
+def test_get_shape_box():
+    assert get_shape(spaces.Box(-2, 2, shape=(2,))) == (2,)
+
+
+def test_get_shape_multidimensional_box():
+    assert get_shape(spaces.Box(-2, 2, shape=(2, 2))) == (4,)
+
+
+def test_get_shape_image_bw_channel_first():
+    assert get_shape(spaces.Box(0, 255, shape=(1, 36, 36), dtype=np.uint8)) == (1, 36, 36)
+
+
+def test_get_shape_image_rgb_channel_first():
+    assert get_shape(spaces.Box(0, 255, shape=(3, 36, 36), dtype=np.uint8)) == (3, 36, 36)
+
+
+def test_get_shape_image_bw_channel_last():
+    assert get_shape(spaces.Box(0, 255, shape=(36, 36, 1), dtype=np.uint8)) == (1, 36, 36)
+
+
+def test_get_shape_image_rgb_channel_last():
+    assert get_shape(spaces.Box(0, 255, shape=(36, 36, 3), dtype=np.uint8)) == (3, 36, 36)
+
+
 def test_preprocess_discrete():
-    actual = preprocess(torch.tensor(2, dtype=torch.long), spaces.Discrete(3))
-    expected = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float32)
-    torch.testing.assert_close(actual, expected)
-
-
-def test_preprocess_batched_discrete():
     actual = preprocess(torch.tensor([2, 1], dtype=torch.long), spaces.Discrete(3))
     expected = torch.tensor([[0.0, 0.0, 1.0], [0.0, 1.0, 0.0]], dtype=torch.float32)
     torch.testing.assert_close(actual, expected)
 
 
 def test_preprocess_multidiscrete():
-    actual = preprocess(torch.tensor([2, 0], dtype=torch.long), spaces.MultiDiscrete([3, 2]))
-    expected = torch.tensor([0.0, 0.0, 1.0, 1.0, 0.0], dtype=torch.float32)
-    torch.testing.assert_close(actual, expected)
-
-
-def test_preprocess_batched_multidiscrete():
     actual = preprocess(torch.tensor([[2, 0], [1, 1]], dtype=torch.long), spaces.MultiDiscrete([3, 2]))
     expected = torch.tensor([[0.0, 0.0, 1.0, 1.0, 0.0], [0.0, 1.0, 0.0, 0.0, 1.0]], dtype=torch.float32)
     torch.testing.assert_close(actual, expected)
 
 
 def test_preprocess_multibinary():
-    actual = preprocess(torch.tensor([1, 0, 1], dtype=torch.long), spaces.MultiBinary(3))
-    expected = torch.tensor([1.0, 0.0, 1.0], dtype=torch.float32)
-    torch.testing.assert_close(actual, expected)
-
-
-def test_preprocess_bached_multibinary():
     actual = preprocess(torch.tensor([[1, 0, 1], [0, 1, 1]], dtype=torch.long), spaces.MultiBinary(3))
     expected = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]], dtype=torch.float32)
     torch.testing.assert_close(actual, expected)
 
 
 def test_preprocess_multidimensional_multibinary():
-    actual = preprocess(torch.tensor([[1, 0], [1, 1], [0, 1]], dtype=torch.long), spaces.MultiBinary([3, 2]))
-    expected = torch.tensor([[1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], dtype=torch.float32)
-    torch.testing.assert_close(actual, expected)
-
-
-def test_preprocess_batched_multidimensional_multibinary():
     actual = preprocess(
         torch.tensor([[[1, 0], [1, 1], [0, 1]], [[0, 0], [0, 1], [1, 0]]], dtype=torch.long), spaces.MultiBinary([3, 2])
     )
-    expected = torch.tensor([[[1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], [[0.0, 0.0], [0.0, 1.0], [1.0, 0.0]]], dtype=torch.float32)
+    expected = torch.tensor([[1.0, 0.0, 1.0, 1.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0, 1.0, 0.0]], dtype=torch.float32)
     torch.testing.assert_close(actual, expected)
 
 
 def test_preprocess_box():
-    input = torch.tensor([0.7, -0.2, 0.2, 0.6], dtype=torch.float32)
-    actual = preprocess(input, spaces.Box(-2, 2, shape=(4,)))
-    expected = input
-    torch.testing.assert_close(actual, expected)
-
-
-def test_preprocess_batched_box():
     input = torch.tensor([[-0.5, -0.6, 0.9, -0.4], [-0.4, -0.4, -0.2, -0.4]], dtype=torch.float32)
     actual = preprocess(input, spaces.Box(-2, 2, shape=(4,)))
-    expected = input
+    expected = torch.tensor([[-0.5, -0.6, 0.9, -0.4], [-0.4, -0.4, -0.2, -0.4]], dtype=torch.float32)
     torch.testing.assert_close(actual, expected)
 
 
 def test_preprocess_multidimensional_box():
-    input = torch.tensor(
-        [[1.2, -0.3, -1.9, -0.1], [-0.3, -0.0, 0.0, -0.0], [0.8, 1.8, -1.3, 1.2]],
-        dtype=torch.float32,
-    )
-    actual = preprocess(input, spaces.Box(-2, 2, shape=(3, 4)))
-    expected = input
-    torch.testing.assert_close(actual, expected)
-
-
-def test_preprocess_batched_multidimensional_box():
     input = torch.tensor(
         [
             [[1.6, -0.7, 0.8, -0.4], [-0.5, -1.2, 0.0, -0.0], [-0.1, 0.4, -1.2, 1.1]],
@@ -147,84 +181,17 @@ def test_preprocess_batched_multidimensional_box():
         dtype=torch.float32,
     )
     actual = preprocess(input, spaces.Box(-2, 2, shape=(3, 4)))
-    expected = input
+    expected = torch.tensor(
+        [
+            [1.6, -0.7, 0.8, -0.4, -0.5, -1.2, 0.0, -0.0, -0.1, 0.4, -1.2, 1.1],
+            [0.0, 0.5, -1.2, -0.3, -0.8, 1.7, 1.0, 0.1, 1.3, 0.1, -0.2, 0.6],
+        ],
+        dtype=torch.float32,
+    )
     torch.testing.assert_close(actual, expected)
 
 
 def test_preprocess_image_channel_last():
-    input = torch.tensor(
-        [
-            [[43, 230, 206], [221, 193, 212], [79, 123, 167], [180, 88, 55]],
-            [[50, 30, 17], [95, 159, 241], [76, 37, 39], [167, 89, 65]],
-            [[221, 35, 147], [246, 149, 216], [233, 90, 100], [75, 3, 16]],
-            [[195, 129, 49], [73, 61, 135], [202, 82, 62], [133, 231, 85]],
-        ],
-        dtype=torch.uint8,
-    )
-    actual = preprocess(input, spaces.Box(0, 255, shape=(4, 4, 3), dtype=np.uint8))
-    expected = torch.tensor(
-        [
-            [
-                [0.16862745, 0.86666667, 0.30980392, 0.70588235],
-                [0.19607843, 0.37254902, 0.29803922, 0.65490196],
-                [0.86666667, 0.96470588, 0.91372549, 0.29411765],
-                [0.76470588, 0.28627451, 0.79215686, 0.52156863],
-            ],
-            [
-                [0.90196078, 0.75686275, 0.48235294, 0.34509804],
-                [0.11764706, 0.62352941, 0.14509804, 0.34901961],
-                [0.1372549, 0.58431373, 0.35294118, 0.01176471],
-                [0.50588235, 0.23921569, 0.32156863, 0.90588235],
-            ],
-            [
-                [0.80784314, 0.83137255, 0.65490196, 0.21568627],
-                [0.06666667, 0.94509804, 0.15294118, 0.25490196],
-                [0.57647059, 0.84705882, 0.39215686, 0.0627451],
-                [0.19215686, 0.52941176, 0.24313725, 0.33333333],
-            ],
-        ],
-        dtype=torch.float32,
-    )
-    torch.testing.assert_close(actual, expected)
-
-
-def test_preprocess_image_channel_first():
-    input = torch.tensor(
-        [
-            [[244, 18, 35, 248], [219, 203, 190, 198], [38, 1, 216, 148], [231, 188, 154, 49]],
-            [[15, 135, 66, 236], [242, 157, 20, 80], [222, 92, 171, 101], [25, 66, 191, 65]],
-            [[78, 16, 139, 73], [92, 2, 227, 188], [86, 147, 190, 103], [45, 69, 125, 254]],
-        ],
-        dtype=torch.uint8,
-    )
-    actual = preprocess(input, spaces.Box(0, 255, shape=(3, 4, 4), dtype=np.uint8))
-    expected = torch.tensor(
-        [
-            [
-                [0.95686275, 0.07058824, 0.1372549, 0.97254902],
-                [0.85882353, 0.79607843, 0.74509804, 0.77647059],
-                [0.14901961, 0.00392157, 0.84705882, 0.58039216],
-                [0.90588235, 0.7372549, 0.60392157, 0.19215686],
-            ],
-            [
-                [0.05882353, 0.52941176, 0.25882353, 0.9254902],
-                [0.94901961, 0.61568627, 0.07843137, 0.31372549],
-                [0.87058824, 0.36078431, 0.67058824, 0.39607843],
-                [0.09803922, 0.25882353, 0.74901961, 0.25490196],
-            ],
-            [
-                [0.30588235, 0.0627451, 0.54509804, 0.28627451],
-                [0.36078431, 0.00784314, 0.89019608, 0.7372549],
-                [0.3372549, 0.57647059, 0.74509804, 0.40392157],
-                [0.17647059, 0.27058824, 0.49019608, 0.99607843],
-            ],
-        ],
-        dtype=torch.float32,
-    )
-    torch.testing.assert_close(actual, expected)
-
-
-def test_preprocess_batched_image_channel_last():
     input = torch.tensor(
         [
             [
@@ -291,7 +258,7 @@ def test_preprocess_batched_image_channel_last():
     torch.testing.assert_close(actual, expected)
 
 
-def test_preprocess_batched_image_channel_first():
+def test_preprocess_image_channel_first():
     input = torch.tensor(
         [
             [
