@@ -2,12 +2,13 @@ import numpy as np
 import pytest
 from gym import spaces
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.preprocessing import is_image_space
 
 from lge.buffer import LGEBuffer
-from lge.modules.ae_module import AEModule
-from lge.modules.forward_module import ForwardModule
-from lge.modules.inverse_module import InverseModule
-from lge.utils import get_size
+from lge.modules.ae_module import AEModule, CNNAEModule
+from lge.modules.forward_module import CNNForwardModule, ForwardModule
+from lge.modules.inverse_module import CNNInverseModule, InverseModule
+from lge.utils import get_shape, get_size
 from tests.utils import DummyEnv
 
 OBSERVATION_SPACES = [
@@ -29,25 +30,37 @@ ACTION_SPACES = [
     spaces.MultiBinary(3),
     # spaces.MultiBinary([3, 2]), # Not working so far
     spaces.Box(-2, 2, shape=(2,)),
-    spaces.Box(-2, 2, shape=(2, 2)),
+    # spaces.Box(-2, 2, shape=(2, 2)), # Not working, because not supported by sb3 buffer
 ]
+
+MLP_MODULE_DICT = {"ae": AEModule, "inverse": InverseModule, "forward": ForwardModule}
+CNN_MODULE_DICT = {"ae": CNNAEModule, "inverse": CNNInverseModule, "forward": CNNForwardModule}
 
 
 @pytest.mark.parametrize("observation_space", OBSERVATION_SPACES)
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
-@pytest.mark.parametrize("module_class", [AEModule, InverseModule, ForwardModule])
+@pytest.mark.parametrize("module_class", ["ae", "inverse", "forward"])
 def test_add(observation_space, action_space, module_class):
-    obs_size = get_size(observation_space)
     action_size = get_size(action_space)
-    if module_class is AEModule:
-        module = AEModule(obs_size)
-    elif module_class is InverseModule:
-        module = InverseModule(obs_size, action_size)
-    elif module_class is ForwardModule:
-        module = ForwardModule(obs_size, action_size)
+    if is_image_space(observation_space):
+        obs_shape = get_shape(observation_space)
+        if module_class == "ae":
+            module = CNNAEModule(obs_shape, latent_size=16)
+        elif module_class == "inverse":
+            module = CNNInverseModule(obs_shape, action_size, latent_size=16)
+        elif module_class == "forward":
+            module = CNNForwardModule(obs_shape, action_size, latent_size=16)
+    else:
+        obs_size = get_size(observation_space)
+        if module_class == "ae":
+            module = AEModule(obs_size, latent_size=16)
+        elif module_class == "inverse":
+            module = InverseModule(obs_size, action_size, latent_size=16)
+        elif module_class == "forward":
+            module = ForwardModule(obs_size, action_size, latent_size=16)
     env = DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
     venv = make_vec_env(lambda: env)
-    buffer = LGEBuffer(1_000, venv.observation_space, venv.action_space, venv, module.encoder)
+    buffer = LGEBuffer(1_000, venv.observation_space, venv.action_space, venv, module.encoder, latent_size=16)
 
     obs = venv.reset()
     for _ in range(1_000):
@@ -58,20 +71,35 @@ def test_add(observation_space, action_space, module_class):
 
 @pytest.mark.parametrize("observation_space", OBSERVATION_SPACES)
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
-@pytest.mark.parametrize("module_class", [AEModule, InverseModule, ForwardModule])
+@pytest.mark.parametrize("module_class", ["ae", "inverse", "forward"])
 def test_encode(observation_space, action_space, module_class):
-    obs_size = get_size(observation_space)
     action_size = get_size(action_space)
-    if module_class is AEModule:
-        module = AEModule(obs_size, latent_size=16)
-    elif module_class is InverseModule:
-        module = InverseModule(obs_size, action_size, latent_size=16)
-    elif module_class is ForwardModule:
-        module = ForwardModule(obs_size, action_size, latent_size=16)
+    if is_image_space(observation_space):
+        obs_shape = get_shape(observation_space)
+        if module_class == "ae":
+            module = CNNAEModule(obs_shape, latent_size=16)
+        elif module_class == "inverse":
+            pytest.skip()
+            module = CNNInverseModule(obs_shape, action_size, latent_size=16)
+        elif module_class == "forward":
+            pytest.skip()
+            module = CNNForwardModule(obs_shape, action_size, latent_size=16)
+    else:
+        obs_size = get_size(observation_space)
+        if module_class == "ae":
+            module = AEModule(obs_size, latent_size=16)
+        elif module_class == "inverse":
+            module = InverseModule(obs_size, action_size, latent_size=16)
+        elif module_class == "forward":
+            module = ForwardModule(obs_size, action_size, latent_size=16)
     env = DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
     venv = make_vec_env(lambda: env)
-    buffer = LGEBuffer(1_000, venv.observation_space, venv.action_space, venv, module.encoder)
+    buffer = LGEBuffer(1_000, venv.observation_space, venv.action_space, venv, module.encoder, latent_size=16)
     latent = buffer.encode(observation_space.sample())
     assert latent.shape == (16,)
     latent = buffer.encode(np.array([observation_space.sample() for _ in range(4)]))  # Batch
     assert latent.shape == (4, 16)
+
+
+test_add(OBSERVATION_SPACES[8], ACTION_SPACES[3], "ae")
+# test_add(OBSERVATION_SPACES[8], ACTION_SPACES[4], "forward")
