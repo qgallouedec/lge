@@ -8,11 +8,10 @@ from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
-from torch import Tensor
+from torch import Tensor, nn
 
-from lge.modules.common import Encoder
-from lge.utils import estimate_density, is_image, lighten, sample_geometric_with_max
-from lge.utils import preprocess
+from lge.utils import batchify, estimate_density, is_batched, lighten, preprocess, sample_geometric_with_max
+
 
 class LGEBuffer(HerReplayBuffer):
     """
@@ -23,6 +22,7 @@ class LGEBuffer(HerReplayBuffer):
     :param action_space: Action space
     :param env: The training environment
     :param encoder: Encoder to compute latent representation
+    :param latent_size: Feature size, defaults to 16
     :param distance_threshold: The goal is reached when the latent distance between
         the current obs and the goal obs is below this threshold, defaults to 1.0
     :param p: Geometric parameter for final goal sampling, defaults to 0.005
@@ -42,7 +42,8 @@ class LGEBuffer(HerReplayBuffer):
         observation_space: spaces.Dict,
         action_space: spaces.Space,
         env: VecEnv,
-        encoder: Encoder,
+        encoder: nn.Module,
+        latent_size: int,
         distance_threshold: float = 1.0,
         p: float = 0.005,
         device: Union[torch.device, str] = "auto",
@@ -67,8 +68,8 @@ class LGEBuffer(HerReplayBuffer):
         self.encoder = encoder
         self.p = p
 
-        self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
-        self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
+        self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, latent_size), dtype=np.float32)
+        self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, latent_size), dtype=np.float32)
 
         # The buffer does not compute embedding of every new transition stored. The embeddings are
         # computed when the method recompute_embeddings() is appealed. To keep track of the number
@@ -147,11 +148,14 @@ class LGEBuffer(HerReplayBuffer):
         :param obs: The observation to encode
         :return: The latent representation
         """
-        obs = self.to_torch(obs)
-        obs = preprocess(obs, self.observation_space["observation"])
-        # TODO: maybe turn to batch when needed? Does encoder needs this to work?
+        obs = self.to_torch(obs).to(self.device)
         self.encoder.eval()
-        return self.encoder(obs)
+        if not is_batched(obs, self.observation_space["observation"]):
+            obs = preprocess(batchify(obs), self.observation_space["observation"])
+            return self.encoder(obs).squeeze(0)
+        else:
+            obs = preprocess(obs, self.observation_space["observation"])
+            return self.encoder(obs)
 
     def sample_trajectory(self, lighten_dist_coef: float = 1.0) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
