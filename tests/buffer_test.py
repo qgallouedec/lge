@@ -10,23 +10,34 @@ from lge.modules.inverse_module import InverseModule
 from lge.utils import get_size
 from tests.utils import DummyEnv
 
-SPACES = [
+OBSERVATION_SPACES = [
     spaces.Discrete(3),
     spaces.MultiDiscrete([3, 2]),
     spaces.MultiBinary(3),
     # spaces.MultiBinary([3, 2]), # Not working so far
     spaces.Box(-2, 2, shape=(2,)),
-    # spaces.Box(-2, 2, shape=(2, 2)), # Not working so far
+    spaces.Box(-2, 2, shape=(2, 2)),
+    spaces.Box(0, 255, shape=(36, 36, 1), dtype=np.uint8),  # BW channel last image
+    spaces.Box(0, 255, shape=(36, 36, 3), dtype=np.uint8),  # RGB channel last image
+    spaces.Box(0, 255, shape=(1, 36, 36), dtype=np.uint8),  # BW channel first image
+    spaces.Box(0, 255, shape=(3, 36, 36), dtype=np.uint8),  # RGB channel first image
 ]
 
-OBSERVATION_SPACES = [spaces.Dict({"observation": space, "goal": space}) for space in SPACES]
+ACTION_SPACES = [
+    spaces.Discrete(3),
+    spaces.MultiDiscrete([3, 2]),
+    spaces.MultiBinary(3),
+    # spaces.MultiBinary([3, 2]), # Not working so far
+    spaces.Box(-2, 2, shape=(2,)),
+    spaces.Box(-2, 2, shape=(2, 2)),
+]
 
 
 @pytest.mark.parametrize("observation_space", OBSERVATION_SPACES)
-@pytest.mark.parametrize("action_space", SPACES)
+@pytest.mark.parametrize("action_space", ACTION_SPACES)
 @pytest.mark.parametrize("module_class", [AEModule, InverseModule, ForwardModule])
 def test_add(observation_space, action_space, module_class):
-    obs_size = get_size(observation_space["observation"])
+    obs_size = get_size(observation_space)
     action_size = get_size(action_space)
     if module_class is AEModule:
         module = AEModule(obs_size)
@@ -34,7 +45,8 @@ def test_add(observation_space, action_space, module_class):
         module = InverseModule(obs_size, action_size)
     elif module_class is ForwardModule:
         module = ForwardModule(obs_size, action_size)
-    venv = make_vec_env(lambda: DummyEnv(observation_space, action_space))
+    env = DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
+    venv = make_vec_env(lambda: env)
     buffer = LGEBuffer(1_000, venv.observation_space, venv.action_space, venv, module.encoder)
 
     obs = venv.reset()
@@ -45,10 +57,10 @@ def test_add(observation_space, action_space, module_class):
 
 
 @pytest.mark.parametrize("observation_space", OBSERVATION_SPACES)
-@pytest.mark.parametrize("action_space", SPACES)
+@pytest.mark.parametrize("action_space", ACTION_SPACES)
 @pytest.mark.parametrize("module_class", [AEModule, InverseModule, ForwardModule])
 def test_encode(observation_space, action_space, module_class):
-    obs_size = get_size(observation_space["observation"])
+    obs_size = get_size(observation_space)
     action_size = get_size(action_space)
     if module_class is AEModule:
         module = AEModule(obs_size, latent_size=16)
@@ -56,10 +68,10 @@ def test_encode(observation_space, action_space, module_class):
         module = InverseModule(obs_size, action_size, latent_size=16)
     elif module_class is ForwardModule:
         module = ForwardModule(obs_size, action_size, latent_size=16)
-    venv = make_vec_env(lambda: DummyEnv(observation_space, action_space))
+    env = DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
+    venv = make_vec_env(lambda: env)
     buffer = LGEBuffer(1_000, venv.observation_space, venv.action_space, venv, module.encoder)
-    latent = buffer.encode(venv.observation_space.sample()["observation"])
+    latent = buffer.encode(observation_space.sample())
     assert latent.shape == (16,)
-
-
-test_encode(OBSERVATION_SPACES[1], SPACES[0], AEModule)
+    latent = buffer.encode(np.array([observation_space.sample() for _ in range(4)]))  # Batch
+    assert latent.shape == (4, 16)
