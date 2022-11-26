@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 import torch
@@ -70,23 +72,28 @@ def test_get_size_multidimensional_box():
 
 
 def test_get_size_image_bw_channel_first():
-    with pytest.raises(Warning):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         assert get_size(spaces.Box(0, 255, shape=(1, 36, 36), dtype=np.uint8)) == 36 * 36
 
 
 def test_get_size_image_rgb_channel_first():
-    with pytest.raises(Warning):
-        assert get_size(spaces.Box(0, 255, shape=(3, 36, 36), dtype=np.uint8)) == 36 * 36
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert get_size(spaces.Box(0, 255, shape=(3, 36, 36), dtype=np.uint8)) == 3 * 36 * 36
 
 
 def test_get_size_image_bw_channel_last():
-    with pytest.raises(Warning):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         assert get_size(spaces.Box(0, 255, shape=(36, 36, 1), dtype=np.uint8)) == 36 * 36
 
 
 def test_get_size_image_rgb_channel_last():
-    with pytest.raises(Warning):
-        assert get_size(spaces.Box(0, 255, shape=(36, 36, 3), dtype=np.uint8)) == 36 * 36
+    # with warnings.catch_warnings():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert get_size(spaces.Box(0, 255, shape=(36, 36, 3), dtype=np.uint8)) == 3 * 36 * 36
 
 
 def test_get_shape_discrete():
