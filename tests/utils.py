@@ -18,7 +18,7 @@ class DummyEnv(gym.Env):
         return self.observation_space.sample()
 
     def step(self, action: Action) -> Tuple[Observation, float, bool, Mapping[str, Any]]:
-        done = np.random.random() < 0.05
+        done = np.random.random() < 0.1
         return self.observation_space.sample(), 0.0, done, {}
 
 
