@@ -8,43 +8,6 @@ from stable_baselines3.common.preprocessing import is_image_space
 from torch import Tensor
 
 
-def indexes(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """
-    Indexes of a in b.
-
-    Args:
-        a (np.ndarray): Array of shape (...)
-        b (np.ndarray): Array of shape (N x ...)
-
-    Returns:
-        np.ndarray: Indexes of the occurences of a in b
-    """
-    if b.shape[0] == 0:
-        return np.array([])
-    a = a.flatten()
-    b = b.reshape((b.shape[0], -1))
-    idxs = np.where((a == b).all(1))[0]
-    return idxs
-
-
-def index(a: np.ndarray, b: np.ndarray) -> Optional[int]:
-    """
-    Index of first occurence of a in b.
-
-    Args:
-        a (np.ndarray): Array of shape (...)
-        b (np.ndarray): Array of shape (N x ...)
-
-    Returns:
-        np.ndarray: index of the first occurence of a in b
-    """
-    idxs = indexes(a, b)
-    if idxs.shape[0] == 0:
-        return None
-    else:
-        return idxs[0]
-
-
 def sample_geometric_with_max(
     p: float, max_value: int, size: Optional[Union[int, Tuple[int]]] = None
 ) -> Union[int, np.ndarray]:
@@ -65,48 +28,6 @@ def sample_geometric_with_max(
             if np.all(sample <= max_value):
                 return sample
     return np.random.randint(0, max_value + 1, size)
-
-
-def is_image(x: Tensor) -> bool:
-    """
-    Whether the input is an image, or a batch of images.
-
-    Args:
-        x (Tensor): Input Tensor
-
-    Returns:
-        bool: Whether it's an image
-    """
-
-    shape = x.shape
-
-    if len(shape) >= 3 and 3 in shape:
-        return True
-    else:
-        return False
-
-
-def round(input: Tensor, decimals: float) -> Tensor:
-    """
-    Rounding, but extended to every float.
-
-    :param input: Input tensor
-    :param decimals: Decimals, can be float
-    :return: The rounded tensor
-
-    Example:
-    >>> a
-    tensor([0.0000, 0.4000, 0.8000, 1.2000, 1.6000])
-    >>> torch.round(a, decimals=0.8)
-    Traceback (most recent call last):
-      File "<stdin>", line 1, in <module>
-    TypeError: round() received an invalid combination of arguments - got (Tensor, decimals=float), but expected one of:
-     * (Tensor input, *, Tensor out)
-     * (Tensor input, *, int decimals, Tensor out)
-    >>> round(a, decimals=0.2)
-    tensor([0.0000, 0.6310, 0.6310, 1.2619, 1.8929])
-    """
-    return torch.round(input * 10**decimals) / 10**decimals
 
 
 def estimate_density(x: Tensor, samples: Tensor) -> Tensor:
