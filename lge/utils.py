@@ -1,3 +1,4 @@
+import warnings
 from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
@@ -34,9 +35,12 @@ def estimate_density(x: Tensor, samples: Tensor) -> Tensor:
     """
     Estimate the density of x within the dataset
 
-    :param x: Points to evaluate density
-    :param dataset: The samples from the distribution to estimate
-    :return: The estiamte density on x
+    Args:
+        x (Tensor): Points to evaluate density
+        samples (Tensor): The samples from the distribution to estimate
+
+    Returns:
+        Tensor:  The estiamte density on x
     """
     n, d = samples.shape
     k = int(2 * n ** (1 / d))
@@ -51,17 +55,20 @@ def lighten(arr: np.ndarray, threshold: float) -> np.ndarray:
     Returns the indexes of the input array such that all successive elements are
     at least distant from the threshold value. It keeps the last one in place.
 
-    Example:
-    >>> arr = np.array([4.0, 5.0, 5.1, 6.0, 7.0])
-    >>> idxs = lighten(arr, threshold=1.0)
-    >>> idxs
-    array([0, 1, 3, 4])
-    >>> arr[idxs]
-    array([4., 5., 6., 7.])
+    Args:
+        arr (np.ndarray): Input array
+        threshold (float): Distance threshold
 
-    :param arr: Input array
-    :param threshold: Distance threshold
-    :return: List of indexes
+    Returns:
+        np.ndarray: List of indexes
+
+    Examples:
+        >>> arr = np.array([4.0, 5.0, 5.1, 6.0, 7.0])
+        >>> idxs = lighten(arr, threshold=1.0)
+        >>> idxs
+        array([0, 1, 3, 4])
+        >>> arr[idxs]
+        array([4., 5., 6., 7.])
     """
     arr = arr[::-1]  # flip array
     idxs = np.arange(len(arr))[::-1]  # [..., 2, 1, 0]
@@ -80,8 +87,14 @@ def get_shape(space: spaces.Space) -> Tuple[int]:
     """
     Get the shape of the space.
 
-    :param space: Space
-    :return: The size
+    Args:
+        space (spaces.Space): Space
+
+    Raises:
+        ValueError: If space is not in [(Multi)Discrete, MultiBinary, Box]
+
+    Returns:
+        Tuple[int]: The shape
     """
     if isinstance(space, spaces.Discrete):
         return (space.n,)
@@ -105,15 +118,34 @@ def get_size(space: spaces.Space) -> int:
     """
     Get the dimension of the space when flattened.
 
-    :param space: Space
-    :return: The size
+    Raises warning when trying to get the size of an image.
+
+    Args:
+        space (spaces.Space): Space
+
+    Returns:
+        int: Size
     """
     if is_image_space(space):
-        raise Warning("Why are you computing the size of an image?")
+        warnings.warn("Why are you computing the size of an image?")
     return np.prod(get_shape(space))
 
 
-def is_batched(input: Tensor, space: spaces.Space):
+def is_batched(input: Tensor, space: spaces.Space) -> bool:
+    """
+    Whether the input is batched, meaning it is a batch of elements of the space.
+
+    Args:
+        input (Tensor): Observation or batch of values
+        space (spaces.Space): Space from which the values come
+
+    Raises:
+        ValueError: When the observation(s) does/don't come from the space
+        ValueError: When space is not in [(Multi)Discrete, MultiBinary, Box]
+
+    Returns:
+        bool: Whether the input is batched
+    """
     if isinstance(space, (spaces.Box, spaces.MultiDiscrete, spaces.MultiBinary)):
         if input.shape == space.shape:
             return False
@@ -132,7 +164,22 @@ def is_batched(input: Tensor, space: spaces.Space):
         raise ValueError(f"Space {space} not supported.")
 
 
-def batchify(input: Union[Tensor, Dict[str, Tensor]]):
+def batchify(input: Union[Tensor, Dict[str, Tensor]]) -> Union[Tensor, Dict[str, Tensor]]:
+    """
+    Make the input a batch.
+
+    Args:
+        input (Union[Tensor, Dict[str, Tensor]]): Unbatched input.
+
+    Returns:
+        Union[Tensor, Dict[str, Tensor]]: Batched version of the input.
+
+    Examples:
+        >>> batchify(torch.tensor([1, 2, 3]))
+        tensor([[1, 2, 3]])
+        >>> batchify({"key": torch.tensor([1, 2, 3])})
+        {'key': tensor([[1, 2, 3]])}
+    """
     if isinstance(input, dict):
         return {key: batchify(value) for key, value in input.items()}
     else:
@@ -141,15 +188,17 @@ def batchify(input: Union[Tensor, Dict[str, Tensor]]):
 
 def preprocess(input: Union[Tensor, Dict[str, Tensor]], space: spaces.Space) -> Union[Tensor, Dict[str, Tensor]]:
     """
-    Preprocess to be to a neural network.
+    Preprocess the input before passing it through the neural network.
 
-    For images, it normalizes the values by dividing them by 255 (to have values in [0, 1]), and transpose if needed as
-    PyTorch use channel first format.
-    For discrete observations, it create a one hot vector.
+    Args:
+        input (Union[Tensor, Dict[str, Tensor]]): Batched input
+        space (spaces.Space): Space from which the values come
 
-    :param input: Input with shape (N, ...)
-    :param space: Space
-    :return: The preprocessed tensor.
+    Raises:
+        NotImplementedError: If space is not in [(Multi)Discrete, MultiBinary, Box]
+
+    Returns:
+        Union[Tensor, Dict[str, Tensor]]: Preprocessed input
     """
     if isinstance(space, spaces.Box):
         if is_image_space(space):
