@@ -17,18 +17,18 @@ from lge.utils import preprocess
 
 
 class BaseLearner(BaseCallback):
-    """
-    Base class for learner callback.
+    """Base class for module learner. A learner is a callback used for learning a module.
 
-    :param module: Module to train
-    :param buffer: Buffer to sample from
-    :param batch_size: Batch size, defaults to 32
-    :param lr: Learning rate, defaults to 1e-3
-    :param weight_decay: L2 penalty, defaults to 1e-5
-    :param train_freq: Training frequency, defaults to 5_000
-    :param gradient_steps: Number of gradient steps when training, defaults to 5_000
-    :param first_update: Learning starts after this amount of timesteps, defaults to 5_000
-    :param verbose: The verbosity level: 0 none, 1 training information, 2 debug, defaults to 0
+    Args:
+        module (BaseModule): Module to train
+        buffer (LGEBuffer): Buffer to sample from
+        batch_size (int, optional): Batch size. Defaults to 32.
+        lr (float, optional): Learning rate. Defaults to 1e-3.
+        weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
+        train_freq (int, optional): Training frequency. Defaults to 5_000.
+        gradient_steps (int, optional): Number of gradient steps when training. Defaults to 500.
+        first_update (int, optional): Learning starts after this amount of timesteps. Defaults to 5_000.
+        verbose (int, optional): The verbosity level: 0 none, 1 training information, 2 debug. Defaults to 0.
     """
 
     def __init__(
