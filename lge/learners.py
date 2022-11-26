@@ -125,10 +125,12 @@ class InverseModuleLearner(BaseLearner):
         verbose: int = 0,
     ) -> None:
         super().__init__(module, buffer, batch_size, lr, weight_decay, train_freq, gradient_steps, first_update, verbose)
-        if type(self.buffer.action_space) == spaces.Discrete:
+        if type(self.buffer.action_space) in [spaces.Discrete, spaces.MultiDiscrete, spaces.MultiBinary]:
             self.criterion = torch.nn.CrossEntropyLoss()
         elif type(self.buffer.action_space) == spaces.Box:
             self.criterion = torch.nn.MSELoss()
+        else:
+            raise NotImplementedError(f"Action space {self.buffer.action_space} not supported.")
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         pred_actions = self.module(observations, next_observations)

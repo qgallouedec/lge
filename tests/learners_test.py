@@ -5,8 +5,10 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.preprocessing import is_image_space
 
 from lge.buffer import LGEBuffer
-from lge.learners import AEModuleLearner
+from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
 from lge.modules.ae_module import AEModule, CNNAEModule
+from lge.modules.forward_module import CNNForwardModule, ForwardModule
+from lge.modules.inverse_module import CNNInverseModule, InverseModule
 from lge.utils import get_shape, get_size, preprocess
 from tests.utils import DummyEnv
 
@@ -35,7 +37,8 @@ ACTION_SPACES = [
 
 @pytest.mark.parametrize("observation_space", OBSERVATION_SPACES)
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
-def test_ae_learner(observation_space, action_space):
+@pytest.mark.parametrize("module_class", ["ae", "inverse", "forward"])
+def test_learner(observation_space, action_space, module_class):
     n_envs = 1
     observation_space = spaces.Dict({"observation": observation_space, "goal": observation_space})
     latent_size = 16
@@ -47,18 +50,34 @@ def test_ae_learner(observation_space, action_space):
     venv = make_vec_env(env_func, n_envs)
 
     # Make the module
+    action_size = get_size(action_space)
     if is_image_space(observation_space["observation"]):
         obs_shape = get_shape(venv.observation_space["observation"])
-        module = CNNAEModule(obs_shape, latent_size)
+        if module_class == "ae":
+            module = CNNAEModule(obs_shape, latent_size)
+        elif module_class == "forward":
+            module = CNNForwardModule(obs_shape, action_size, latent_size)
+        elif module_class == "inverse":
+            module = CNNInverseModule(obs_shape, action_size, latent_size)
     else:
         obs_size = get_size(venv.observation_space["observation"])
-        module = AEModule(obs_size, latent_size)
+        if module_class == "ae":
+            module = AEModule(obs_size, latent_size)
+        elif module_class == "forward":
+            module = ForwardModule(obs_size, action_size, latent_size)
+        elif module_class == "inverse":
+            module = InverseModule(obs_size, action_size, latent_size)
 
     # Make the buffer
     buffer = LGEBuffer(10_000, venv.observation_space, venv.action_space, venv, module.encoder, latent_size)
 
-    # Make the
-    learner = AEModuleLearner(module, buffer)
+    # Make the learner
+    if module_class == "ae":
+        learner = AEModuleLearner(module, buffer)
+    elif module_class == "forward":
+        learner = ForwardModuleLearner(module, buffer)
+    elif module_class == "inverse":
+        learner = InverseModuleLearner(module, buffer)
 
     # Collect transitions
     obs = venv.reset()
@@ -87,4 +106,5 @@ def test_ae_learner(observation_space, action_space):
     # Compute the final loss
     module.eval()
     final_loss = learner.compute_loss(observations, next_observations, actions)
-    assert final_loss < initial_loss
+    if module_class != "inverse":  # Env purely stochastic, action unpredictable, so ignore inverse
+        assert final_loss < initial_loss
