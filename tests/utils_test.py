@@ -4,7 +4,7 @@ import torch
 from gym import spaces
 from torch.distributions import Normal
 
-from lge.utils import estimate_density, get_shape, get_size, preprocess, sample_geometric_with_max
+from lge.utils import estimate_density, get_shape, get_size, lighten, preprocess, sample_geometric_with_max
 
 
 def test_estimate_density():
@@ -17,6 +17,14 @@ def test_estimate_density():
     samples = distribution.sample((10_000,))
     log_error = torch.log(estimate_density(x, samples)) - log_prob
     assert torch.all(torch.abs(log_error.max()) < 1.0)
+
+
+def test_lighten():
+    arr = np.array([4.0, 5.0, 5.5, 6.0, 6.1])
+    assert np.all(lighten(arr, threshold=1.0) == np.array([0, 1, 4]))
+    assert np.all(lighten(arr, threshold=0.3) == np.array([0, 1, 2, 4]))
+    assert np.all(lighten(arr, threshold=10) == np.array([4]))
+    assert np.all(lighten(arr, threshold=0.01) == np.array([0, 1, 2, 3, 4]))
 
 
 @pytest.mark.parametrize("mean", [2.0, 4.0])
