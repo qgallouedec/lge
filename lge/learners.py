@@ -72,7 +72,7 @@ class BaseLearner(BaseCallback):
         except ValueError:
             warnings.warn(
                 f"Trying to train the module when buffer before the "
-                " end of the first episode. Consider increasing first_update."
+                "end of the first episode. Consider increasing first_update."
             )
             return super()._on_step()
 
@@ -89,7 +89,8 @@ class BaseLearner(BaseCallback):
         loss.backward()
         self.optimizer.step()
 
-        self.logger.record("module/loss", loss.item())
+        if self.logger is not None:
+            self.logger.record("module/loss", loss.item())
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         raise NotImplementedError()
