@@ -2,8 +2,21 @@ import numpy as np
 import pytest
 import torch
 from gym import spaces
+from torch.distributions import Normal
 
-from lge.utils import get_shape, get_size, preprocess, sample_geometric_with_max
+from lge.utils import estimate_density, get_shape, get_size, preprocess, sample_geometric_with_max
+
+
+def test_estimate_density():
+    distribution = Normal(torch.tensor([0.0, 1.0, -1.0]), torch.tensor([1.0, 5.0, 2.0]))
+    xx = torch.linspace(-1, 1, 5)
+    yy = torch.linspace(0, 2, 5)
+    zz = torch.linspace(-2, 0, 5)
+    x = torch.dstack(torch.meshgrid(xx, yy, zz, indexing="ij")).reshape(-1, 3)
+    log_prob = torch.sum(distribution.log_prob(x), 1)
+    samples = distribution.sample((10_000,))
+    log_error = torch.log(estimate_density(x, samples)) - log_prob
+    assert torch.all(torch.abs(log_error.max()) < 1.0)
 
 
 @pytest.mark.parametrize("mean", [2.0, 4.0])
