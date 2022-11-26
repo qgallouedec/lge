@@ -9,7 +9,7 @@ Action = Union[np.ndarray, int]
 
 
 class DummyEnv(gym.Env):
-    def __init__(self, observation_space: spaces.Dict, action_space: gym.Space) -> None:
+    def __init__(self, observation_space: spaces.Space, action_space: gym.Space) -> None:
         super().__init__()
         self.observation_space = observation_space
         self.action_space = action_space
