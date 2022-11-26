@@ -106,5 +106,5 @@ def test_learner(observation_space, action_space, module_class):
     # Compute the final loss
     module.eval()
     final_loss = learner.compute_loss(observations, next_observations, actions)
-    if module_class in ["inverse", "forward"]:  # TODO: Env purely stochastic, action/obs unpredictable
+    if module_class not in ["inverse", "forward"]:  # TODO: Env purely stochastic, action/obs unpredictable
         assert final_loss < initial_loss
