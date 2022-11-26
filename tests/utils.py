@@ -18,7 +18,8 @@ class DummyEnv(gym.Env):
         return self.observation_space.sample()
 
     def step(self, action: Action) -> Tuple[Observation, float, bool, Mapping[str, Any]]:
-        return self.observation_space.sample(), 0.0, False, {}
+        done = np.random.random() < 0.05
+        return self.observation_space.sample(), 0.0, done, {}
 
 
 class BitFlippingEnv(gym.Env):
