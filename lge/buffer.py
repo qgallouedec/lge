@@ -193,10 +193,10 @@ class LGEBuffer(HerReplayBuffer):
         :return: Samples
         """
         # Normalize if needed and remove extra dimension (we are using only one env for now)
-        obs_ = self._normalize_obs({key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()})
-        next_obs_ = self._normalize_obs({key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()})
-        next_embeddings = self.next_embeddings[batch_inds, env_indices, :]
-        goal_embeddings = self.goal_embeddings[batch_inds, env_indices, :]
+        obs_ = self._normalize_obs({key: obs[batch_inds, env_indices] for key, obs in self.observations.items()})
+        next_obs_ = self._normalize_obs({key: obs[batch_inds, env_indices] for key, obs in self.next_observations.items()})
+        next_embeddings = self.next_embeddings[batch_inds, env_indices]
+        goal_embeddings = self.goal_embeddings[batch_inds, env_indices]
 
         # Compute new reward
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
@@ -231,9 +231,9 @@ class LGEBuffer(HerReplayBuffer):
         :return: Samples
         """
         # Get infos and obs
-        obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}
-        next_obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()}
-        next_embeddings = self.next_embeddings[batch_inds, env_indices, :]
+        obs = {key: obs[batch_inds, env_indices] for key, obs in self.observations.items()}
+        next_obs = {key: obs[batch_inds, env_indices] for key, obs in self.next_observations.items()}
+        next_embeddings = self.next_embeddings[batch_inds, env_indices]
 
         # Sample and set new goals
         new_goals, goal_embeddings = self._sample_goals(batch_inds, env_indices)

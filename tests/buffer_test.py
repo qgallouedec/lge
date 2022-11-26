@@ -79,10 +79,8 @@ def test_encode(observation_space, action_space, module_class):
         if module_class == "ae":
             module = CNNAEModule(obs_shape, latent_size=16)
         elif module_class == "inverse":
-            pytest.skip()
             module = CNNInverseModule(obs_shape, action_size, latent_size=16)
         elif module_class == "forward":
-            pytest.skip()
             module = CNNForwardModule(obs_shape, action_size, latent_size=16)
     else:
         obs_size = get_size(observation_space)
@@ -99,7 +97,3 @@ def test_encode(observation_space, action_space, module_class):
     assert latent.shape == (16,)
     latent = buffer.encode(np.array([observation_space.sample() for _ in range(4)]))  # Batch
     assert latent.shape == (4, 16)
-
-
-test_add(OBSERVATION_SPACES[8], ACTION_SPACES[3], "ae")
-# test_add(OBSERVATION_SPACES[8], ACTION_SPACES[4], "forward")
