@@ -84,7 +84,6 @@ class CNNInverseModule(BaseModule):
             self.cnn,
             nn.Flatten(),
             nn.Linear(n_flatten, latent_size),
-            nn.ReLU(),
         )
         self.forward_model = nn.Sequential(
             nn.Linear(2 * latent_size, 64),

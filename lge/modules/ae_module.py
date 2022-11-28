@@ -26,7 +26,6 @@ class AEModule(BaseModule):
             nn.Linear(64, 64),
             nn.ReLU(),
             nn.Linear(64, latent_size),
-            nn.ReLU(),
         )
 
         self.decoder = nn.Sequential(
@@ -74,7 +73,6 @@ class CNNAEModule(BaseModule):
             self.cnn,
             nn.Flatten(),
             nn.Linear(n_flatten, latent_size),
-            nn.ReLU(),
         )
 
         self.decoder = nn.Sequential(

@@ -103,7 +103,6 @@ class CNNForwardModule(BaseModule):
             self.cnn,
             nn.Flatten(),
             nn.Linear(n_flatten, latent_size),
-            nn.ReLU(),
         )
 
         self.decoder_mean = nn.Sequential(
