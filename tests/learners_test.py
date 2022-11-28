@@ -70,6 +70,7 @@ def test_learner(observation_space, action_space, module_class):
 
     # Make the buffer
     buffer = LGEBuffer(10_000, venv.observation_space, venv.action_space, venv, module.encoder, latent_size)
+    module = module.to(buffer.device)
 
     # Make the learner
     if module_class == "ae":

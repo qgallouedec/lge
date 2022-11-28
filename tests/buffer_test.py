@@ -61,12 +61,15 @@ def test_add(observation_space, action_space, module_class):
     env = DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
     venv = make_vec_env(lambda: env)
     buffer = LGEBuffer(1_000, venv.observation_space, venv.action_space, venv, module.encoder, latent_size=16)
+    module = module.to(buffer.device)
 
+    # Feed buffer
     obs = venv.reset()
     for _ in range(1_000):
         action = np.array([venv.action_space.sample()])
         next_obs, reward, done, infos = venv.step(action)
         buffer.add(obs, next_obs, action, reward, done, infos)
+        obs = next_obs
 
 
 @pytest.mark.parametrize("observation_space", OBSERVATION_SPACES)
@@ -93,6 +96,9 @@ def test_encode(observation_space, action_space, module_class):
     env = DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
     venv = make_vec_env(lambda: env)
     buffer = LGEBuffer(1_000, venv.observation_space, venv.action_space, venv, module.encoder, latent_size=16)
+    module = module.to(buffer.device)
+
+    # Test encoding
     latent = buffer.encode(observation_space.sample())
     assert latent.shape == (16,)
     latent = buffer.encode(np.array([observation_space.sample() for _ in range(4)]))  # Batch
