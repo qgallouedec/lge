@@ -71,10 +71,10 @@ class LGEBuffer(HerReplayBuffer):
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, latent_size), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, latent_size), dtype=np.float32)
 
-        # The buffer does not compute embedding of every new transition stored. The embeddings are
+        # The buffer does not compute density after every new transition stored. The densities are
         # computed when the method recompute_embeddings() is appealed. To keep track of the number
-        # embedding computed, we use self.self.nb_embeddings_computed
-        self.nb_embeddings_computed = 0
+        # densities computed, we use self.self.nb_density_computed
+        self.nb_density_computed = 0
 
     def add(
         self,
@@ -123,18 +123,18 @@ class LGEBuffer(HerReplayBuffer):
                 self.next_embeddings[k:upper, env_idx] = next_embedding.detach().cpu().numpy()
                 k += 256
 
-        self.nb_embeddings_computed = upper_bound * self.n_envs
+        self.nb_density_computed = upper_bound * self.n_envs
 
         # Reshape and convert embeddings to torch tensor
         all_embeddings = self.next_embeddings[:upper_bound]
-        all_embeddings = all_embeddings.reshape(self.nb_embeddings_computed, -1)
+        all_embeddings = all_embeddings.reshape(self.nb_density_computed, -1)
         all_embeddings = self.to_torch(all_embeddings)
 
         # Estimate density based on the embeddings
-        density = np.zeros((self.nb_embeddings_computed), dtype=np.float32)
+        density = np.zeros((self.nb_density_computed), dtype=np.float32)
         k = 0
-        while k < self.nb_embeddings_computed:
-            upper = min(self.nb_embeddings_computed, k + 256)
+        while k < self.nb_density_computed:
+            upper = min(self.nb_density_computed, k + 256)
             embeddings = all_embeddings[k:upper]
             density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             k += 256
@@ -165,7 +165,7 @@ class LGEBuffer(HerReplayBuffer):
             from the previous subgoal, defaults to 1.0
         :return: The list of subgoals and their latent representation
         """
-        if self.nb_embeddings_computed == 0:  # no embeddings computed yet
+        if self.nb_density_computed == 0:  # no density computed yet
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal).detach().cpu().numpy()
 
