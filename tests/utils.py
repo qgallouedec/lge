@@ -24,7 +24,7 @@ class DummyEnv(gym.Env):
 
 class BitFlippingEnv(gym.Env):
     """
-    Simple bit flipping env, useful to test HER.
+    Simple bit flipping env.
 
     The goal is to flip all the bits to get a vector of ones. In the continuous variant, if the ith action component has a
     value > 0, then the ith bit will be flipped.
@@ -38,7 +38,7 @@ class BitFlippingEnv(gym.Env):
 
     def __init__(
         self,
-        n_bits: int = 10,
+        n_bits: int = 8,
         action_type: str = "discrete",
         observation_type: str = "discrete",
         max_steps: Optional[int] = None,
@@ -50,40 +50,15 @@ class BitFlippingEnv(gym.Env):
         self.observation_type = observation_type
         if self.observation_type == "discrete":
             # In the discrete case, the agent act on the binary representation of the observation
-            self.observation_space = spaces.Dict(
-                {
-                    "observation": spaces.Discrete(2**n_bits),
-                    "goal": spaces.Discrete(2**n_bits),
-                }
-            )
+            self.observation_space = spaces.Discrete(2**n_bits)
         elif self.observation_type in ["image_channel_first", "image_channel_last"]:
             # When using image as input, one image contains the bits 0 -> 0, 1 -> 255 and the rest is filled with zeros
             # Shape of the observation when using image space
             channel_first = self.observation_type == "image_channel_first"
             image_shape = (1, 36, 36) if channel_first else (36, 36, 1)
-            self.observation_space = spaces.Dict(
-                {
-                    "observation": spaces.Box(
-                        low=0,
-                        high=255,
-                        shape=image_shape,
-                        dtype=np.uint8,
-                    ),
-                    "goal": spaces.Box(
-                        low=0,
-                        high=255,
-                        shape=image_shape,
-                        dtype=np.uint8,
-                    ),
-                }
-            )
+            self.observation_space = spaces.Box(low=0, high=255, shape=image_shape, dtype=np.uint8)
         elif self.observation_type == "mulbinary":
-            self.observation_space = spaces.Dict(
-                {
-                    "observation": spaces.MultiBinary(n_bits),
-                    "goal": spaces.MultiBinary(n_bits),
-                }
-            )
+            self.observation_space = spaces.MultiBinary(n_bits)
         else:
             raise ValueError("Wrong observation type")
 
@@ -96,7 +71,6 @@ class BitFlippingEnv(gym.Env):
             raise ValueError("Wrong action type")
 
         self.state = np.zeros((n_bits,), dtype=np.uint8)
-        self.goal = np.ones((n_bits,), dtype=np.uint8)
         self.n_bits = n_bits
         self.max_steps = max_steps if max_steps is not None else n_bits
         self.current_step = 0
@@ -143,10 +117,7 @@ class BitFlippingEnv(gym.Env):
         """
         Helper to create the observation.
         """
-        return {
-            "observation": self.state_to_obs(self.state.copy()),
-            "goal": self.state_to_obs(self.goal.copy()),
-        }
+        return self.state_to_obs(self.state.copy())
 
     def reset(self) -> Union[Dict[str, int], Dict[str, np.ndarray]]:
         self.current_step = 0
@@ -159,7 +130,7 @@ class BitFlippingEnv(gym.Env):
         elif self.action_type == "continuous":
             self.state[action > 0] = 1 - self.state[action > 0]
         obs = self._get_obs()
-        is_succcess = (self.state == self.goal).all()
+        is_succcess = self.state.all()
         reward = float(is_succcess) - 1
         done = is_succcess
         self.current_step += 1
