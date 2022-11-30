@@ -4,6 +4,7 @@ import torch
 from gym import spaces
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.preprocessing import is_image_space
+from stable_baselines3.common.utils import set_random_seed
 from torch import optim
 
 from lge.buffer import LGEBuffer
@@ -36,12 +37,16 @@ ACTION_SPACES = [
 ]
 
 N_ENVS = 3
+SEED = 42
 
 
 @pytest.mark.parametrize("observation_space", OBSERVATION_SPACES)
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
 @pytest.mark.parametrize("module_class", ["ae", "inverse", "forward"])
 def test_add(observation_space, action_space, module_class):
+    set_random_seed(SEED)
+
+    # Create module
     action_size = get_size(action_space)
     if is_image_space(observation_space):
         obs_shape = get_shape(observation_space)
@@ -60,10 +65,14 @@ def test_add(observation_space, action_space, module_class):
         elif module_class == "forward":
             module = ForwardModule(obs_size, action_size, latent_size=16)
 
+    # Create environment
     def env_func():
         return DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
 
     venv = make_vec_env(env_func, N_ENVS)
+    venv.seed(SEED)
+
+    # Create buffer
     buffer = LGEBuffer(
         1_000,
         venv.observation_space,
@@ -73,9 +82,11 @@ def test_add(observation_space, action_space, module_class):
         latent_size=16,
         n_envs=N_ENVS,
     )
+
+    # Module to proper device
     module = module.to(buffer.device)
 
-    # Feed buffer
+    # Feed the buffer
     obs = venv.reset()
     for _ in range(1_000):
         action = np.array([venv.action_space.sample() for _ in range(N_ENVS)])
@@ -88,6 +99,9 @@ def test_add(observation_space, action_space, module_class):
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
 @pytest.mark.parametrize("module_class", ["ae", "inverse", "forward"])
 def test_encode(observation_space, action_space, module_class):
+    set_random_seed(SEED)
+
+    # Create module
     action_size = get_size(action_space)
     if is_image_space(observation_space):
         obs_shape = get_shape(observation_space)
@@ -106,10 +120,14 @@ def test_encode(observation_space, action_space, module_class):
         elif module_class == "forward":
             module = ForwardModule(obs_size, action_size, latent_size=16)
 
+    # Create environment
     def env_func():
         return DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
 
     venv = make_vec_env(env_func, N_ENVS)
+    venv.seed(SEED)
+
+    # Create buffer
     buffer = LGEBuffer(
         1_000,
         venv.observation_space,
@@ -119,6 +137,8 @@ def test_encode(observation_space, action_space, module_class):
         latent_size=16,
         n_envs=N_ENVS,
     )
+
+    # Module to proper device
     module = module.to(buffer.device)
 
     # Test encoding
@@ -132,6 +152,9 @@ def test_encode(observation_space, action_space, module_class):
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
 @pytest.mark.parametrize("module_class", ["ae", "inverse", "forward"])
 def test_recompute_embeddings(observation_space, action_space, module_class):
+    set_random_seed(SEED)
+
+    # Create module
     action_size = get_size(action_space)
     if is_image_space(observation_space):
         obs_shape = get_shape(observation_space)
@@ -150,10 +173,14 @@ def test_recompute_embeddings(observation_space, action_space, module_class):
         elif module_class == "forward":
             module = ForwardModule(obs_size, action_size, latent_size=16)
 
+    # Create environment
     def env_func():
         return DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
 
     venv = make_vec_env(env_func, N_ENVS)
+    venv.seed(SEED)
+
+    # Create buffer
     buffer = LGEBuffer(
         1_000,
         venv.observation_space,
@@ -163,16 +190,19 @@ def test_recompute_embeddings(observation_space, action_space, module_class):
         latent_size=16,
         n_envs=N_ENVS,
     )
-    module = module.to(buffer.device)
-    obs = venv.reset()
 
-    # Feed buffer
+    # Module to proper device
+    module = module.to(buffer.device)
+
+    # Feed the buffer
+    obs = venv.reset()
     for _ in range(500):
         action = np.array([venv.action_space.sample() for _ in range(N_ENVS)])
         next_obs, reward, done, infos = venv.step(action)
         buffer.add(obs, next_obs, action, reward, done, infos)
         obs = next_obs
 
+    # Get and test embeddings
     buffer_emb = buffer.next_embeddings[123, 0]
     actual_emb = buffer.encode(buffer.next_observations["observation"][123, 0]).detach().cpu().numpy()
     assert np.allclose(buffer_emb, actual_emb, atol=1e-6)
@@ -201,7 +231,7 @@ def test_recompute_embeddings(observation_space, action_space, module_class):
 
     buffer.recompute_embeddings()
 
-    # Check taht it has been updated by the method
+    # Check that embeddings has been updated by the method
     buffer_emb = buffer.next_embeddings[123, 0]
     actual_emb = buffer.encode(buffer.next_observations["observation"][123, 0]).detach().cpu().numpy()
     assert np.allclose(buffer_emb, actual_emb, atol=1e-6)
@@ -211,6 +241,9 @@ def test_recompute_embeddings(observation_space, action_space, module_class):
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
 @pytest.mark.parametrize("module_class", ["ae", "inverse", "forward"])
 def test_sample_trajectory(observation_space, action_space, module_class):
+    set_random_seed(SEED)
+
+    # Create module
     action_size = get_size(action_space)
     if is_image_space(observation_space):
         obs_shape = get_shape(observation_space)
@@ -229,10 +262,14 @@ def test_sample_trajectory(observation_space, action_space, module_class):
         elif module_class == "forward":
             module = ForwardModule(obs_size, action_size, latent_size=16)
 
+    # Create environment
     def env_func():
         return DummyEnv(spaces.Dict({"observation": observation_space, "goal": observation_space}), action_space)
 
     venv = make_vec_env(env_func, N_ENVS)
+    venv.seed(SEED)
+
+    # Create buffer
     buffer = LGEBuffer(
         1_000,
         venv.observation_space,
@@ -243,21 +280,26 @@ def test_sample_trajectory(observation_space, action_space, module_class):
         distance_threshold=0.01,
         n_envs=N_ENVS,
     )
+
+    # Module to proper device
     module = module.to(buffer.device)
 
+    # Feed the buffer
     obs = venv.reset()
     for _ in range(1_000):
         action = np.array([venv.action_space.sample() for _ in range(N_ENVS)])
         next_obs, reward, done, infos = venv.step(action)
         buffer.add(obs, next_obs, action, reward, done, infos)
+        obs = next_obs
 
+    # Try sampling before embedding computation
     for _ in range(10):
         subgoals, latents = buffer.sample_trajectory()  # shoudl work, even though density hasn't been computed yet
 
     buffer.recompute_embeddings()
 
+    # Try sampling after embedding computation
     for _ in range(10):
         subgoals, latents = buffer.sample_trajectory()
         axis = tuple(range(1, len(subgoals.shape)))
-        print(np.all(subgoals[:-1] == subgoals[1:], axis=axis))
         assert not np.any(np.all(subgoals[:-1] == subgoals[1:], axis=axis))  # consecutive goals must be different

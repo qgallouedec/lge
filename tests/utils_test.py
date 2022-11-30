@@ -4,12 +4,16 @@ import numpy as np
 import pytest
 import torch
 from gym import spaces
+from stable_baselines3.common.utils import set_random_seed
 from torch.distributions import Normal
 
 from lge.utils import estimate_density, get_shape, get_size, lighten, preprocess, sample_geometric_with_max
 
+SEED = 42
+
 
 def test_estimate_density():
+    set_random_seed(SEED)
     distribution = Normal(torch.tensor([0.0, 1.0, -1.0]), torch.tensor([1.0, 5.0, 2.0]))
     xx = torch.linspace(-1, 1, 5)
     yy = torch.linspace(0, 2, 5)
@@ -33,6 +37,7 @@ def test_lighten():
 @pytest.mark.parametrize("max_value", [4, 5])
 @pytest.mark.parametrize("size", [None, 4, (3, 5)])
 def test_sample_geometric_with_max(mean, max_value, size):
+    set_random_seed(SEED)
     p = 1 / mean
     sample = [sample_geometric_with_max(p, max_value, size) for _ in range(1000)]
     if size is not None:

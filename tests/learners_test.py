@@ -3,6 +3,7 @@ import pytest
 from gym import spaces
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.preprocessing import is_image_space
+from stable_baselines3.common.utils import set_random_seed
 
 from lge.buffer import LGEBuffer
 from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
@@ -34,45 +35,60 @@ ACTION_SPACES = [
     # spaces.Box(-2, 2, shape=(2, 2)), # Not working, because not supported by sb3 buffer
 ]
 
+N_ENVS = 3
+SEED = 42
+
 
 @pytest.mark.parametrize("observation_space", OBSERVATION_SPACES)
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
 @pytest.mark.parametrize("module_class", ["ae", "inverse", "forward"])
 def test_learner(observation_space, action_space, module_class):
-    n_envs = 1
-    observation_space = spaces.Dict({"observation": observation_space, "goal": observation_space})
-    latent_size = 16
+    set_random_seed(SEED)
 
-    # Make the env
+    # Set the observation space
+    observation_space = spaces.Dict({"observation": observation_space, "goal": observation_space})
+
+    # Create environment
     def env_func():
         return DummyEnv(observation_space, action_space)
 
-    venv = make_vec_env(env_func, n_envs)
+    venv = make_vec_env(env_func, N_ENVS)
+    venv.seed(SEED)
 
-    # Make the module
+    # Create module
     action_size = get_size(action_space)
     if is_image_space(observation_space["observation"]):
         obs_shape = get_shape(venv.observation_space["observation"])
         if module_class == "ae":
-            module = CNNAEModule(obs_shape, latent_size)
+            module = CNNAEModule(obs_shape, latent_size=16)
         elif module_class == "forward":
-            module = CNNForwardModule(obs_shape, action_size, latent_size)
+            module = CNNForwardModule(obs_shape, action_size, latent_size=16)
         elif module_class == "inverse":
-            module = CNNInverseModule(obs_shape, action_size, latent_size)
+            module = CNNInverseModule(obs_shape, action_size, latent_size=16)
     else:
         obs_size = get_size(venv.observation_space["observation"])
         if module_class == "ae":
-            module = AEModule(obs_size, latent_size)
+            module = AEModule(obs_size, latent_size=16)
         elif module_class == "forward":
-            module = ForwardModule(obs_size, action_size, latent_size)
+            module = ForwardModule(obs_size, action_size, latent_size=16)
         elif module_class == "inverse":
-            module = InverseModule(obs_size, action_size, latent_size)
+            module = InverseModule(obs_size, action_size, latent_size=16)
 
-    # Make the buffer
-    buffer = LGEBuffer(10_000, venv.observation_space, venv.action_space, venv, module.encoder, latent_size)
+    # Create buffer
+    buffer = LGEBuffer(
+        10_000,
+        venv.observation_space,
+        venv.action_space,
+        venv,
+        module.encoder,
+        latent_size=16,
+        n_envs=N_ENVS,
+    )
+
+    # Module to proper device
     module = module.to(buffer.device)
 
-    # Make the learner
+    # Create the learner
     if module_class == "ae":
         learner = AEModuleLearner(module, buffer)
     elif module_class == "forward":
@@ -83,20 +99,16 @@ def test_learner(observation_space, action_space, module_class):
     # Collect transitions
     obs = venv.reset()
     for _ in range(100):
-        actions = np.array([venv.action_space.sample() for _ in range(n_envs)])
+        actions = np.array([venv.action_space.sample() for _ in range(N_ENVS)])
         next_obs, rewards, dones, infos = venv.step(actions)
         buffer.add(obs, next_obs, actions, rewards, dones, infos)
         obs = next_obs
 
     # Compute initial loss
-
     sample = buffer.sample(32)
-
     observations = preprocess(sample.observations, observation_space)["observation"]
     next_observations = preprocess(sample.next_observations, observation_space)["observation"]
     actions = preprocess(sample.actions, action_space)
-
-    # Compute the initial loss
     module.eval()
     initial_loss = learner.compute_loss(observations, next_observations, actions)
 
@@ -107,5 +119,7 @@ def test_learner(observation_space, action_space, module_class):
     # Compute the final loss
     module.eval()
     final_loss = learner.compute_loss(observations, next_observations, actions)
+
+    # Check that new loss is lower
     if module_class not in ["inverse", "forward"]:  # TODO: Env purely stochastic, action/obs unpredictable
         assert final_loss < initial_loss

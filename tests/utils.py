@@ -21,6 +21,10 @@ class DummyEnv(gym.Env):
         done = np.random.random() < 0.1
         return self.observation_space.sample(), 0.0, done, {}
 
+    def seed(self, seed: int) -> None:
+        self.observation_space.seed(seed)
+        self.action_space.seed(seed)
+
 
 class BitFlippingEnv(gym.Env):
     """
