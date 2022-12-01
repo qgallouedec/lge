@@ -1,6 +1,5 @@
 import os
 
-import gym
 import numpy as np
 import panda_gym
 from stable_baselines3 import DDPG
@@ -12,10 +11,9 @@ NUM_TIMESTEPS = 1_000_000
 NUM_RUN = 1
 
 for run_idx in range(NUM_RUN):
-    env = gym.make("PandaNoTask-v0", nb_objects=1)
     model = LatentGoExplore(
         DDPG,
-        env,
+        "PandaNoTask-v0",
         module_type="forward",
         latent_size=8,
         distance_threshold=1.0,
@@ -23,6 +21,7 @@ for run_idx in range(NUM_RUN):
         p=0.001,
         model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
         verbose=1,
+        env_kwargs=dict(nb_objects=1),  # TODO: Make LGE compatible with env_kwargs
     )
     model.explore(NUM_TIMESTEPS)
     buffer = model.replay_buffer

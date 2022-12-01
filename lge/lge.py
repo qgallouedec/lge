@@ -5,7 +5,6 @@ import gym
 import numpy as np
 import torch
 from gym import Env, spaces
-from stable_baselines3.common.base_class import maybe_make_env
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
@@ -148,7 +147,7 @@ class LatentGoExplore:
     def __init__(
         self,
         model_class: Type[OffPolicyAlgorithm],
-        env: Env,
+        env_id: str,
         module_type: str = "inverse",
         latent_size: int = 16,
         distance_threshold: float = 1.0,
@@ -161,18 +160,23 @@ class LatentGoExplore:
         verbose: int = 0,
         device: Union[torch.device, str] = "auto",
     ) -> None:
-        env = maybe_make_env(env, verbose)
-        # Get action size
-        if type(env.action_space) is spaces.Discrete:
-            action_size = env.action_space.n
-        elif type(env.action_space) is spaces.Box:
-            action_size = env.action_space.shape[0]
-
         self.device = get_device(device)
 
+        # Wrap the env
+        def env_func():
+            return Goalify(
+                gym.make(env_id, verbose),
+                distance_threshold=distance_threshold,
+                nb_random_exploration_steps=50 if further_explore else 0,
+                lighten_dist_coef=lighten_dist_coef,
+            )
+
+        venv = make_vec_env(env_func, n_envs=n_envs)
+
         # Define the "module" used to learn the latent representation
-        if is_image_space(env.observation_space):
-            obs_shape = get_shape(env.observation_space)
+        action_size = get_size(venv.action_space)
+        if is_image_space(venv.observation_space["observation"]):
+            obs_shape = get_shape(venv.observation_space["observation"])
             if module_type == "inverse":
                 self.module = CNNInverseModule(obs_shape, action_size, latent_size).to(self.device)
             elif module_type == "forward":
@@ -180,7 +184,7 @@ class LatentGoExplore:
             elif module_type == "ae":
                 self.module = CNNAEModule(obs_shape, latent_size).to(self.device)
         else:  # Not image
-            obs_size = get_size(env.observation_space)
+            obs_size = get_size(venv.observation_space["observation"])
             if module_type == "inverse":
                 self.module = InverseModule(obs_size, action_size, latent_size).to(self.device)
             elif module_type == "forward":
@@ -188,16 +192,6 @@ class LatentGoExplore:
             elif module_type == "ae":
                 self.module = AEModule(obs_size, latent_size).to(self.device)
 
-        # Wrap the env
-        def env_func():
-            return Goalify(
-                maybe_make_env(env, verbose),
-                distance_threshold=distance_threshold,
-                nb_random_exploration_steps=50 if further_explore else 0,
-                lighten_dist_coef=lighten_dist_coef,
-            )
-
-        env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
         replay_buffer_kwargs.update(
             dict(encoder=self.module.encoder, latent_size=latent_size, distance_threshold=distance_threshold, p=p)
@@ -208,7 +202,7 @@ class LatentGoExplore:
         model_kwargs["gradient_steps"] = 1
         self.model = model_class(
             "MultiInputPolicy",
-            env,
+            venv,
             replay_buffer_class=LGEBuffer,
             replay_buffer_kwargs=replay_buffer_kwargs,
             verbose=verbose,
