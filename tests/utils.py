@@ -136,7 +136,8 @@ class BitFlippingEnv(gym.Env):
         obs = self._get_obs()
         is_succcess = self.state.all()
         reward = float(is_succcess) - 1
-        done = is_succcess
+        # done = is_succcess
+        done = False
         self.current_step += 1
         # Episode terminate when we reached the goal or the max number of steps
         info = {"is_success": is_succcess}
