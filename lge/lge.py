@@ -48,7 +48,7 @@ class Goalify(gym.Wrapper):
                 "goal": copy.deepcopy(self.env.observation_space),
             }
         )
-        self.lge_buffer = None  # type: LGEBuffer
+        self.lge_buffer: LGEBuffer
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
         self.distance_threshold = distance_threshold
@@ -66,10 +66,8 @@ class Goalify(gym.Wrapper):
 
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
-        assert self.lge_buffer is not None, "you need to set the buffer before reset. Use set_buffer()"
+        assert hasattr(self, "lge_buffer"), "you need to set the buffer before reset. Use set_buffer()"
         self.goal_trajectory, self.emb_trajectory = self.lge_buffer.sample_trajectory(self.lighten_dist_coef)
-        if is_image_space(self.observation_space["goal"]):
-            self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
         self._goal_idx = 0
         self.done_countdown = self.nb_random_exploration_steps
         self._is_last_goal_reached = False  # useful flag
@@ -78,8 +76,8 @@ class Goalify(gym.Wrapper):
 
     def _get_dict_obs(self, obs: np.ndarray) -> Dict[str, np.ndarray]:
         return {
-            "observation": obs.astype(np.float32),
-            "goal": self.goal_trajectory[self._goal_idx].astype(np.float32),
+            "observation": obs,
+            "goal": self.goal_trajectory[self._goal_idx],
         }
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
