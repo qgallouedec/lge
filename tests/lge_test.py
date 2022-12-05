@@ -1,10 +1,12 @@
 import numpy as np
 import pytest
 from gym import spaces
+from stable_baselines3 import DDPG, DQN, SAC, TD3
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.utils import set_random_seed
 
+from lge import LatentGoExplore
 from lge.buffer import LGEBuffer
 from lge.lge import Goalify
 from lge.modules.ae_module import AEModule, CNNAEModule
@@ -174,7 +176,7 @@ def test_goalify_step(action_type, observation_type, module_class):
         env.set_buffer(buffer)
 
     obs = venv.reset()
-
+    env_success = [False for _ in range(N_ENVS)]
     for _ in range(8):
         actions = []
         for env_idx in range(N_ENVS):
@@ -183,4 +185,31 @@ def test_goalify_step(action_type, observation_type, module_class):
                 action = np.argmax(venv.envs[env_idx].state != goal)
             actions.append(action)
         obs, reward, done, info = venv.step(actions)
-        assert np.all(reward == -1)  # Fails after few iterations, great, meaning that it works
+        env_success = np.logical_or(env_success, reward == 0)
+        for env_idx in range(N_ENVS):
+            if reward[env_idx] == 0:
+                assert "action_repeat" in info[env_idx].keys()
+                assert info[env_idx]["action_repeat"] == actions[env_idx]
+    assert np.all(env_success)  # All env must be solved
+
+
+@pytest.mark.parametrize("action_type", ["discrete", "box"])
+@pytest.mark.parametrize("observation_type", ["discrete", "box", "image_channel_last", "image_channel_first", "mulbinary"])
+@pytest.mark.parametrize("algo", [DQN, SAC, DDPG, TD3])
+@pytest.mark.parametrize("module_class", ["ae", "inverse", "forward"])
+def test_lge(action_type, observation_type, algo, module_class):
+    set_random_seed(SEED)
+    if action_type == "discrete" and algo in [SAC, DDPG, TD3]:
+        pytest.skip("Unsupported action type")
+    if action_type == "box" and algo == DQN:
+        pytest.skip("Unsupported action type")
+    lge = LatentGoExplore(
+        algo,
+        "BitFlipping-v0",
+        env_kwargs=dict(action_type=action_type, observation_type=observation_type),
+        module_type=module_class,
+        model_kwargs=dict(buffer_size=1_000),
+        module_grad_steps=10,
+    )
+    print(lge.model.actor)
+    lge.explore(total_timesteps=400)
