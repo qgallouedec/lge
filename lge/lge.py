@@ -143,6 +143,7 @@ class LatentGoExplore:
     :param learning_starts: how many steps of the model to collect transitions for before learning starts
     :param model_kwargs: Keyword arguments to pass to the model on creation, defaults to None
     :param further_explore: Whether the agent further explore after reaching the final goal, defaults to True
+    :param module_grad_steps: Module gradient steps per training rollout
     :param verbose: The verbosity level: 0 none, 1 training information, 2 debug, defaults to 0
     :param device: PyTorch device, defaults to "auto"
     """
@@ -162,6 +163,7 @@ class LatentGoExplore:
         learning_starts: int = 100,
         model_kwargs: Optional[Dict[str, Any]] = None,
         further_explore: bool = True,
+        module_grad_steps: int = 500,
         verbose: int = 0,
         device: Union[torch.device, str] = "auto",
     ) -> None:
@@ -220,11 +222,17 @@ class LatentGoExplore:
 
         # Define the learner for module
         if module_type == "inverse":
-            self.module_learner = InverseModuleLearner(self.module, self.replay_buffer, learning_starts=learning_starts)
+            self.module_learner = InverseModuleLearner(
+                self.module, self.replay_buffer, learning_starts=learning_starts, gradient_steps=module_grad_steps
+            )
         elif module_type == "forward":
-            self.module_learner = ForwardModuleLearner(self.module, self.replay_buffer, learning_starts=learning_starts)
+            self.module_learner = ForwardModuleLearner(
+                self.module, self.replay_buffer, learning_starts=learning_starts, gradient_steps=module_grad_steps
+            )
         elif module_type == "ae":
-            self.module_learner = AEModuleLearner(self.module, self.replay_buffer, learning_starts=learning_starts)
+            self.module_learner = AEModuleLearner(
+                self.module, self.replay_buffer, learning_starts=learning_starts, gradient_steps=module_grad_steps
+            )
 
     def explore(self, total_timesteps: int) -> None:
         """
