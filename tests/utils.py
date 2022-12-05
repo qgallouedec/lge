@@ -30,11 +30,12 @@ class BitFlippingEnv(gym.Env):
     """
     Simple bit flipping env.
 
-    The goal is to flip all the bits to get a vector of ones. In the continuous variant, if the ith action component has a
+    The goal is to flip all the bits to get a vector of ones. In the box variant, if the ith action component has a
     value > 0, then the ith bit will be flipped.
 
     :param n_bits: Number of bits to flip
-    :param action_type: "discrete" or "continuous"
+    :param action_type: "discrete" or "box"
+    :param observation_type: "discrete", "box", "image_channel_last", "image_channel_first", "mulbinary"
     :param max_steps: Max number of steps, by default, equal to n_bits
     :param discrete_obs_space: Whether to use the discrete observation version or not, by default, it uses the
         ``MultiBinary`` one
@@ -55,6 +56,8 @@ class BitFlippingEnv(gym.Env):
         if self.observation_type == "discrete":
             # In the discrete case, the agent act on the binary representation of the observation
             self.observation_space = spaces.Discrete(2**n_bits)
+        elif self.observation_type == "box":
+            self.observation_space = spaces.Box(0, 1, (n_bits,))
         elif self.observation_type in ["image_channel_first", "image_channel_last"]:
             # When using image as input, one image contains the bits 0 -> 0, 1 -> 255 and the rest is filled with zeros
             # Shape of the observation when using image space
@@ -69,7 +72,7 @@ class BitFlippingEnv(gym.Env):
         self.action_type = action_type
         if self.action_type == "discrete":
             self.action_space = spaces.Discrete(n_bits)
-        elif self.action_type == "continuous":
+        elif self.action_type == "box":
             self.action_space = spaces.Box(-1, 1, shape=(n_bits,), dtype=np.float32)
         else:
             raise ValueError("Wrong action type")
@@ -98,6 +101,10 @@ class BitFlippingEnv(gym.Env):
             return image.reshape(self.observation_space.shape).astype(np.uint8)
         elif self.observation_type == "mulbinary":
             return state
+        elif self.observation_type in "box":
+            return state.astype(np.float32)
+        else:
+            raise ValueError("Wrong observation type")
 
     def obs_to_state(self, obs: Union[int, np.ndarray]) -> np.ndarray:
         """
@@ -113,9 +120,10 @@ class BitFlippingEnv(gym.Env):
             #  [[  0], [  0], [  0], [  0], [  0], [  0], [  0]],
             #  [[  0], [  0], [  0], [  0], [  0], [  0], [  0]]]
             return obs.flatten()[: len(self.state)] / 255
-
         elif self.observation_type == "mulbinary":
             return obs
+        elif self.observation_type == "box":
+            return obs.astype(np.uint8)
 
     def _get_obs(self) -> Union[Dict[str, int], Dict[str, np.ndarray]]:
         """
@@ -131,7 +139,7 @@ class BitFlippingEnv(gym.Env):
     def step(self, action: Union[np.ndarray, int]):
         if self.action_type == "discrete":
             self.state[action] = 1 - self.state[action]
-        elif self.action_type == "continuous":
+        elif self.action_type == "box":
             self.state[action > 0] = 1 - self.state[action > 0]
         obs = self._get_obs()
         is_succcess = self.state.all()
@@ -143,3 +151,10 @@ class BitFlippingEnv(gym.Env):
         info = {"is_success": is_succcess}
         done = done or self.current_step >= self.max_steps
         return obs, reward, done, info
+
+
+gym.register(
+    id="BitFlipping-v0",
+    entry_point="tests.utils:BitFlippingEnv",
+    max_episode_steps=100,
+)
