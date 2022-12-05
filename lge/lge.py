@@ -15,7 +15,7 @@ from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLea
 from lge.modules.ae_module import AEModule, CNNAEModule
 from lge.modules.forward_module import CNNForwardModule, ForwardModule
 from lge.modules.inverse_module import CNNInverseModule, InverseModule
-from lge.utils import get_shape, get_size
+from lge.utils import get_shape, get_size, maybe_make_channel_first, maybe_transpose
 
 
 class Goalify(gym.Wrapper):
@@ -68,6 +68,9 @@ class Goalify(gym.Wrapper):
         obs = self.env.reset()
         assert hasattr(self, "lge_buffer"), "you need to set the buffer before reset. Use set_buffer()"
         self.goal_trajectory, self.emb_trajectory = self.lge_buffer.sample_trajectory(self.lighten_dist_coef)
+        # For image, we need to transpose the sample
+        self.goal_trajectory = maybe_transpose(self.goal_trajectory, self.observation_space["goal"])
+
         self._goal_idx = 0
         self.done_countdown = self.nb_random_exploration_steps
         self._is_last_goal_reached = False  # useful flag
@@ -83,7 +86,7 @@ class Goalify(gym.Wrapper):
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
         obs, reward, done, info = self.env.step(action)
         # Compute reward (has to be done before moving to next goal)
-        embedding = self.lge_buffer.encode(obs).detach().cpu().numpy()
+        embedding = self.lge_buffer.encode(maybe_make_channel_first(obs)).detach().cpu().numpy()
 
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
         upper_idx = min(self._goal_idx + self.window_size, len(self.goal_trajectory))
@@ -135,7 +138,9 @@ class LatentGoExplore:
         from the previous subgoal, defaults to 1.0
     :param p: Geometric parameter for final goal sampling, defaults to 0.005
     :param n_envs: Number of parallel environments
+    :param env_kwargs: Optional keyword argument to pass to the env constructor
     :param replay_buffer_kwargs: Keyword arguments to pass to the replay buffer on creation, defaults to None
+    :param learning_starts: how many steps of the model to collect transitions for before learning starts
     :param model_kwargs: Keyword arguments to pass to the model on creation, defaults to None
     :param further_explore: Whether the agent further explore after reaching the final goal, defaults to True
     :param verbose: The verbosity level: 0 none, 1 training information, 2 debug, defaults to 0
@@ -152,7 +157,9 @@ class LatentGoExplore:
         lighten_dist_coef: float = 1.0,
         p: float = 0.005,
         n_envs: int = 1,
+        env_kwargs: Optional[Dict[str, Any]] = None,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
+        learning_starts: int = 100,
         model_kwargs: Optional[Dict[str, Any]] = None,
         further_explore: bool = True,
         verbose: int = 0,
@@ -160,10 +167,11 @@ class LatentGoExplore:
     ) -> None:
         self.device = get_device(device)
 
+        env_kwargs = {} if env_kwargs is None else env_kwargs
         # Wrap the env
         def env_func():
             return Goalify(
-                gym.make(env_id, verbose),
+                gym.make(env_id, **env_kwargs),
                 distance_threshold=distance_threshold,
                 nb_random_exploration_steps=50 if further_explore else 0,
                 lighten_dist_coef=lighten_dist_coef,
@@ -195,9 +203,9 @@ class LatentGoExplore:
             dict(encoder=self.module.encoder, latent_size=latent_size, distance_threshold=distance_threshold, p=p)
         )
         model_kwargs = {} if model_kwargs is None else model_kwargs
-        model_kwargs["learning_starts"] = 3_000
+        model_kwargs["learning_starts"] = learning_starts
         model_kwargs["train_freq"] = 1
-        model_kwargs["gradient_steps"] = 1
+        model_kwargs["gradient_steps"] = n_envs
         self.model = model_class(
             "MultiInputPolicy",
             venv,
@@ -212,11 +220,11 @@ class LatentGoExplore:
 
         # Define the learner for module
         if module_type == "inverse":
-            self.module_learner = InverseModuleLearner(self.module, self.replay_buffer)
+            self.module_learner = InverseModuleLearner(self.module, self.replay_buffer, learning_starts=learning_starts)
         elif module_type == "forward":
-            self.module_learner = ForwardModuleLearner(self.module, self.replay_buffer)
+            self.module_learner = ForwardModuleLearner(self.module, self.replay_buffer, learning_starts=learning_starts)
         elif module_type == "ae":
-            self.module_learner = AEModuleLearner(self.module, self.replay_buffer)
+            self.module_learner = AEModuleLearner(self.module, self.replay_buffer, learning_starts=learning_starts)
 
     def explore(self, total_timesteps: int) -> None:
         """
