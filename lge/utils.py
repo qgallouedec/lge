@@ -234,3 +234,42 @@ def preprocess(input: Union[Tensor, Dict[str, Tensor]], space: spaces.Space) -> 
 
     else:
         raise NotImplementedError(f"Preprocessing not implemented for {space}")
+
+
+def maybe_make_channel_first(observation: np.ndarray) -> np.ndarray:
+    """
+    Make channel first when observation is an image.
+
+    Args:
+        observation (np.ndarray): Observation (non-batched)
+
+    Returns:
+        np.ndarray: If observation is as image, it makes it channel-first
+    """
+    if len(observation.shape) == 3:
+        if observation.shape[2] in [1, 3]:
+            return np.transpose(observation, (2, 0, 1))
+    return observation
+
+
+def maybe_transpose(observations: np.ndarray, observation_space: spaces.Space) -> np.ndarray:
+    """
+    Transpoose image so that the observation fits the observation space.
+
+    Args:
+        observations (np.ndarray): Batched observations
+        observation_space (spaces.Space): Space
+
+    Returns:
+        np.ndarray: Batched observation that fit the observation space shape
+    """
+    if is_image_space(observation_space):
+        if observation_space.shape[0] in [1, 3]:
+            # channel first
+            if observation_space.shape[0] == observations.shape[3]:
+                return np.transpose(observations, (0, 3, 1, 2))
+        elif observation_space.shape[2] in [1, 3]:
+            # channel flastirst
+            if observation_space.shape[2] == observations.shape[1]:
+                return np.transpose(observations, (0, 2, 3, 1))
+    return observations
