@@ -30,10 +30,19 @@ lge.explore(total_timesteps=10_000)
 
 Supported envrionments specifications:
 
-| Space           | Action space       | Observation space  |
-| --------------- | ------------------ | ------------------ |
-| `Box`           | :heavy_check_mark: | :heavy_check_mark: |
-| `Discrete`      | :heavy_check_mark: | :x:                |
-| `MultiDiscrete` | :x:                | :x:                |
-| `MultiBinary`   | :x:                | :x:                |
+| Space           | Observation space  |
+| --------------- | ------------------ |
+| `Discrete`      | :heavy_check_mark: |
+| `Box`           | :heavy_check_mark: |
+| Image           | :heavy_check_mark: |
+| `MultiDiscrete` | :x:                |
+| `MultiBinary`   | :heavy_check_mark: |
 
+| Space      | Action space       |
+| ---------- | ------------------ |
+| `Box`      | :heavy_check_mark: |
+| `Discrete` | :heavy_check_mark: |
+
+
+
+ Image is actually a multi-dimensonal uint8 `Box`.
