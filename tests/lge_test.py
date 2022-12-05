@@ -211,5 +211,4 @@ def test_lge(action_type, observation_type, algo, module_class):
         model_kwargs=dict(buffer_size=1_000),
         module_grad_steps=10,
     )
-    print(lge.model.actor)
     lge.explore(total_timesteps=400)
