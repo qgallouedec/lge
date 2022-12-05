@@ -28,7 +28,7 @@ class BaseLearner(BaseCallback):
         weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
         train_freq (int, optional): Training frequency. Defaults to 5_000.
         gradient_steps (int, optional): Number of gradient steps when training. Defaults to 500.
-        first_update (int, optional): Learning starts after this amount of timesteps. Defaults to 5_000.
+        learning_starts (int, optional): Learning starts after this amount of timesteps. Defaults to 100.
         verbose (int, optional): The verbosity level: 0 none, 1 training information, 2 debug. Defaults to 0.
     """
 
@@ -41,7 +41,7 @@ class BaseLearner(BaseCallback):
         weight_decay: float = 1e-5,
         train_freq: int = 5_000,
         gradient_steps: int = 500,
-        first_update: int = 5_000,
+        learning_starts: int = 100,
         verbose: int = 0,
     ) -> None:
         super().__init__(verbose)
@@ -50,14 +50,14 @@ class BaseLearner(BaseCallback):
         self.batch_size = batch_size
         self.train_freq = train_freq
         self.gradient_steps = gradient_steps
-        self.first_update = first_update
+        self.learning_starts = learning_starts
 
         self.optimizer = optim.Adam(self.module.parameters(), lr=lr, weight_decay=weight_decay)
 
     def _on_step(self):
-        # Train the module every ``train_freq`` timesteps, starting at ``first_update``.
+        # Train the module every ``train_freq`` timesteps, starting at ``learning_starts``.
         # The latent representation is re-computed after each training phase.
-        if self.n_calls == self.first_update or (self.n_calls - self.first_update) % self.train_freq == 0:
+        if self.n_calls == self.learning_starts or (self.n_calls - self.learning_starts) % self.train_freq == 0:
             for _ in range(self.gradient_steps):
                 self.train_once()
             self.buffer.recompute_embeddings()
@@ -72,7 +72,7 @@ class BaseLearner(BaseCallback):
         except ValueError:
             warnings.warn(
                 f"Trying to train the module when buffer before the "
-                "end of the first episode. Consider increasing first_update."
+                "end of the first episode. Consider increasing learning_starts."
             )
             return super()._on_step()
 
@@ -108,7 +108,7 @@ class InverseModuleLearner(BaseLearner):
         weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
         train_freq (int, optional): Training frequency. Defaults to 5_000.
         gradient_steps (int, optional): Number of gradient steps when training. Defaults to 500.
-        first_update (int, optional): Learning starts after this amount of timesteps. Defaults to 5_000.
+        learning_starts (int, optional): Learning starts after this amount of timesteps. Defaults to 100.
         verbose (int, optional): The verbosity level: 0 none, 1 training information, 2 debug. Defaults to 0.
     """
 
@@ -121,10 +121,10 @@ class InverseModuleLearner(BaseLearner):
         weight_decay: float = 1e-5,
         train_freq: int = 5_000,
         gradient_steps: int = 500,
-        first_update: int = 5_000,
+        learning_starts: int = 100,
         verbose: int = 0,
     ) -> None:
-        super().__init__(module, buffer, batch_size, lr, weight_decay, train_freq, gradient_steps, first_update, verbose)
+        super().__init__(module, buffer, batch_size, lr, weight_decay, train_freq, gradient_steps, learning_starts, verbose)
         if type(self.buffer.action_space) in [spaces.Discrete, spaces.MultiDiscrete, spaces.MultiBinary]:
             self.criterion = torch.nn.CrossEntropyLoss()
         elif type(self.buffer.action_space) == spaces.Box:
@@ -150,7 +150,7 @@ class ForwardModuleLearner(BaseLearner):
         weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
         train_freq (int, optional): Training frequency. Defaults to 5_000.
         gradient_steps (int, optional): Number of gradient steps when training. Defaults to 500.
-        first_update (int, optional): Learning starts after this amount of timesteps. Defaults to 5_000.
+        learning_starts (int, optional): Learning starts after this amount of timesteps. Defaults to 100.
         verbose (int, optional): The verbosity level: 0 none, 1 training information, 2 debug. Defaults to 0.
     """
 
@@ -163,10 +163,10 @@ class ForwardModuleLearner(BaseLearner):
         weight_decay: float = 1e-5,
         train_freq: int = 5_000,
         gradient_steps: int = 500,
-        first_update: int = 5_000,
+        learning_starts: int = 100,
         verbose: int = 0,
     ) -> None:
-        super().__init__(module, buffer, batch_size, lr, weight_decay, train_freq, gradient_steps, first_update, verbose)
+        super().__init__(module, buffer, batch_size, lr, weight_decay, train_freq, gradient_steps, learning_starts, verbose)
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         mean, std = self.module(observations, actions)
@@ -189,7 +189,7 @@ class AEModuleLearner(BaseLearner):
         weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
         train_freq (int, optional): Training frequency. Defaults to 5_000.
         gradient_steps (int, optional): Number of gradient steps when training. Defaults to 500.
-        first_update (int, optional): Learning starts after this amount of timesteps. Defaults to 5_000.
+        learning_starts (int, optional): Learning starts after this amount of timesteps. Defaults to 100.
         verbose (int, optional): The verbosity level: 0 none, 1 training information, 2 debug. Defaults to 0.
     """
 
@@ -202,10 +202,10 @@ class AEModuleLearner(BaseLearner):
         weight_decay: float = 1e-5,
         train_freq: int = 5_000,
         gradient_steps: int = 500,
-        first_update: int = 5_000,
+        learning_starts: int = 100,
         verbose: int = 0,
     ) -> None:
-        super().__init__(module, buffer, batch_size, lr, weight_decay, train_freq, gradient_steps, first_update, verbose)
+        super().__init__(module, buffer, batch_size, lr, weight_decay, train_freq, gradient_steps, learning_starts, verbose)
 
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         pred_next_observations = self.module(next_observations)  # we use next obs here
