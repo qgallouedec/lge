@@ -9,7 +9,6 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.utils import get_device
-
 from lge.buffer import LGEBuffer
 from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
 from lge.modules.ae_module import AEModule, CNNAEModule
@@ -142,6 +141,7 @@ class LatentGoExplore:
     :param replay_buffer_kwargs: Keyword arguments to pass to the replay buffer on creation, defaults to None
     :param learning_starts: how many steps of the model to collect transitions for before learning starts
     :param model_kwargs: Keyword arguments to pass to the model on creation, defaults to None
+    :param wrapper_cls: Wrapper class.
     :param further_explore: Whether the agent further explore after reaching the final goal, defaults to True
     :param module_grad_steps: Module gradient steps per training rollout
     :param verbose: The verbosity level: 0 none, 1 training information, 2 debug, defaults to 0
@@ -162,6 +162,7 @@ class LatentGoExplore:
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
         learning_starts: int = 100,
         model_kwargs: Optional[Dict[str, Any]] = None,
+        wrapper_cls: Optional[gym.Wrapper] = None,
         further_explore: bool = True,
         module_grad_steps: int = 500,
         verbose: int = 0,
@@ -172,8 +173,11 @@ class LatentGoExplore:
         env_kwargs = {} if env_kwargs is None else env_kwargs
         # Wrap the env
         def env_func():
+            env = gym.make(env_id, **env_kwargs)
+            if wrapper_cls is not None:
+                env = wrapper_cls(env)
             return Goalify(
-                gym.make(env_id, **env_kwargs),
+                env,
                 distance_threshold=distance_threshold,
                 nb_random_exploration_steps=50 if further_explore else 0,
                 lighten_dist_coef=lighten_dist_coef,
