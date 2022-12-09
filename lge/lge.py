@@ -247,7 +247,7 @@ class LatentGoExplore:
         :param total_timesteps: Total number of timesteps for exploration
         """
         if callback is not None:
-            callback=[self.module_learner, callback]
+            callback = [self.module_learner, callback]
         else:
-            callback=[self.module_learner]
+            callback = [self.module_learner]
         self.model.learn(total_timesteps, callback=callback)
