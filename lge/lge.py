@@ -8,7 +8,9 @@ from gym import Env, spaces
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
+from stable_baselines3.common.type_aliases import MaybeCallback
 from stable_baselines3.common.utils import get_device
+
 from lge.buffer import LGEBuffer
 from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
 from lge.modules.ae_module import AEModule, CNNAEModule
@@ -238,10 +240,14 @@ class LatentGoExplore:
                 self.module, self.replay_buffer, learning_starts=learning_starts, gradient_steps=module_grad_steps
             )
 
-    def explore(self, total_timesteps: int) -> None:
+    def explore(self, total_timesteps: int, callback: MaybeCallback = None) -> None:
         """
         Run exploration.
 
         :param total_timesteps: Total number of timesteps for exploration
         """
-        self.model.learn(total_timesteps, callback=[self.module_learner])
+        if callback is not None:
+            callback=[self.module_learner, callback]
+        else:
+            callback=[self.module_learner]
+        self.model.learn(total_timesteps, callback=callback)
