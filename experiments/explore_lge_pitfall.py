@@ -61,6 +61,11 @@ model = LatentGoExplore(
     tensorboard_log=f"runs/{run.id}",
     verbose=1,
 )
+wandb_callback = WandbCallback(
+    gradient_save_freq=100,
+    model_save_path=f"models/{run.id}",
+    verbose=2,
+)
 
-model.explore(NUM_TIMESTEPS, CallbackList([NumberRoomsLogger(), MaxRewardLogger(), WandbCallback()]))
+model.explore(NUM_TIMESTEPS, CallbackList([NumberRoomsLogger(), MaxRewardLogger(), wandb_callback]))
 run.finish()
