@@ -86,6 +86,7 @@ class Goalify(gym.Wrapper):
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
         obs, reward, done, info = self.env.step(action)
+        info["env_reward"] = reward
         # Compute reward (has to be done before moving to next goal)
         embedding = self.lge_buffer.encode(maybe_make_channel_first(obs)).detach().cpu().numpy()
 
