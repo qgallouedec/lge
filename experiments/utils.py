@@ -25,5 +25,5 @@ class MaxRewardLogger(BaseCallback):
 
         rewards = [info[env_idx]["env_reward"] for info in infos for env_idx in range(buffer.n_envs)]
         self.max_reward = max(np.max(rewards), self.max_reward)
-        self.logger.record("max env eward", self.max_reward)
+        self.logger.record("env/max env eward", self.max_reward)
         return True
