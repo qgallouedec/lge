@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from gym import Env, spaces
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.type_aliases import MaybeCallback
@@ -147,6 +148,7 @@ class LatentGoExplore:
     :param wrapper_cls: Wrapper class.
     :param further_explore: Whether the agent further explore after reaching the final goal, defaults to True
     :param module_grad_steps: Module gradient steps per training rollout
+    :param tensorboard_log: the log location for tensorboard (if None, no logging)
     :param verbose: The verbosity level: 0 none, 1 training information, 2 debug, defaults to 0
     :param device: PyTorch device, defaults to "auto"
     """
@@ -168,6 +170,7 @@ class LatentGoExplore:
         wrapper_cls: Optional[gym.Wrapper] = None,
         further_explore: bool = True,
         module_grad_steps: int = 500,
+        tensorboard_log: Optional[str] = None,
         verbose: int = 0,
         device: Union[torch.device, str] = "auto",
     ) -> None:
@@ -179,12 +182,13 @@ class LatentGoExplore:
             env = gym.make(env_id, **env_kwargs)
             if wrapper_cls is not None:
                 env = wrapper_cls(env)
-            return Goalify(
+            env = Goalify(
                 env,
                 distance_threshold=distance_threshold,
                 nb_random_exploration_steps=50 if further_explore else 0,
                 lighten_dist_coef=lighten_dist_coef,
             )
+            return Monitor(env)
 
         venv = make_vec_env(env_func, n_envs=n_envs)
 
@@ -215,6 +219,7 @@ class LatentGoExplore:
         model_kwargs["learning_starts"] = learning_starts
         model_kwargs["train_freq"] = 1
         model_kwargs["gradient_steps"] = n_envs
+        model_kwargs["tensorboard_log"] = tensorboard_log
         self.model = model_class(
             "MultiInputPolicy",
             venv,
