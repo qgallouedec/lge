@@ -9,7 +9,6 @@ import wandb
 from experiments.utils import MaxRewardLogger, RAMtoInfoWrapper
 from lge import LatentGoExplore
 
-
 NUM_TIMESTEPS = 100_000
 NUM_RUN = 1
 
