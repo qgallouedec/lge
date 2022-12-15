@@ -22,18 +22,24 @@ n_envs = 2
 
 
 class NumberRoomsLogger(BaseCallback):
+    def __init__(self, verbose: int = 0):
+        super().__init__(verbose)
+        self.unique_rooms = set()
+
     def _on_step(self) -> bool:
         buffer = self.locals["replay_buffer"]  # type: ReplayBuffer
         infos = buffer.infos
         if not buffer.full:
             infos = buffer.infos[: buffer.pos]
         rooms = [info[env_idx]["ram"][1] for info in infos for env_idx in range(buffer.n_envs)]
-        unique_rooms = np.unique(rooms)
-        self.logger.record("env/explored rooms", len(unique_rooms))
+        unique_rooms = set(rooms)
+        self.unique_rooms = self.unique_rooms.union(unique_rooms)
+        self.logger.record("env/explored rooms", len(self.unique_rooms))
         return True
 
 
 run = wandb.init(
+    name=f"lge__{env_id}__{module_type}",
     project="lge",
     config=dict(
         env_id=env_id,
