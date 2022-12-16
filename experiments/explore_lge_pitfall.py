@@ -1,5 +1,4 @@
 # pip install ale-py==0.7.4
-import numpy as np
 from stable_baselines3 import DQN
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList
@@ -17,8 +16,9 @@ module_type = "ae"
 latent_size = 32
 distance_threshold = 1.0
 lighten_dist_coef = 1.0
-p = 0.05
-n_envs = 2
+learning_starts = 5_000
+p = 0.1
+n_envs = 4
 
 
 class NumberRoomsLogger(BaseCallback):
@@ -47,6 +47,7 @@ run = wandb.init(
         latent_size=latent_size,
         distance_threshold=distance_threshold,
         lighten_dist_coef=lighten_dist_coef,
+        leanring_starts=learning_starts,
         p=p,
         n_envs=n_envs,
     ),
@@ -62,6 +63,7 @@ model = LatentGoExplore(
     lighten_dist_coef,
     p,
     n_envs,
+    learning_starts=learning_starts,
     model_kwargs=dict(buffer_size=100_000, policy_kwargs=dict(categorical=True)),
     wrapper_cls=RAMtoInfoWrapper,
     tensorboard_log=f"runs/{run.id}",
