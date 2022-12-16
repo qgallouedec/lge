@@ -13,12 +13,12 @@ from lge import LatentGoExplore
 NUM_TIMESTEPS = 500_000
 
 parser = argparse.ArgumentParser()
-parser.add_argument("distance_threshold", type=float)
-parser.add_argument("latent_size", type=int)
-parser.add_argument("learning_starts", type=int)
-parser.add_argument("lighten_dist_coef", type=int)
-parser.add_argument("module_type", type=str)
-parser.add_argument("p", type=float)
+parser.add_argument("--distance_threshold", type=float)
+parser.add_argument("--latent_size", type=int)
+parser.add_argument("--lighten_dist_coef", type=int)
+parser.add_argument("--module_type", type=str)
+parser.add_argument("--p", type=float)
+
 
 args = parser.parse_args()
 
@@ -27,7 +27,7 @@ module_type = args.module_type
 latent_size = args.latent_size
 distance_threshold = args.distance_threshold
 lighten_dist_coef = args.lighten_dist_coef
-learning_starts = args.learning_starts
+learning_starts = 10_000
 p = args.p
 n_envs = 4
 
