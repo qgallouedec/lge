@@ -13,15 +13,21 @@ def sample_geometric_with_max(
     p: float, max_value: int, size: Optional[Union[int, Tuple[int]]] = None
 ) -> Union[int, np.ndarray]:
     """
-    Sample follow geometric law, but are below the max_value.
+    Sample from a geometric distribution, but with the maximum value capped at `max_value`.
 
     Args:
-        p (int): The probability of success of an individual trial
-        max_value (int): Maximum value for the sample, included
-        size (Optional[Union[int, Tuple[int]]]): Output size. If None, sample a single int
+        p (float): The probability of success of an individual trial.
+        max_value (int): Maximum value for the sample, included.
+        size (Optional[Union[int, Tuple[int]]]): Output size. If None, sample a single int.
 
     Returns:
-        Union[int, np.ndarray]: Sampled value
+        Union[int, np.ndarray]: Sampled value.
+
+    Example:
+        >>> sample_geometric_with_max(0.5, 5)
+        2
+        >>> sample_geometric_with_max(0.5, 5, size=(3,))
+        array([2, 3, 2])
     """
     if p > 0:
         for _ in range(10_000):
@@ -33,14 +39,14 @@ def sample_geometric_with_max(
 
 def estimate_density(x: Tensor, samples: Tensor) -> Tensor:
     """
-    Estimate the density of x within the dataset
+    Estimate the density of `x` within the dataset.
 
     Args:
         x (Tensor): Points to evaluate density
         samples (Tensor): The samples from the distribution to estimate
 
     Returns:
-        Tensor:  The estiamte density on x
+        Tensor:  The estimate density on `x`
     """
     n, d = samples.shape
     k = int(2 * n ** (1 / d))
@@ -56,11 +62,11 @@ def lighten(arr: np.ndarray, threshold: float) -> np.ndarray:
     at least distant from the threshold value. It keeps the last one in place.
 
     Args:
-        arr (np.ndarray): Input array
-        threshold (float): Distance threshold
+        arr (np.ndarray): Input array.
+        threshold (float): Distance threshold.
 
     Returns:
-        np.ndarray: List of indexes
+        np.ndarray: List of indexes.
 
     Examples:
         >>> arr = np.array([4.0, 5.0, 5.1, 6.0, 7.0])
