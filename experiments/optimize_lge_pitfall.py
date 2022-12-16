@@ -1,23 +1,35 @@
 # pip install ale-py==0.7.4
-import numpy as np
-import optuna
-from stable_baselines3 import DDPG, DQN
+import argparse
+
+from stable_baselines3 import DQN
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList
-from toolbox.maze_grid import compute_coverage
 from wandb.integration.sb3 import WandbCallback
 
 import wandb
 from experiments.utils import MaxRewardLogger, RAMtoInfoWrapper
 from lge import LatentGoExplore
 
-NUM_TIMESTEPS = 100_000
-NUM_RUN = 5
+NUM_TIMESTEPS = 500_000
 
+parser = argparse.ArgumentParser()
+parser.add_argument("distance_threshold", type=float)
+parser.add_argument("latent_size", type=int)
+parser.add_argument("learning_starts", type=int)
+parser.add_argument("lighten_dist_coef", type=int)
+parser.add_argument("module_type", type=str)
+parser.add_argument("p", type=float)
+
+args = parser.parse_args()
 
 env_id = "Pitfall-v4"
-module_type = "ae"
-n_envs = 2
+module_type = args.module_type
+latent_size = args.latent_size
+distance_threshold = args.distance_threshold
+lighten_dist_coef = args.lighten_dist_coef
+learning_starts = args.learning_starts
+p = args.p
+n_envs = 4
 
 
 class NumberRoomsLogger(BaseCallback):
@@ -37,66 +49,42 @@ class NumberRoomsLogger(BaseCallback):
         return True
 
 
-def objective(trial: optuna.Trial) -> float:
-    latent_size = trial.suggest_categorical("latent_size", [4, 8, 16, 32])
-    distance_threshold = trial.suggest_categorical("distance_threshold", [0.1, 0.2, 0.5, 1.0])
-    lighten_dist_coef = trial.suggest_categorical("lighten_dist_coef", [1.0, 2.0, 4.0, 8.0])
-    p = trial.suggest_categorical("p", [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1])
-    module_type = trial.suggest_categorical("module_type", ["ae", "inverse", "forward"])
+run = wandb.init(
+    name=f"lge__{env_id}__{module_type}",
+    project="lge",
+    config=dict(
+        env_id=env_id,
+        module_type=module_type,
+        latent_size=latent_size,
+        distance_threshold=distance_threshold,
+        lighten_dist_coef=lighten_dist_coef,
+        leanring_starts=learning_starts,
+        p=p,
+        n_envs=n_envs,
+    ),
+    sync_tensorboard=True,
+)
 
-    coverage = np.zeros(NUM_RUN)
-    for run_idx in range(NUM_RUN):
-        run = wandb.init(
-            name=f"lge__{env_id}__{module_type}",
-            project="lge",
-            config=dict(
-                env_id=env_id,
-                module_type=module_type,
-                latent_size=latent_size,
-                distance_threshold=distance_threshold,
-                lighten_dist_coef=lighten_dist_coef,
-                p=p,
-                n_envs=n_envs,
-            ),
-            sync_tensorboard=True,
-        )
-        model = LatentGoExplore(
-            DQN,
-            env_id,
-            module_type,
-            latent_size,
-            distance_threshold,
-            lighten_dist_coef,
-            p,
-            n_envs,
-            model_kwargs=dict(buffer_size=100_000, policy_kwargs=dict(categorical=True)),
-            wrapper_cls=RAMtoInfoWrapper,
-            tensorboard_log=f"runs/{run.id}",
-            verbose=1,
-        )
-        wandb_callback = WandbCallback(
-            gradient_save_freq=100,
-            model_save_path=f"models/{run.id}",
-            verbose=2,
-        )
-        room_logger = NumberRoomsLogger()
-        model.explore(NUM_TIMESTEPS, CallbackList([room_logger, MaxRewardLogger(), wandb_callback]))
-        run.finish()
-        coverage[run_idx] = len(room_logger.unique_rooms)
+model = LatentGoExplore(
+    DQN,
+    env_id,
+    module_type,
+    latent_size,
+    distance_threshold,
+    lighten_dist_coef,
+    p,
+    n_envs,
+    learning_starts=learning_starts,
+    model_kwargs=dict(buffer_size=100_000, policy_kwargs=dict(categorical=True)),
+    wrapper_cls=RAMtoInfoWrapper,
+    tensorboard_log=f"runs/{run.id}",
+    verbose=1,
+)
+wandb_callback = WandbCallback(
+    gradient_save_freq=100,
+    model_save_path=f"models/{run.id}",
+    verbose=2,
+)
 
-    score = np.median(coverage)
-    return score
-
-
-if __name__ == "__main__":
-    from optuna.samplers import TPESampler
-
-    study = optuna.create_study(
-        storage="sqlite:///optuna.db",
-        study_name="lge_pitfall",
-        load_if_exists=True,
-        direction="maximize",
-        sampler=TPESampler(n_startup_trials=25),
-    )
-    study.optimize(objective, n_trials=50)
-    print(study.best_params, study.best_value)
+model.explore(NUM_TIMESTEPS, CallbackList([NumberRoomsLogger(), MaxRewardLogger(), wandb_callback]))
+run.finish()
