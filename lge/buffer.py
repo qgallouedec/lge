@@ -178,6 +178,14 @@ class LGEBuffer(HerReplayBuffer):
         # Lighten trajectory
         idxs = lighten(emb_trajectory, self.distance_threshold * lighten_dist_coef)
         trajectory, emb_trajectory = trajectory[idxs], emb_trajectory[idxs]
+        if len(trajectory) == 0:
+            print(goal_id)
+            print(goal_pos)
+            print(goal_env)
+            print(start)
+            print(trajectory)
+            print(emb_trajectory)
+            print(idxs)
         return trajectory, emb_trajectory
 
     def _get_real_samples(
