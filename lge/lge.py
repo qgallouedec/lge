@@ -168,7 +168,7 @@ class LatentGoExplore:
         learning_starts: int = 100,
         model_kwargs: Optional[Dict[str, Any]] = None,
         wrapper_cls: Optional[gym.Wrapper] = None,
-        further_explore: bool = True,
+        nb_random_exploration_steps: int = 50,
         module_grad_steps: int = 500,
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
@@ -185,7 +185,7 @@ class LatentGoExplore:
             env = Goalify(
                 env,
                 distance_threshold=distance_threshold,
-                nb_random_exploration_steps=50 if further_explore else 0,
+                nb_random_exploration_steps=nb_random_exploration_steps,
                 lighten_dist_coef=lighten_dist_coef,
             )
             return Monitor(env)
