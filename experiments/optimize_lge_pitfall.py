@@ -75,7 +75,7 @@ model = LatentGoExplore(
     p,
     n_envs,
     learning_starts=learning_starts,
-    model_kwargs=dict(buffer_size=100_000, policy_kwargs=dict(categorical=True)),
+    model_kwargs=dict(buffer_size=200_000, policy_kwargs=dict(categorical=True)),
     wrapper_cls=RAMtoInfoWrapper,
     tensorboard_log=f"runs/{run.id}",
     verbose=1,
