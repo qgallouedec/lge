@@ -57,10 +57,11 @@ class BaseLearner(BaseCallback):
     def _on_step(self):
         # Train the module every ``train_freq`` timesteps, starting at ``learning_starts``.
         # The latent representation is re-computed after each training phase.
-        if self.n_calls == self.learning_starts or (self.n_calls - self.learning_starts) % self.train_freq == 0:
-            for _ in range(self.gradient_steps):
-                self.train_once()
-            self.buffer.recompute_embeddings()
+        if self.num_timesteps >= self.learning_starts:
+            if (self.num_timesteps - self.learning_starts) // self.model.n_envs % self.train_freq // self.model.n_envs == 0:
+                for _ in range(self.gradient_steps):
+                    self.train_once()
+                self.buffer.recompute_embeddings()
 
     def train_once(self):
         # Sample from buffer. It can fail if the buffer is not full enough.
