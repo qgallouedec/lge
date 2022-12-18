@@ -146,7 +146,8 @@ class LatentGoExplore:
     :param learning_starts: how many steps of the model to collect transitions for before learning starts
     :param model_kwargs: Keyword arguments to pass to the model on creation, defaults to None
     :param wrapper_cls: Wrapper class.
-    :param further_explore: Whether the agent further explore after reaching the final goal, defaults to True
+    :param nb_random_exploration_steps: Number of random exploration steps
+    :param module_train_freq: Module train frequency
     :param module_grad_steps: Module gradient steps per training rollout
     :param tensorboard_log: the log location for tensorboard (if None, no logging)
     :param verbose: The verbosity level: 0 none, 1 training information, 2 debug, defaults to 0
@@ -169,6 +170,7 @@ class LatentGoExplore:
         model_kwargs: Optional[Dict[str, Any]] = None,
         wrapper_cls: Optional[gym.Wrapper] = None,
         nb_random_exploration_steps: int = 50,
+        module_train_freq: int = 5_000,
         module_grad_steps: int = 500,
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
@@ -235,15 +237,27 @@ class LatentGoExplore:
         # Define the learner for module
         if module_type == "inverse":
             self.module_learner = InverseModuleLearner(
-                self.module, self.replay_buffer, learning_starts=learning_starts, gradient_steps=module_grad_steps
+                self.module,
+                self.replay_buffer,
+                train_freq=module_train_freq,
+                gradient_steps=module_grad_steps,
+                learning_starts=learning_starts,
             )
         elif module_type == "forward":
             self.module_learner = ForwardModuleLearner(
-                self.module, self.replay_buffer, learning_starts=learning_starts, gradient_steps=module_grad_steps
+                self.module,
+                self.replay_buffer,
+                train_freq=module_train_freq,
+                gradient_steps=module_grad_steps,
+                learning_starts=learning_starts,
             )
         elif module_type == "ae":
             self.module_learner = AEModuleLearner(
-                self.module, self.replay_buffer, learning_starts=learning_starts, gradient_steps=module_grad_steps
+                self.module,
+                self.replay_buffer,
+                train_freq=module_train_freq,
+                gradient_steps=module_grad_steps,
+                learning_starts=learning_starts,
             )
 
     def explore(self, total_timesteps: int, callback: MaybeCallback = None) -> None:
