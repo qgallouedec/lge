@@ -50,7 +50,7 @@ class NumberRoomsLogger(BaseCallback):
         rooms = [info[env_idx]["ram"][1] for info in infos for env_idx in range(buffer.n_envs)]
         unique_rooms = set(rooms)
         self.unique_rooms = self.unique_rooms.union(unique_rooms)
-        self.logger.record("env/explored rooms", len(self.unique_rooms))
+        self.logger.record("env/explored_rooms", len(self.unique_rooms))
         return True
 
 
