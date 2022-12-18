@@ -1,23 +1,25 @@
 # pip install ale-py==0.7.4
 import argparse
+import time
 
 from stable_baselines3 import DQN
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList
-from wandb.integration.sb3 import WandbCallback
 
 import wandb
-from experiments.utils import MaxRewardLogger, RAMtoInfoWrapper
+from experiments.utils import AtariWrapper, MaxRewardLogger
 from lge import LatentGoExplore
 
 NUM_TIMESTEPS = 500_000
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--distance_threshold", type=float)
-parser.add_argument("--latent_size", type=int)
-parser.add_argument("--lighten_dist_coef", type=int)
 parser.add_argument("--module_type", type=str)
+parser.add_argument("--latent_size", type=int)
+parser.add_argument("--distance_threshold", type=float)
+parser.add_argument("--lighten_dist_coef", type=int)
 parser.add_argument("--p", type=float)
+parser.add_argument("--module_train_freq", type=int)
+parser.add_argument("--module_grad_steps", type=int)
 
 
 args = parser.parse_args()
@@ -27,9 +29,12 @@ module_type = args.module_type
 latent_size = args.latent_size
 distance_threshold = args.distance_threshold
 lighten_dist_coef = args.lighten_dist_coef
-learning_starts = 10_000
+learning_starts = 100_000
 p = args.p
 n_envs = 4
+nb_random_exploration_steps = 200
+module_train_freq = args.module_train_freq
+module_grad_steps = args.module_grad_steps
 
 
 class NumberRoomsLogger(BaseCallback):
@@ -50,7 +55,7 @@ class NumberRoomsLogger(BaseCallback):
 
 
 run = wandb.init(
-    name=f"lge__{env_id}__{module_type}",
+    name=f"lge__{env_id}__{module_type}__{str(time.time())}",
     project="lge",
     config=dict(
         env_id=env_id,
@@ -58,9 +63,12 @@ run = wandb.init(
         latent_size=latent_size,
         distance_threshold=distance_threshold,
         lighten_dist_coef=lighten_dist_coef,
-        leanring_starts=learning_starts,
         p=p,
         n_envs=n_envs,
+        learning_starts=learning_starts,
+        nb_random_exploration_steps=nb_random_exploration_steps,
+        module_train_freq=module_train_freq,
+        module_grad_steps=module_grad_steps,
     ),
     sync_tensorboard=True,
 )
@@ -68,23 +76,21 @@ run = wandb.init(
 model = LatentGoExplore(
     DQN,
     env_id,
-    module_type,
-    latent_size,
-    distance_threshold,
-    lighten_dist_coef,
-    p,
-    n_envs,
+    module_type=module_type,
+    latent_size=latent_size,
+    distance_threshold=distance_threshold,
+    lighten_dist_coef=lighten_dist_coef,
+    p=p,
+    n_envs=n_envs,
     learning_starts=learning_starts,
     model_kwargs=dict(buffer_size=200_000, policy_kwargs=dict(categorical=True)),
-    wrapper_cls=RAMtoInfoWrapper,
+    wrapper_cls=AtariWrapper,
+    nb_random_exploration_steps=nb_random_exploration_steps,
+    module_train_freq=module_train_freq,
+    module_grad_steps=module_grad_steps,
     tensorboard_log=f"runs/{run.id}",
     verbose=1,
 )
-wandb_callback = WandbCallback(
-    gradient_save_freq=100,
-    model_save_path=f"models/{run.id}",
-    verbose=2,
-)
 
-model.explore(NUM_TIMESTEPS, CallbackList([NumberRoomsLogger(), MaxRewardLogger(), wandb_callback]))
+model.explore(NUM_TIMESTEPS, CallbackList([NumberRoomsLogger(), MaxRewardLogger()]))
 run.finish()
