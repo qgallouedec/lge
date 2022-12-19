@@ -10,7 +10,7 @@ import wandb
 from experiments.utils import AtariWrapper, MaxRewardLogger
 from lge import LatentGoExplore
 
-NUM_TIMESTEPS = 100_000
+NUM_TIMESTEPS = 500_000
 NUM_RUN = 1
 
 env_id = "Pitfall-v4"
