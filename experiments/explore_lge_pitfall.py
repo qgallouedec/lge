@@ -72,7 +72,7 @@ model = LatentGoExplore(
     p=p,
     n_envs=n_envs,
     learning_starts=learning_starts,
-    model_kwargs=dict(buffer_size=200_000, policy_kwargs=dict(categorical=True)),
+    model_kwargs=dict(buffer_size=200_000, policy_kwargs=dict(categorical=True), exploration_fraction=0.5),
     wrapper_cls=AtariWrapper,
     nb_random_exploration_steps=nb_random_exploration_steps,
     module_train_freq=module_train_freq,
