@@ -303,4 +303,3 @@ def test_sample_trajectory(observation_space, action_space, module_class):
         subgoals, latents = buffer.sample_trajectory()
         axis = tuple(range(1, len(subgoals.shape)))
         assert not np.any(np.all(subgoals[:-1] == subgoals[1:], axis=axis))  # consecutive goals must be different
-
