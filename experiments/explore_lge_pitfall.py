@@ -4,10 +4,9 @@ import time
 from stable_baselines3 import DQN
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback, CallbackList
-from wandb.integration.sb3 import WandbCallback
 
 import wandb
-from experiments.utils import AtariWrapper, MaxRewardLogger
+from experiments.utils import AtariWrapper, MaxRewardLogger, NumberCellsLogger
 from lge import LatentGoExplore
 
 NUM_TIMESTEPS = 500_000
@@ -20,7 +19,7 @@ distance_threshold = 1.0
 lighten_dist_coef = 1.0
 learning_starts = 100_000
 p = 0.1
-n_envs = 4
+n_envs = 8
 nb_random_exploration_steps = 200
 module_train_freq = 10_000
 module_grad_steps = 500
@@ -72,7 +71,7 @@ model = LatentGoExplore(
     p=p,
     n_envs=n_envs,
     learning_starts=learning_starts,
-    model_kwargs=dict(buffer_size=200_000, policy_kwargs=dict(categorical=True), exploration_fraction=0.5),
+    model_kwargs=dict(buffer_size=100_000, policy_kwargs=dict(categorical=True), exploration_fraction=0.5),
     wrapper_cls=AtariWrapper,
     nb_random_exploration_steps=nb_random_exploration_steps,
     module_train_freq=module_train_freq,
@@ -82,5 +81,5 @@ model = LatentGoExplore(
 )
 
 
-model.explore(NUM_TIMESTEPS, CallbackList([NumberRoomsLogger(), MaxRewardLogger()]))
+model.explore(NUM_TIMESTEPS, CallbackList([MaxRewardLogger(), NumberCellsLogger()]))
 run.finish()
