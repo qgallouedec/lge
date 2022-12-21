@@ -1,4 +1,5 @@
 # pip install ale-py==0.7.4
+import argparse
 import time
 
 from stable_baselines3 import DQN
@@ -9,37 +10,32 @@ import wandb
 from experiments.utils import AtariWrapper, MaxRewardLogger, NumberCellsLogger
 from lge import LatentGoExplore
 
-NUM_TIMESTEPS = 500_000
-NUM_RUN = 1
+NUM_TIMESTEPS = 1_000_000
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--module_type", type=str, default="ae")
+parser.add_argument("--latent_size", type=int, default=32)
+parser.add_argument("--distance_threshold", type=float, defaul=0.1)
+parser.add_argument("--lighten_dist_coef", type=float, default=0.1)
+parser.add_argument("--p", type=float, default=0.1)
+parser.add_argument("--module_train_freq", type=int, default=10_000)
+parser.add_argument("--module_grad_steps", type=int, default=500)
+parser.add_argument("--n-envs", type=int, default=8)
+
+
+args = parser.parse_args()
 
 env_id = "Pitfall-v4"
-module_type = "forward"
-latent_size = 32
-distance_threshold = 1.0
-lighten_dist_coef = 1.0
+module_type = args.module_type
+latent_size = args.latent_size
+distance_threshold = args.distance_threshold
+lighten_dist_coef = args.lighten_dist_coef
 learning_starts = 100_000
-p = 0.1
-n_envs = 8
+p = args.p
+n_envs = args.n_envs
 nb_random_exploration_steps = 200
-module_train_freq = 10_000
-module_grad_steps = 500
-
-
-class NumberRoomsLogger(BaseCallback):
-    def __init__(self, verbose: int = 0):
-        super().__init__(verbose)
-        self.unique_rooms = set()
-
-    def _on_step(self) -> bool:
-        buffer = self.locals["replay_buffer"]  # type: ReplayBuffer
-        infos = buffer.infos
-        if not buffer.full:
-            infos = buffer.infos[: buffer.pos]
-        rooms = [info[env_idx]["ram"][1] for info in infos for env_idx in range(buffer.n_envs)]
-        unique_rooms = set(rooms)
-        self.unique_rooms = self.unique_rooms.union(unique_rooms)
-        self.logger.record("env/explored_rooms", len(self.unique_rooms))
-        return True
+module_train_freq = args.module_train_freq
+module_grad_steps = args.module_grad_steps
 
 
 run = wandb.init(
@@ -71,7 +67,7 @@ model = LatentGoExplore(
     p=p,
     n_envs=n_envs,
     learning_starts=learning_starts,
-    model_kwargs=dict(buffer_size=100_000, policy_kwargs=dict(categorical=True), exploration_fraction=0.5),
+    model_kwargs=dict(buffer_size=n_envs * 400_000, policy_kwargs=dict(categorical=True), exploration_fraction=0.5),
     wrapper_cls=AtariWrapper,
     nb_random_exploration_steps=nb_random_exploration_steps,
     module_train_freq=module_train_freq,
