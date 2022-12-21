@@ -204,7 +204,7 @@ def test_recompute_embeddings(observation_space, action_space, module_class):
 
     # Get and test embeddings
     buffer_emb = buffer.next_embeddings[123, 0]
-    actual_emb = buffer.encode(buffer.next_observations["observation"][123, 0]).detach().cpu().numpy()
+    actual_emb = buffer.encode(buffer.next_observations["observation"][123, 0])
     assert np.allclose(buffer_emb, actual_emb, atol=1e-6)
 
     # Fake module weights update
@@ -226,14 +226,14 @@ def test_recompute_embeddings(observation_space, action_space, module_class):
 
     # Check that the current buffer_embeddings are outdated
     buffer_emb = buffer.next_embeddings[123, 0]
-    actual_emb = buffer.encode(buffer.next_observations["observation"][123, 0]).detach().cpu().numpy()
+    actual_emb = buffer.encode(buffer.next_observations["observation"][123, 0])
     assert not np.allclose(buffer_emb, actual_emb, atol=1e-6)  # weight has been updated, not embeddings in buffer
 
     buffer.recompute_embeddings()
 
     # Check that embeddings has been updated by the method
     buffer_emb = buffer.next_embeddings[123, 0]
-    actual_emb = buffer.encode(buffer.next_observations["observation"][123, 0]).detach().cpu().numpy()
+    actual_emb = buffer.encode(buffer.next_observations["observation"][123, 0])
     assert np.allclose(buffer_emb, actual_emb, atol=1e-6)
 
 
@@ -303,3 +303,4 @@ def test_sample_trajectory(observation_space, action_space, module_class):
         subgoals, latents = buffer.sample_trajectory()
         axis = tuple(range(1, len(subgoals.shape)))
         assert not np.any(np.all(subgoals[:-1] == subgoals[1:], axis=axis))  # consecutive goals must be different
+

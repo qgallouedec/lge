@@ -89,7 +89,7 @@ class Goalify(gym.Wrapper):
         obs, reward, done, info = self.env.step(action)
         info["env_reward"] = reward
         # Compute reward (has to be done before moving to next goal)
-        embedding = self.lge_buffer.encode(maybe_make_channel_first(obs)).detach().cpu().numpy()
+        embedding = self.lge_buffer.encode(maybe_make_channel_first(obs))
 
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
         upper_idx = min(self._goal_idx + self.window_size, len(self.goal_trajectory))
