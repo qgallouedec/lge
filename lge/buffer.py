@@ -145,7 +145,7 @@ class LGEBuffer(HerReplayBuffer):
 
         batch_size = obs.shape[0]
 
-        step = 256
+        step = 2048
         k = 0
         embeddings = np.zeros((batch_size, self.latent_size), dtype=np.float32)
         while k < batch_size:
