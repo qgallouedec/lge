@@ -137,12 +137,12 @@ def get_size(space: spaces.Space) -> int:
     return np.prod(get_shape(space))
 
 
-def is_batched(input: Tensor, space: spaces.Space) -> bool:
+def is_batched(input: Union[np.ndarray, int], space: spaces.Space) -> bool:
     """
     Whether the input is batched, meaning it is a batch of elements of the space.
 
     Args:
-        input (Tensor): Observation or batch of values
+        input (np.ndarray): Observation or batch of values
         space (spaces.Space): Space from which the values come
 
     Raises:
@@ -160,7 +160,7 @@ def is_batched(input: Tensor, space: spaces.Space) -> bool:
         else:
             raise ValueError(f"Wrong input shape")
     elif isinstance(space, spaces.Discrete):
-        if len(input.shape) == 0:
+        if isinstance(input, int) or len(input.shape) == 0:
             return False
         elif len(input.shape) == 1:
             return True
@@ -170,15 +170,15 @@ def is_batched(input: Tensor, space: spaces.Space) -> bool:
         raise ValueError(f"Space {space} not supported.")
 
 
-def batchify(input: Union[Tensor, Dict[str, Tensor]]) -> Union[Tensor, Dict[str, Tensor]]:
+def batchify(input: Union[np.ndarray, Dict[str, np.ndarray]]) -> Union[np.ndarray, Dict[str, Tensor]]:
     """
     Make the input a batch.
 
     Args:
-        input (Union[Tensor, Dict[str, Tensor]]): Unbatched input.
+        input (Union[np.ndarray, Dict[str, np.ndarray]]): Unbatched input.
 
     Returns:
-        Union[Tensor, Dict[str, Tensor]]: Batched version of the input.
+        Union[np.ndarray, Dict[str, np.ndarray]]: Batched version of the input.
 
     Examples:
         >>> batchify(torch.tensor([1, 2, 3]))
@@ -189,7 +189,7 @@ def batchify(input: Union[Tensor, Dict[str, Tensor]]) -> Union[Tensor, Dict[str,
     if isinstance(input, dict):
         return {key: batchify(value) for key, value in input.items()}
     else:
-        return input.unsqueeze(0)
+        return np.expand_dims(input, 0)
 
 
 def preprocess(input: Union[Tensor, Dict[str, Tensor]], space: spaces.Space) -> Union[Tensor, Dict[str, Tensor]]:
