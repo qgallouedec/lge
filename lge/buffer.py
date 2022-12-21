@@ -66,10 +66,11 @@ class LGEBuffer(HerReplayBuffer):
 
         self.distance_threshold = distance_threshold
         self.encoder = encoder
+        self.latent_size = latent_size
         self.p = p
 
-        self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, latent_size), dtype=np.float32)
-        self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, latent_size), dtype=np.float32)
+        self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
+        self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
 
         # The buffer does not compute density after every new transition stored. The densities are
         # computed when the method recompute_embeddings() is appealed. To keep track of the number
@@ -98,11 +99,8 @@ class LGEBuffer(HerReplayBuffer):
                     episode_end += self.buffer_size
                 episode = np.arange(episode_start, episode_end) % self.buffer_size
 
-                goal_embedding = self.encode(self.observations["goal"][episode, env_idx])
-                self.goal_embeddings[episode, env_idx] = goal_embedding.detach().cpu().numpy()
-
-                next_embedding = self.encode(self.next_observations["observation"][episode, env_idx])
-                self.next_embeddings[episode, env_idx] = next_embedding.detach().cpu().numpy()
+                self.goal_embeddings[episode, env_idx] = self.encode(self.observations["goal"][episode, env_idx])
+                self.next_embeddings[episode, env_idx] = self.encode(self.next_observations["observation"][episode, env_idx])
 
     def recompute_embeddings(self) -> None:
         """
@@ -113,15 +111,8 @@ class LGEBuffer(HerReplayBuffer):
 
         for env_idx in range(self.n_envs):
             # Recompute 256 by 256 to avoid cuda space allocation error.
-            k = 0
-            while k < upper_bound:
-                upper = min(upper_bound, k + 256)
-                goal_embedding = self.encode(self.observations["goal"][k:upper, env_idx])
-                self.goal_embeddings[k:upper, env_idx] = goal_embedding.detach().cpu().numpy()
-
-                next_embedding = self.encode(self.next_observations["observation"][k:upper, env_idx])
-                self.next_embeddings[k:upper, env_idx] = next_embedding.detach().cpu().numpy()
-                k += 256
+            self.goal_embeddings[:, env_idx] = self.encode(self.observations["goal"][:, env_idx])
+            self.next_embeddings[:, env_idx] = self.encode(self.next_observations["observation"][:, env_idx])
 
         self.nb_density_computed = upper_bound * self.n_envs
 
@@ -141,21 +132,33 @@ class LGEBuffer(HerReplayBuffer):
         self.density = density
         self.sorted_density = np.argsort(density)
 
-    def encode(self, obs: np.ndarray) -> Tensor:
+    def encode(self, obs: Union[int, np.ndarray]) -> np.ndarray:
         """
         Encode an observation.
 
         :param obs: The observation to encode
         :return: The latent representation
         """
-        obs = self.to_torch(obs).to(self.device)
-        self.encoder.eval()
-        if not is_batched(obs, self.observation_space["observation"]):
-            obs = preprocess(batchify(obs), self.observation_space["observation"])
-            return self.encoder(obs).squeeze(0)
+        _is_batched = is_batched(obs, self.observation_space["observation"])  # whether obs is batched
+        if not _is_batched:
+            obs = batchify(obs)
+
+        batch_size = obs.shape[0]
+
+        step = 256
+        k = 0
+        embeddings = np.zeros((batch_size, self.latent_size), dtype=np.float32)
+        while k < batch_size:
+            upper = min(batch_size, k + step)
+            _obs = self.to_torch(obs[k:upper])
+            self.encoder.eval()
+            _obs = preprocess(_obs, self.observation_space["observation"])
+            embeddings[k:upper] = self.encoder(_obs).detach().cpu().numpy()
+            k += step
+        if _is_batched:
+            return embeddings
         else:
-            obs = preprocess(obs, self.observation_space["observation"])
-            return self.encoder(obs)
+            return embeddings.squeeze(0)
 
     def sample_trajectory(self, lighten_dist_coef: float = 1.0) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
@@ -167,7 +170,7 @@ class LGEBuffer(HerReplayBuffer):
         """
         if self.nb_density_computed == 0:  # no density computed yet
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
-            return goal, self.encode(goal).detach().cpu().numpy()
+            return goal, self.encode(goal)
 
         goal_id = self.sorted_density[sample_geometric_with_max(self.p, max_value=self.sorted_density.shape[0]) - 1]
         goal_pos = goal_id // self.n_envs
