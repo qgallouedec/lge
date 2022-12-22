@@ -3,11 +3,9 @@ import argparse
 import time
 
 from stable_baselines3 import DQN
-from stable_baselines3.common.buffers import ReplayBuffer
-from stable_baselines3.common.callbacks import BaseCallback, CallbackList
 
 import wandb
-from experiments.utils import AtariWrapper, MaxRewardLogger, NumberCellsLogger
+from experiments.utils import AtariWrapper, NumberCellsLogger
 from lge import LatentGoExplore
 
 NUM_TIMESTEPS = 1_000_000
@@ -77,5 +75,5 @@ model = LatentGoExplore(
 )
 
 
-model.explore(NUM_TIMESTEPS, CallbackList([MaxRewardLogger(), NumberCellsLogger()]))
+model.explore(NUM_TIMESTEPS, NumberCellsLogger())
 run.finish()
