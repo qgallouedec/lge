@@ -24,7 +24,7 @@ parser.add_argument("--n-envs", type=int, default=8)
 args = parser.parse_args()
 
 env_id = "Pitfall-v4"
-num_timesteps = args.n
+num_timesteps = int(args.n)
 module_type = args.module_type
 latent_size = args.latent_size
 distance_threshold = args.distance_threshold
