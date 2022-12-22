@@ -70,7 +70,7 @@ class NumberCellsLogger(BaseCallback):
         self.all_cells = np.zeros((0, 20, 20), dtype=np.uint8)
 
     def _on_step(self) -> bool:
-        if self.n_calls % 1_000 == 0:
+        if self.n_calls % 10_000 == 0:
             buffer = self.locals["replay_buffer"]  # type: LGEBuffer
             observations = buffer.next_observations["observation"]
             if not buffer.full:
