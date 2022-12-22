@@ -8,9 +8,9 @@ import wandb
 from experiments.utils import AtariWrapper, NumberCellsLogger
 from lge import LatentGoExplore
 
-NUM_TIMESTEPS = 1_000_000
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--n", type=str, default=1_000_000)
 parser.add_argument("--module_type", type=str, default="ae")
 parser.add_argument("--latent_size", type=int, default=32)
 parser.add_argument("--distance_threshold", type=float, default=0.1)
@@ -24,6 +24,7 @@ parser.add_argument("--n-envs", type=int, default=8)
 args = parser.parse_args()
 
 env_id = "Pitfall-v4"
+num_timesteps = args.n
 module_type = args.module_type
 latent_size = args.latent_size
 distance_threshold = args.distance_threshold
@@ -41,6 +42,7 @@ run = wandb.init(
     project="lge",
     config=dict(
         env_id=env_id,
+        num_timesteps=num_timesteps,
         module_type=module_type,
         latent_size=latent_size,
         distance_threshold=distance_threshold,
@@ -75,5 +77,5 @@ model = LatentGoExplore(
 )
 
 
-model.explore(NUM_TIMESTEPS, NumberCellsLogger())
+model.explore(num_timesteps, NumberCellsLogger())
 run.finish()
