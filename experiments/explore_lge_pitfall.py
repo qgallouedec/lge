@@ -16,8 +16,8 @@ parser.add_argument("--latent_size", type=int, default=32)
 parser.add_argument("--distance_threshold", type=float, default=0.1)
 parser.add_argument("--lighten_dist_coef", type=float, default=1.0)
 parser.add_argument("--p", type=float, default=0.1)
-parser.add_argument("--module_train_freq", type=int, default=10_000)
-parser.add_argument("--module_grad_steps", type=int, default=500)
+parser.add_argument("--module_train_freq", type=int, default=100_000)
+parser.add_argument("--module_grad_steps", type=int, default=50)
 parser.add_argument("--n-envs", type=int, default=8)
 
 
