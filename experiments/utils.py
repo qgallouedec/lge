@@ -3,6 +3,7 @@ import gym
 import numpy as np
 from stable_baselines3.common.atari_wrappers import EpisodicLifeEnv, FireResetEnv, MaxAndSkipEnv, WarpFrame
 from stable_baselines3.common.callbacks import BaseCallback
+from lge.buffer import LGEBuffer
 
 
 class AtariWrapper(gym.Wrapper):
@@ -65,16 +66,21 @@ class MaxRewardLogger(BaseCallback):
 
 
 class NumberCellsLogger(BaseCallback):
-    def __init__(self, verbose: int = 0):
+    def __init__(self, freq: int = 500, verbose: int = 0):
         super().__init__(verbose)
         self.all_cells = np.zeros((0, 20, 20), dtype=np.uint8)
+        self.freq = freq
+        self._last_call = 0
 
     def _on_step(self) -> bool:
-        if self.n_calls % 10_000 == 0:
+        if self.n_calls % self.freq == 0:
             buffer = self.locals["replay_buffer"]  # type: LGEBuffer
             observations = buffer.next_observations["observation"]
-            if not buffer.full:
-                observations = observations[: buffer.pos]
+            if buffer.pos < self._last_call:
+                idxs = np.arange(self._last_call, buffer.pos + buffer.buffer_size) % buffer.buffer_size
+            else:
+                idxs = np.arange(self._last_call, buffer.pos)
+            observations = observations[idxs]
             observations = np.reshape(observations, (-1, 1, 84, 84))  # (N, N_ENVS, C, H, W) to (N*N_ENVS, C, H, W)
             observations = np.moveaxis(observations, 1, -1)  # (N*N_ENVS, C, H, W) to (N*N_ENVS, H, W, C)
             cells = np.zeros((observations.shape[0], 20, 20))
@@ -85,4 +91,5 @@ class NumberCellsLogger(BaseCallback):
             self.all_cells = np.concatenate((self.all_cells, cells))
             self.all_cells = np.unique(self.all_cells, axis=0)
             self.logger.record("env/nb_cells", len(self.all_cells))
+            self._last_call = buffer.pos
         return True
