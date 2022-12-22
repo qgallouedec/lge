@@ -23,7 +23,7 @@ class BaseLearner(BaseCallback):
     Args:
         module (BaseModule): Module to train
         buffer (LGEBuffer): Buffer to sample from
-        batch_size (int, optional): Batch size. Defaults to 32.
+        batch_size (int, optional): Batch size. Defaults to 64.
         lr (float, optional): Learning rate. Defaults to 1e-3.
         weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
         train_freq (int, optional): Training frequency. Defaults to 5_000.
@@ -36,7 +36,7 @@ class BaseLearner(BaseCallback):
         self,
         module: BaseModule,
         buffer: LGEBuffer,
-        batch_size: int = 32,
+        batch_size: int = 64,
         lr: float = 1e-3,
         weight_decay: float = 1e-5,
         train_freq: int = 5_000,
@@ -104,7 +104,7 @@ class InverseModuleLearner(BaseLearner):
     Args:
         module (InverseModule): Inverse module to train
         buffer (LGEBuffer): Buffer to sample from
-        batch_size (int, optional): Batch size. Defaults to 32.
+        batch_size (int, optional): Batch size. Defaults to 64.
         lr (float, optional): Learning rate. Defaults to 1e-3.
         weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
         train_freq (int, optional): Training frequency. Defaults to 5_000.
@@ -117,7 +117,7 @@ class InverseModuleLearner(BaseLearner):
         self,
         module: InverseModule,
         buffer: LGEBuffer,
-        batch_size: int = 32,
+        batch_size: int = 64,
         lr: float = 1e-3,
         weight_decay: float = 1e-5,
         train_freq: int = 5_000,
@@ -146,7 +146,7 @@ class ForwardModuleLearner(BaseLearner):
     Args:
         module (ForwardModule): Forward module to train
         buffer (LGEBuffer): Buffer to sample from
-        batch_size (int, optional): Batch size. Defaults to 32.
+        batch_size (int, optional): Batch size. Defaults to 64.
         lr (float, optional): Learning rate. Defaults to 1e-3.
         weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
         train_freq (int, optional): Training frequency. Defaults to 5_000.
@@ -159,7 +159,7 @@ class ForwardModuleLearner(BaseLearner):
         self,
         module: ForwardModule,
         buffer: LGEBuffer,
-        batch_size: int = 32,
+        batch_size: int = 64,
         lr: float = 1e-3,
         weight_decay: float = 1e-5,
         train_freq: int = 5_000,
@@ -185,7 +185,7 @@ class AEModuleLearner(BaseLearner):
     Args:
         module (InverseModule): Auto-encoder module to train
         buffer (LGEBuffer): Buffer to sample from
-        batch_size (int, optional): Batch size. Defaults to 32.
+        batch_size (int, optional): Batch size. Defaults to 64.
         lr (float, optional): Learning rate. Defaults to 1e-3.
         weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
         train_freq (int, optional): Training frequency. Defaults to 5_000.
@@ -198,7 +198,7 @@ class AEModuleLearner(BaseLearner):
         self,
         module: AEModule,
         buffer: LGEBuffer,
-        batch_size: int = 32,
+        batch_size: int = 64,
         lr: float = 1e-3,
         weight_decay: float = 1e-5,
         train_freq: int = 5_000,
