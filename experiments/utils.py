@@ -68,7 +68,7 @@ class MaxRewardLogger(BaseCallback):
 class NumberCellsLogger(BaseCallback):
     def __init__(self, freq: int = 500, verbose: int = 0):
         super().__init__(verbose)
-        self.all_cells = np.zeros((0, 20, 20), dtype=np.uint8)
+        self.all_cells = np.zeros((0, 10, 10), dtype=np.uint8)
         self.freq = freq
         self._last_call = 0
 
@@ -83,11 +83,10 @@ class NumberCellsLogger(BaseCallback):
             observations = observations[idxs]
             observations = np.reshape(observations, (-1, 1, 84, 84))  # (N, N_ENVS, C, H, W) to (N*N_ENVS, C, H, W)
             observations = np.moveaxis(observations, 1, -1)  # (N*N_ENVS, C, H, W) to (N*N_ENVS, H, W, C)
-            cells = np.zeros((observations.shape[0], 20, 20))
+            cells = np.zeros((observations.shape[0], 10, 10), np.uint8)
             for i, observation in enumerate(observations):
-                cells[i] = cv2.resize(observation, (20, 20))  #  (N*N_ENVS, H, W, C) to (N*N_ENVS, 20, 20)
-            cells = cells / 255 * 12  # [0, d]
-            cells = (np.floor(cells) * 255 / 12).astype(np.uint8)
+                cell = cv2.resize(observation, (10, 10))  #  (N*N_ENVS, H, W, C) to (N*N_ENVS, 20, 20)
+                cells[i] = np.floor(cell / 255 * 6) * 255 / 6  # [0, d]
             self.all_cells = np.concatenate((self.all_cells, cells))
             self.all_cells = np.unique(self.all_cells, axis=0)
             self.logger.record("env/nb_cells", len(self.all_cells))
