@@ -18,22 +18,13 @@ class AtariWrapper(gym.Wrapper):
     * Termination signal when a life is lost.
     * Resize to a square image: 84x84 by default
     * Grayscale observation
-    * Clip reward to {-1, 0, 1}
 
-    :param env: gym environment
-    :param noop_max: max number of no-ops
-    :param frame_skip: the frequency at which the agent experiences the game.
-    :param screen_size: resize Atari frame
-    :param terminal_on_life_loss: if True, then step() returns done=True whenever a life is lost.
-    :param clip_reward: If True (default), the reward is clip to {-1, 0, 1} depending on its sign.
+    :param env: Atari environment
+    :param frame_skip: Frequency at which the agent experiences the game.
+    :param screen_size: Resize Atari frame
     """
 
-    def __init__(
-        self,
-        env: gym.Env,
-        frame_skip: int = 4,
-        screen_size: int = 84,
-    ):
+    def __init__(self, env: gym.Env, frame_skip: int = 4, screen_size: int = 84):
         env = MaxAndSkipEnv(env, skip=frame_skip)
         env = EpisodicLifeEnv(env)
         env = FireResetEnv(env)
@@ -65,7 +56,7 @@ class MaxRewardLogger(BaseCallback):
         return True
 
 
-class NumberCellsLogger(BaseCallback):
+class AtariNumberCellsLogger(BaseCallback):
     def __init__(self, freq: int = 500, verbose: int = 0):
         super().__init__(verbose)
         self.all_cells = np.zeros((0, 10, 10), dtype=np.uint8)
@@ -92,3 +83,35 @@ class NumberCellsLogger(BaseCallback):
             self.logger.record("env/nb_cells", len(self.all_cells))
             self._last_call = buffer.pos
         return True
+
+
+class NumberCellsLogger(BaseCallback):
+    def __init__(self, freq: int = 500, verbose: int = 0):
+        super().__init__(verbose)
+        self.freq = freq
+        self._last_call = 0
+
+    def _on_step(self) -> bool:
+        if self.n_calls % self.freq == 0:
+            buffer = self.locals["replay_buffer"]  # type: LGEBuffer
+            observations = buffer.next_observations["observation"]
+            if buffer.pos < self._last_call:
+                idxs = np.arange(self._last_call, buffer.pos + buffer.buffer_size) % buffer.buffer_size
+            else:
+                idxs = np.arange(self._last_call, buffer.pos)
+            observations = observations[idxs]
+            observations = np.reshape(observations, (-1, observations.shape[-1]))  # (N, N_ENVS, D) to (N*N_ENVS, D)
+            cells = np.floor(observations)
+            if hasattr(self, "all_cells"):
+                self.all_cells = np.concatenate((self.all_cells, cells))
+            else:
+                self.all_cells = cells
+            self.all_cells = np.unique(self.all_cells, axis=0)
+            self.logger.record("env/nb_cells", len(self.all_cells))
+            self._last_call = buffer.pos
+        return True
+
+
+def is_atari(env_id: str) -> bool:
+    entry_point = gym.envs.registry.env_specs[env_id].entry_point
+    return "AtariEnv" in str(entry_point)
