@@ -28,6 +28,12 @@ lge = LatentGoExplore(SAC, "MountainCarContinuous-v0")
 lge.explore(total_timesteps=10_000)
 ```
 
+Or via command line
+
+```shell
+python experiments/explore_lge.py --env MountainCarContinuous-v0 --algo sac
+```
+
 Supported envrionments specifications:
 
 | Space           | Observation space  |
@@ -44,5 +50,4 @@ Supported envrionments specifications:
 | `Discrete` | :heavy_check_mark: |
 
 
-
- Image is actually a multi-dimensonal uint8 `Box`.
+Image is actually a multi-dimensonal uint8 `Box`.
