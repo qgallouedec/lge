@@ -4,9 +4,9 @@ import time
 
 from stable_baselines3 import DDPG, DQN, SAC, TD3
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-
+from stable_baselines3.common.callbacks import CallbackList
 import wandb
-from experiments.utils import AtariNumberCellsLogger, AtariWrapper, NumberCellsLogger, is_atari
+from experiments.utils import AtariNumberCellsLogger, AtariWrapper, NumberCellsLogger, is_atari, MaxRewardLogger
 from lge import LatentGoExplore
 
 
@@ -106,7 +106,8 @@ if __name__ == "__main__":
         verbose=1,
     )
 
-    number_cells_logger = NumberCellsLogger() if not is_atari(env_id) else AtariNumberCellsLogger()
-
-    model.explore(num_timesteps, callback=number_cells_logger)
+    freq = int(num_timesteps / 1000)
+    number_cells_logger = NumberCellsLogger(freq) if not is_atari(env_id) else AtariNumberCellsLogger(freq)
+    max_reward_logger = MaxRewardLogger(freq)
+    model.explore(num_timesteps, callback=CallbackList([number_cells_logger, max_reward_logger]))
     run.finish()
