@@ -3,6 +3,7 @@ import gym
 import numpy as np
 from stable_baselines3.common.atari_wrappers import EpisodicLifeEnv, FireResetEnv, MaxAndSkipEnv, WarpFrame
 from stable_baselines3.common.callbacks import BaseCallback
+
 from lge.buffer import LGEBuffer
 
 
@@ -38,21 +39,22 @@ class AtariWrapper(gym.Wrapper):
 
 
 class MaxRewardLogger(BaseCallback):
-    def __init__(self, verbose: int = 0):
+    def __init__(self, freq: int = 5_000, verbose: int = 0):
         super().__init__(verbose)
+        self.freq = freq
         self.max_reward = -np.inf
 
     def _on_step(self) -> bool:
-        buffer = self.locals["replay_buffer"]  # type: ReplayBuffer
-        infos = buffer.infos
-        if not buffer.full:
-            if buffer.pos == 0:
-                return True
-            infos = buffer.infos[: buffer.pos]
-
-        rewards = [info[env_idx]["env_reward"] for info in infos for env_idx in range(buffer.n_envs)]
-        self.max_reward = max(np.max(rewards), self.max_reward)
-        self.logger.record("env/max_env_eward", self.max_reward)
+        if self.n_calls % self.freq == 0:
+            buffer = self.locals["replay_buffer"]  # type: LGEBuffer
+            infos = buffer.infos
+            if not buffer.full:
+                if buffer.pos == 0:
+                    return True
+                infos = buffer.infos[: buffer.pos]
+            rewards = [info[env_idx]["episode"]["i"] for info in infos for env_idx in range(buffer.n_envs) if "episode" in info[env_idx]]
+            self.max_reward = max(np.max(rewards), self.max_reward)
+            self.logger.record("env/max_env_reward", self.max_reward)
         return True
 
 
