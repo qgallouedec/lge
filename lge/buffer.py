@@ -111,8 +111,10 @@ class LGEBuffer(HerReplayBuffer):
 
         for env_idx in range(self.n_envs):
             # Recompute 256 by 256 to avoid cuda space allocation error.
-            self.goal_embeddings[:, env_idx] = self.encode(self.observations["goal"][:, env_idx])
-            self.next_embeddings[:, env_idx] = self.encode(self.next_observations["observation"][:, env_idx])
+            self.goal_embeddings[:upper_bound, env_idx] = self.encode(self.observations["goal"][:upper_bound, env_idx])
+            self.next_embeddings[:upper_bound, env_idx] = self.encode(
+                self.next_observations["observation"][:upper_bound, env_idx]
+            )
 
         self.nb_density_computed = upper_bound * self.n_envs
 
