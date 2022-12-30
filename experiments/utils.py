@@ -142,5 +142,5 @@ class GoalLogger(BaseCallback):
             images = np.vstack(image_array)
 
             images = wandb.Image(images, caption="Goals trajectories")
-            wandb.log({"Goal trajectory": images})
+            wandb.log({"Goal trajectory": images}, step=self.num_timesteps)
         return True
