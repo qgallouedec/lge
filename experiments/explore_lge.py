@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
     model_kwargs = dict(policy_kwargs=policy_kwargs)
     if is_atari(env_id):
-        model_kwargs["buffer_size"] = 400_000
+        model_kwargs["buffer_size"] = 400_000 * n_envs
     if algo is DQN:
         # Take random actions during the `learning_starts` timesteps, then take random
         # actions with decreasing probability during more `learning_starts` timesteps,
