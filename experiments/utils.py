@@ -4,6 +4,7 @@ import numpy as np
 from stable_baselines3.common.atari_wrappers import EpisodicLifeEnv, FireResetEnv, MaxAndSkipEnv, WarpFrame
 from stable_baselines3.common.callbacks import BaseCallback
 
+import wandb
 from lge.buffer import LGEBuffer
 
 
@@ -52,7 +53,12 @@ class MaxRewardLogger(BaseCallback):
                 if buffer.pos == 0:
                     return True
                 infos = buffer.infos[: buffer.pos]
-            rewards = [info[env_idx]["episode"]["i"] for info in infos for env_idx in range(buffer.n_envs) if "episode" in info[env_idx]]
+            rewards = [
+                info[env_idx]["episode"]["i"]
+                for info in infos
+                for env_idx in range(buffer.n_envs)
+                if "episode" in info[env_idx]
+            ]
             self.max_reward = max(np.max(rewards), self.max_reward)
             self.logger.record("env/max_env_reward", self.max_reward)
         return True
@@ -117,3 +123,24 @@ class NumberCellsLogger(BaseCallback):
 def is_atari(env_id: str) -> bool:
     entry_point = gym.envs.registry.env_specs[env_id].entry_point
     return "AtariEnv" in str(entry_point)
+
+
+class GoalLogger(BaseCallback):
+    def __init__(self, freq: int = 1_000, verbose: int = 0):
+        super().__init__(verbose)
+        self.freq = freq
+
+    def _on_step(self):
+        if self.n_calls % self.freq == 0:
+            goal_trajectory = self.training_env.get_attr("goal_trajectory")
+            image_array = [np.hstack(traj) for traj in goal_trajectory]
+            max_width = max([image.shape[1] for image in image_array])
+            image_array = [
+                np.pad(image, [(0, 0), (0, max_width - image.shape[1]), (0, 0)], mode="constant", constant_values=0)
+                for image in image_array
+            ]
+            images = np.vstack(image_array)
+
+            images = wandb.Image(images, caption="Goals trajectories")
+            wandb.log({"Goal trajectory": images})
+        return True

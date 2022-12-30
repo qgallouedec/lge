@@ -3,10 +3,11 @@ import argparse
 import time
 
 from stable_baselines3 import DDPG, DQN, SAC, TD3
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.callbacks import CallbackList
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+
 import wandb
-from experiments.utils import AtariNumberCellsLogger, AtariWrapper, NumberCellsLogger, is_atari, MaxRewardLogger
+from experiments.utils import AtariNumberCellsLogger, AtariWrapper, GoalLogger, MaxRewardLogger, NumberCellsLogger, is_atari
 from lge import LatentGoExplore
 
 
@@ -27,9 +28,7 @@ def parse_args():
     parser.add_argument("--module-grad-steps", type=int, default=50, help="Module gradient steps")
     parser.add_argument("--n-envs", type=int, default=8, help="Number of environments")
     parser.add_argument("--vec-env-cls", type=str, choices=["subproc", "dummy"], help="Vector environment class")
-    parser.add_argument(
-        "--tags", type=str, default="", help="Comma-separated list of tags, e.g.: --tag 'Before modif,After modif'"
-    )
+    parser.add_argument("--tags", type=str, default="", nargs="+", help="List of tags, e.g.: --tag before-modif pr-32")
 
     return parser.parse_args()
 
@@ -75,7 +74,7 @@ if __name__ == "__main__":
             module_grad_steps=module_grad_steps,
         ),
         sync_tensorboard=True,
-        tags=[tag.strip() for tag in args.tags.split(",")] if args.tags else None,
+        tags=args.tags,
     )
 
     model_kwargs = dict(policy_kwargs=policy_kwargs)
@@ -109,5 +108,6 @@ if __name__ == "__main__":
     freq = int(num_timesteps / 1000)
     number_cells_logger = NumberCellsLogger(freq) if not is_atari(env_id) else AtariNumberCellsLogger(freq)
     max_reward_logger = MaxRewardLogger(freq)
-    model.explore(num_timesteps, callback=CallbackList([number_cells_logger, max_reward_logger]))
+    goal_logger = GoalLogger()
+    model.explore(num_timesteps, callback=CallbackList([number_cells_logger, max_reward_logger, goal_logger]))
     run.finish()
