@@ -1,7 +1,7 @@
 import cv2
 import gym
 import numpy as np
-from stable_baselines3.common.atari_wrappers import EpisodicLifeEnv, FireResetEnv, MaxAndSkipEnv, WarpFrame
+from stable_baselines3.common.atari_wrappers import EpisodicLifeEnv, FireResetEnv, MaxAndSkipEnv, NoopResetEnv, WarpFrame
 from stable_baselines3.common.callbacks import BaseCallback
 
 import wandb
@@ -27,6 +27,7 @@ class AtariWrapper(gym.Wrapper):
     """
 
     def __init__(self, env: gym.Env, frame_skip: int = 4, screen_size: int = 84):
+        env = NoopResetEnv(env)
         env = MaxAndSkipEnv(env, skip=frame_skip)
         env = EpisodicLifeEnv(env)
         env = FireResetEnv(env)
