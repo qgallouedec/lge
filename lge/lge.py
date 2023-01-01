@@ -69,6 +69,7 @@ class Goalify(gym.Wrapper):
 
     def reset(self) -> Dict[str, np.ndarray]:
         obs = self.env.reset()
+        self._t = 0
         assert hasattr(self, "lge_buffer"), "you need to set the buffer before reset. Use set_buffer()"
         self.goal_trajectory, self.emb_trajectory = self.lge_buffer.sample_trajectory(self.lighten_dist_coef)
         # For image, we need to transpose the sample
@@ -88,6 +89,7 @@ class Goalify(gym.Wrapper):
 
     def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
         obs, reward, done, info = self.env.step(action)
+        self._t += 1
         info["env_reward"] = reward
         # Compute reward (has to be done before moving to next goal)
         embedding = self.lge_buffer.encode(maybe_make_channel_first(obs))
@@ -124,6 +126,9 @@ class Goalify(gym.Wrapper):
             info["is_success"] = False
 
         dict_obs = self._get_dict_obs(obs)
+
+        if info.get("dead", False):
+            reward -= 10000 - self._t
         return dict_obs, reward, done, info
 
 

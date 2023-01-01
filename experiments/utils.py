@@ -29,6 +29,7 @@ class DoneOnLifeLost(gym.Wrapper):
         lives = info["lives"]
         if lives < 6:
             done = True
+            info["dead"] = True
         return obs, reward, done, info
 
 
