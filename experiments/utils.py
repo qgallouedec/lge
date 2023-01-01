@@ -1,43 +1,195 @@
+from collections import deque
+from typing import Any, Dict, Tuple
+
 import cv2
 import gym
 import numpy as np
-from stable_baselines3.common.atari_wrappers import EpisodicLifeEnv, FireResetEnv, MaxAndSkipEnv, NoopResetEnv, WarpFrame
+from gym import spaces
+from stable_baselines3.common.atari_wrappers import MaxAndSkipEnv, NoopResetEnv
 from stable_baselines3.common.callbacks import BaseCallback
 
 import wandb
 from lge.buffer import LGEBuffer
 
 
+class DoneOnLifeLost(gym.Wrapper):
+    """
+    A gym wrapper that terminates the environment a life is lost.
+
+    This wrapper is intended to be used with environments that have a "lives" key in their info dictionary,
+    which indicates the number of lives the agent has remaining. When the number of lives falls below a certain
+    threshold, the environment is terminated and the episode is considered done.
+
+    Args:
+        env (gym.Env): Atari environment to wrap.
+    """
+
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+        obs, reward, done, info = super().step(action)
+        lives = info["lives"]
+        if lives < 6:
+            done = True
+        return obs, reward, done, info
+
+
+class NoopResetEnv(gym.Wrapper):
+    """
+    Sample initial state by taking random number of no-ops on reset.
+
+    No-op is assumed to be action 0. Number of no-ops in game frames.
+
+    Args:
+        env (gym.Env): Atari environment to wrap
+        noop_max (int): Maximum number of no-ops.
+    """
+
+    def __init__(self, env: gym.Env, noop_max: int = 30) -> None:
+        super().__init__(env)
+        self.noop_max = noop_max
+        assert env.unwrapped.get_action_meanings()[0] == "NOOP"
+
+    def reset(self) -> np.ndarray:
+        nb_noops = self.unwrapped.np_random.randint(self.noop_max + 1)
+        obs = self.env.reset()
+        for _ in range(nb_noops):
+            obs, _, done, _ = self.env.step(0)
+            if done:
+                obs = self.env.reset()
+        return obs
+
+
+class StickyActionEnv(gym.Wrapper):
+    """
+    An environment wrapper that has a probability of "sticking" to the last action taken.
+
+    Args:
+        env (gym.Env): The environment to wrap.
+        prob (float): The probability of "sticking" to the last action taken.
+    """
+
+    def __init__(self, env: gym.Env, prob: float = 0.25) -> None:
+        super().__init__(env)
+        self.prob = prob
+        self.last_action = 0
+
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+        if np.random.uniform() < self.prob:
+            action = self.last_action
+        self.last_action = action
+        obs, reward, done, info = self.env.step(action)
+        info["sticky_env.executed_action"] = action
+        return obs, reward, done, info
+
+    def reset(self) -> np.ndarray:
+        self.last_action = 0
+        return self.env.reset()
+
+
+class MaxAndSkipEnv(gym.Wrapper):
+    """
+    Returns only every `skip`-th frame.
+
+    Repeats the action, sums the reward, and takes the maximum of the last two observations.
+
+    Args:
+        env (gym.Env): Atari environment to wrap.
+        skip (int): Number of frames to skip. Default: 4.
+    """
+
+    def __init__(self, env: gym.Env, skip: int = 4) -> None:
+        super().__init__(env)
+        # most recent raw observations (for max pooling across time steps)
+        self._obs_buffer = deque(maxlen=2)
+        self.skip = skip
+
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+        total_reward = 0.0
+        combined_info = {"skip_env.executed_actions": []}
+        for _ in range(self.skip):
+            obs, reward, done, info = self.env.step(action)
+            self._obs_buffer.append(obs)
+            total_reward += reward
+            combined_info["skip_env.executed_actions"].append(info.pop("sticky_env.executed_action"))
+            combined_info.update(info)
+            if done:
+                break
+        max_frame = np.max(np.stack(self._obs_buffer), axis=0)
+        return max_frame, total_reward, done, combined_info
+
+    def reset(self):
+        # Clear past frame buffer and init. to first obs. from inner env.
+        self._obs_buffer.clear()
+        obs = self.env.reset()
+        self._obs_buffer.append(obs)
+        return obs
+
+
+class AtariCeller(gym.Wrapper):
+    """
+    Add the cell representation the info.
+
+    Args:
+        env (gym.Env): Atari environment to wrap.
+    """
+
+    def __init__(self, env: gym.Env, width: int = 11, height: int = 8, nb_pixels: int = 8) -> None:
+        super().__init__(env)
+        self.width, self.height, self.nb_pixels = width, height, nb_pixels
+
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+        obs, reward, done, info = super().step(action)
+        cell = cv2.resize(obs, (self.width, self.height))
+        cell = cv2.cvtColor(cell, cv2.COLOR_RGB2GRAY)
+        cell = (np.floor(cell / 255 * self.nb_pixels)).astype(np.uint8)
+        info["cell"] = cell
+        return obs, reward, done, info
+
+
+class GrayscaleDownscale(gym.ObservationWrapper):
+    """
+    Downscale and grayscale the observation.
+
+    Args:
+        env (gym.Env): Atari environment to wrap.
+    """
+
+    def __init__(self, env: gym.Env, width: int = 84, height: int = 84) -> None:
+        super().__init__(env)
+        self.width, self.height = width, height
+        self.observation_space = spaces.Box(0, 255, shape=(self.width, self.height, 1), dtype=np.uint8)
+
+    def observation(self, observation: np.ndarray) -> np.ndarray:
+        observation = cv2.resize(observation, (self.width, self.height))
+        observation = cv2.cvtColor(observation, cv2.COLOR_RGB2GRAY)
+        observation = np.expand_dims(observation, 2)  # (W, H) to (W, H, 1)
+        return observation
+
+
 class AtariWrapper(gym.Wrapper):
     """
-    Atari 2600 preprocessings
+    Wrapper for Atari environments.
 
-    Specifically:
+    This wrapper applies several Atari-specific modifications to the environment. These modifications include:
 
-    * NoopReset: obtain initial state by taking random number of no-ops on reset.
-    * Frame skipping: 4 by default
-    * Max-pooling: most recent two observations
-    * Termination signal when a life is lost.
-    * Resize to a square image: 84x84 by default
-    * Grayscale observation
+    - Terminate the environment when a life is lost.
+    - Takes random number of no-ops on reset.
+    - Action sticking: The agent take the previous action with a given probability.
+    - Frame skiping and max pooling.
+    - Add to info the cell representation
+    - Grayscale and downscale observation to 84 x 84.
 
-    :param env: Atari environment
-    :param frame_skip: Frequency at which the agent experiences the game.
-    :param screen_size: Resize Atari frame
+    Args:
+        env (gym.Env): Atari environment to wrap.
     """
 
-    def __init__(self, env: gym.Env, frame_skip: int = 4, screen_size: int = 84):
-        env = NoopResetEnv(env)
-        env = MaxAndSkipEnv(env, skip=frame_skip)
-        env = EpisodicLifeEnv(env)
-        env = FireResetEnv(env)
-        env = WarpFrame(env, width=screen_size, height=screen_size)
+    def __init__(self, env: gym.Env) -> None:
+        env = DoneOnLifeLost(env)  # In game frame, only affect the step
+        env = NoopResetEnv(env)  # In game frame, only affect the reset
+        env = StickyActionEnv(env)  # Sticky actions, must be inside MaxandSkip
+        env = MaxAndSkipEnv(env)
+        env = AtariCeller(env)
+        env = GrayscaleDownscale(env)
         super().__init__(env)
-
-    def step(self, action):
-        obs, reward, done, info = super().step(action)
-        info["ram"] = self.unwrapped.ale.getRAM()
-        return obs, reward, done, info
 
 
 class MaxRewardLogger(BaseCallback):
@@ -68,25 +220,20 @@ class MaxRewardLogger(BaseCallback):
 class AtariNumberCellsLogger(BaseCallback):
     def __init__(self, freq: int = 500, verbose: int = 0):
         super().__init__(verbose)
-        self.all_cells = np.zeros((0, 10, 10), dtype=np.uint8)
+        self.all_cells = np.zeros((0, 8, 11), dtype=np.uint8)
         self.freq = freq
         self._last_call = 0
 
     def _on_step(self) -> bool:
         if self.n_calls % self.freq == 0:
             buffer = self.locals["replay_buffer"]  # type: LGEBuffer
-            observations = buffer.next_observations["observation"]
+            infos = buffer.infos
             if buffer.pos < self._last_call:
                 idxs = np.arange(self._last_call, buffer.pos + buffer.buffer_size) % buffer.buffer_size
             else:
                 idxs = np.arange(self._last_call, buffer.pos)
-            observations = observations[idxs]
-            observations = np.reshape(observations, (-1, 1, 84, 84))  # (N, N_ENVS, C, H, W) to (N*N_ENVS, C, H, W)
-            observations = np.moveaxis(observations, 1, -1)  # (N*N_ENVS, C, H, W) to (N*N_ENVS, H, W, C)
-            cells = np.zeros((observations.shape[0], 10, 10), np.uint8)
-            for i, observation in enumerate(observations):
-                cell = cv2.resize(observation, (10, 10))  #  (N*N_ENVS, H, W, C) to (N*N_ENVS, 20, 20)
-                cells[i] = np.floor(cell / 255 * 6) * 255 / 6  # [0, d]
+            infos = infos[idxs]
+            cells = np.array([info[env_idx]["cell"] for info in infos for env_idx in range(buffer.n_envs)])
             self.all_cells = np.concatenate((self.all_cells, cells))
             self.all_cells = np.unique(self.all_cells, axis=0)
             self.logger.record("env/nb_cells", len(self.all_cells))
@@ -143,5 +290,5 @@ class GoalLogger(BaseCallback):
             images = np.vstack(image_array)
 
             images = wandb.Image(images, caption="Goals trajectories")
-            wandb.log({"Goal trajectory": images}, step=self.num_timesteps)
+            wandb.log({"Goal trajectory": images})
         return True
