@@ -128,7 +128,7 @@ class Goalify(gym.Wrapper):
         dict_obs = self._get_dict_obs(obs)
 
         if info.get("dead", False):
-            reward -= 10000 - self._t
+            reward -= 100 - self._t
         return dict_obs, reward, done, info
 
 
