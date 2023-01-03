@@ -78,17 +78,14 @@ class MaxAndSkipEnv(gym.Wrapper):
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         total_reward = 0.0
-        combined_info = {"skip_env.executed_actions": []}
         for _ in range(self.skip):
             obs, reward, done, info = self.env.step(action)
             self._obs_buffer.append(obs)
             total_reward += reward
-            combined_info["skip_env.executed_actions"].append(info.pop("sticky_env.executed_action"))
-            combined_info.update(info)
             if done:
                 break
         max_frame = np.max(np.stack(self._obs_buffer), axis=0)
-        return max_frame, total_reward, done, combined_info
+        return max_frame, total_reward, done, info
 
     def reset(self):
         # Clear past frame buffer and init. to first obs. from inner env.
