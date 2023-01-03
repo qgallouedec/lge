@@ -72,10 +72,7 @@ class LGEBuffer(HerReplayBuffer):
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
 
-        # The buffer does not compute density after every new transition stored. The densities are
-        # computed when the method recompute_embeddings() is appealed. To keep track of the number
-        # densities computed, we use self.self.nb_density_computed
-        self.nb_density_computed = 0
+        self.sorted_density = []
 
     def add(
         self,
@@ -87,6 +84,19 @@ class LGEBuffer(HerReplayBuffer):
         infos: List[Dict[str, Any]],
         is_virtual: bool = False,
     ) -> None:
+        # When the buffer is full, we rewrite on old experience. Those old experience has
+        # to be removed from the goal candidates. So their idx are discarded from sorted_density
+        for env_idx in range(self.n_envs):
+            episode_start = self.ep_start[self.pos][env_idx]
+            episode_length = self.ep_length[self.pos][env_idx]
+            if episode_length > 0:
+                episode_end = episode_start + episode_length
+                episode_indices = np.arange(self.pos, episode_end) % self.buffer_size
+                for t in episode_indices:
+                    idx = self.n_envs * t + env_idx
+                    if idx in self.sorted_density:
+                        self.sorted_density.remove(idx)
+
         pos = self.pos  # Store before incrementation
         super().add(obs, next_obs, action, reward, done, infos, is_virtual)
         for env_idx in range(self.n_envs):
@@ -102,6 +112,12 @@ class LGEBuffer(HerReplayBuffer):
                 self.goal_embeddings[episode, env_idx] = self.encode(self.observations["goal"][episode, env_idx])
                 self.next_embeddings[episode, env_idx] = self.encode(self.next_observations["observation"][episode, env_idx])
 
+        # Security, when the frequency of module training is too low, the number of goal candidates can drop
+        # because we rewrite on old experience. We add a security: embeddings are recomputed when the goal candidates
+        # nnuber is below half of the buffer size.
+        if self.full and len(self.sorted_density) < self.buffer_size * self.n_envs / 2:
+            self.recompute_embeddings()
+
     def recompute_embeddings(self) -> None:
         """
         Re-compute all the embeddings and estimate the density. This method must
@@ -116,23 +132,23 @@ class LGEBuffer(HerReplayBuffer):
                 self.next_observations["observation"][:upper_bound, env_idx]
             )
 
-        self.nb_density_computed = upper_bound * self.n_envs
+        flat_upper_bound = upper_bound * self.n_envs
 
         # Reshape and convert embeddings to torch tensor
         all_embeddings = self.next_embeddings[:upper_bound]
-        all_embeddings = all_embeddings.reshape(self.nb_density_computed, -1)
+        all_embeddings = all_embeddings.reshape(flat_upper_bound, -1)
         all_embeddings = self.to_torch(all_embeddings)
 
         # Estimate density based on the embeddings
-        density = np.zeros((self.nb_density_computed), dtype=np.float32)
+        density = np.zeros((flat_upper_bound), dtype=np.float32)
         k = 0
-        while k < self.nb_density_computed:
-            upper = min(self.nb_density_computed, k + 256)
+        while k < flat_upper_bound:
+            upper = min(flat_upper_bound, k + 256)
             embeddings = all_embeddings[k:upper]
             density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             k += 256
         self.density = density
-        self.sorted_density = np.argsort(density)
+        self.sorted_density = list(np.argsort(density))
 
     def encode(self, obs: Union[int, np.ndarray]) -> np.ndarray:
         """
@@ -170,11 +186,11 @@ class LGEBuffer(HerReplayBuffer):
             from the previous subgoal, defaults to 1.0
         :return: The list of subgoals and their latent representation
         """
-        if self.nb_density_computed == 0:  # no density computed yet
+        if len(self.sorted_density) == 0:  # no density computed yet
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal)
 
-        goal_id = self.sorted_density[sample_geometric_with_max(self.p, max_value=self.sorted_density.shape[0]) - 1]
+        goal_id = np.array(self.sorted_density)[sample_geometric_with_max(self.p, max_value=len(self.sorted_density)) - 1]
         goal_pos = goal_id // self.n_envs
         goal_env = goal_id % self.n_envs
         episode_start = self.ep_start[goal_pos, goal_env]
