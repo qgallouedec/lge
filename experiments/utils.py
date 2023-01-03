@@ -59,33 +59,6 @@ class NoopResetEnv(gym.Wrapper):
         return obs
 
 
-class StickyActionEnv(gym.Wrapper):
-    """
-    An environment wrapper that has a probability of "sticking" to the last action taken.
-
-    Args:
-        env (gym.Env): The environment to wrap.
-        prob (float): The probability of "sticking" to the last action taken.
-    """
-
-    def __init__(self, env: gym.Env, prob: float = 0.25) -> None:
-        super().__init__(env)
-        self.prob = prob
-        self.last_action = 0
-
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
-        if np.random.uniform() < self.prob:
-            action = self.last_action
-        self.last_action = action
-        obs, reward, done, info = self.env.step(action)
-        info["sticky_env.executed_action"] = action
-        return obs, reward, done, info
-
-    def reset(self) -> np.ndarray:
-        self.last_action = 0
-        return self.env.reset()
-
-
 class MaxAndSkipEnv(gym.Wrapper):
     """
     Returns only every `skip`-th frame.
@@ -186,7 +159,6 @@ class AtariWrapper(gym.Wrapper):
     def __init__(self, env: gym.Env) -> None:
         env = DoneOnLifeLost(env)  # In game frame, only affect the step
         env = NoopResetEnv(env)  # In game frame, only affect the reset
-        env = StickyActionEnv(env)  # Sticky actions, must be inside MaxandSkip
         env = MaxAndSkipEnv(env)
         env = AtariCeller(env)
         env = GrayscaleDownscale(env)

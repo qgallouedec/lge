@@ -78,8 +78,10 @@ if __name__ == "__main__":
     )
 
     model_kwargs = dict(policy_kwargs=policy_kwargs)
+    env_kwargs = dict()
     if is_atari(env_id):
         model_kwargs["buffer_size"] = 400_000 * n_envs
+        env_kwargs["repeat_action_probability"] = 0.25  # Sticky action, needed for v4
     if algo is DQN:
         # Take random actions during the `learning_starts` timesteps, then take random
         # actions with decreasing probability during more `learning_starts` timesteps,
@@ -95,6 +97,7 @@ if __name__ == "__main__":
         lighten_dist_coef=lighten_dist_coef,
         p=p,
         n_envs=n_envs,
+        env_kwargs=env_kwargs,
         learning_starts=learning_starts,
         model_kwargs=model_kwargs,
         wrapper_cls=AtariWrapper if is_atari(env_id) else None,
