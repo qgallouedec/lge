@@ -227,7 +227,7 @@ class LatentGoExplore:
         )
         model_kwargs = {} if model_kwargs is None else model_kwargs
         model_kwargs["learning_starts"] = learning_starts
-        model_kwargs["train_freq"] = 1
+        model_kwargs["train_freq"] = 10
         model_kwargs["gradient_steps"] = n_envs
         model_kwargs["tensorboard_log"] = tensorboard_log
         self.model = model_class(
