@@ -15,16 +15,16 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", type=str, required=True, help="Environment id")
     parser.add_argument("--algo", type=str, required=True, choices=["dqn", "sac", "ddpg", "td3", "c51"], help="Algorithm ID")
-    parser.add_argument("--num-timesteps", type=int, default=1_000_000, help="Number of timesteps")
+    parser.add_argument("--num-timesteps", type=int, default=10_000_000, help="Number of timesteps")
     parser.add_argument(
-        "--learning-starts", type=int, default=50_000, help="Number of random interactions before learning starts"
+        "--learning-starts", type=int, default=1_000_000, help="Number of random interactions before learning starts"
     )
     parser.add_argument("--module-type", type=str, default="ae", choices=["ae", "forward", "inverse"], help="Module type")
     parser.add_argument("--latent-size", type=int, default=32, help="Latent size")
-    parser.add_argument("--distance-threshold", type=float, default=0.1, help="Distance threshold")
-    parser.add_argument("--lighten-dist-coef", type=float, default=1.0, help="Lighten distance coefficient")
+    parser.add_argument("--distance-threshold", type=float, default=0.05, help="Distance threshold")
+    parser.add_argument("--lighten-dist-coef", type=float, default=8.0, help="Lighten distance coefficient")
     parser.add_argument("--p", type=float, default=0.1, help="Probability")
-    parser.add_argument("--module-train-freq", type=int, default=100_000, help="Module training frequency")
+    parser.add_argument("--module-train-freq", type=int, default=500_000, help="Module trained frequency in timesteps")
     parser.add_argument("--module-grad-steps", type=int, default=50, help="Module gradient steps")
     parser.add_argument("--n-envs", type=int, default=8, help="Number of environments")
     parser.add_argument("--vec-env-cls", type=str, choices=["subproc", "dummy"], help="Vector environment class")
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     model_kwargs = dict(policy_kwargs=policy_kwargs)
     env_kwargs = dict()
     if is_atari(env_id):
-        model_kwargs["buffer_size"] = 100_000 * n_envs
+        model_kwargs["buffer_size"] = 10_000 * n_envs
         env_kwargs["repeat_action_probability"] = 0.25  # Sticky action, needed for v4
     if algo is DQN:
         # Take random actions during the `learning_starts` timesteps, then take random
