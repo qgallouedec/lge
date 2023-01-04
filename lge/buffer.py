@@ -72,7 +72,7 @@ class LGEBuffer(HerReplayBuffer):
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
 
-        self.sorted_density = []
+        self.sorted_density = np.zeros(0, dtype=np.int64)
 
     def add(
         self,
@@ -84,19 +84,6 @@ class LGEBuffer(HerReplayBuffer):
         infos: List[Dict[str, Any]],
         is_virtual: bool = False,
     ) -> None:
-        # When the buffer is full, we rewrite on old experience. Those old experience has
-        # to be removed from the goal candidates. So their idx are discarded from sorted_density
-        for env_idx in range(self.n_envs):
-            episode_start = self.ep_start[self.pos][env_idx]
-            episode_length = self.ep_length[self.pos][env_idx]
-            if episode_length > 0:
-                episode_end = episode_start + episode_length
-                episode_indices = np.arange(self.pos, episode_end) % self.buffer_size
-                for t in episode_indices:
-                    idx = self.n_envs * t + env_idx
-                    if idx in self.sorted_density:
-                        self.sorted_density.remove(idx)
-
         pos = self.pos  # Store before incrementation
         super().add(obs, next_obs, action, reward, done, infos, is_virtual)
         for env_idx in range(self.n_envs):
@@ -111,12 +98,6 @@ class LGEBuffer(HerReplayBuffer):
 
                 self.goal_embeddings[episode, env_idx] = self.encode(self.observations["goal"][episode, env_idx])
                 self.next_embeddings[episode, env_idx] = self.encode(self.next_observations["observation"][episode, env_idx])
-
-        # Security, when the frequency of module training is too low, the number of goal candidates can drop
-        # because we rewrite on old experience. We add a security: embeddings are recomputed when the goal candidates
-        # nnuber is below half of the buffer size.
-        if self.full and len(self.sorted_density) < self.buffer_size * self.n_envs / 2:
-            self.recompute_embeddings()
 
     def recompute_embeddings(self) -> None:
         """
@@ -148,7 +129,7 @@ class LGEBuffer(HerReplayBuffer):
             density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             k += 256
         self.density = density
-        self.sorted_density = list(np.argsort(density))
+        self.sorted_density = np.argsort(density)
 
     def encode(self, obs: Union[int, np.ndarray]) -> np.ndarray:
         """
@@ -190,9 +171,8 @@ class LGEBuffer(HerReplayBuffer):
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal)
 
-        goal_id = np.array(self.sorted_density)[sample_geometric_with_max(self.p, max_value=len(self.sorted_density)) - 1]
-        goal_pos = goal_id // self.n_envs
-        goal_env = goal_id % self.n_envs
+        sampled_idx = self.sorted_density[sample_geometric_with_max(self.p, max_value=len(self.sorted_density)) - 1]
+        goal_pos, goal_env = np.unravel_index(sampled_idx, (self.buffer_size, self.n_envs))
         episode_start = self.ep_start[goal_pos, goal_env]
         episode_end = goal_pos + 1
         # When the buffer is full, the return-to-start mechanism may cause a sampled trajectory to be
@@ -219,8 +199,10 @@ class LGEBuffer(HerReplayBuffer):
         :return: Samples
         """
         # Normalize if needed and remove extra dimension (we are using only one env for now)
-        obs_ = self._normalize_obs({key: obs[batch_inds, env_indices] for key, obs in self.observations.items()})
-        next_obs_ = self._normalize_obs({key: obs[batch_inds, env_indices] for key, obs in self.next_observations.items()})
+        obs_ = self._normalize_obs({key: obs[batch_inds, env_indices] for key, obs in self.observations.items()}, env)
+        next_obs_ = self._normalize_obs(
+            {key: obs[batch_inds, env_indices] for key, obs in self.next_observations.items()}, env
+        )
         next_embeddings = self.next_embeddings[batch_inds, env_indices]
         goal_embeddings = self.goal_embeddings[batch_inds, env_indices]
 
@@ -276,8 +258,8 @@ class LGEBuffer(HerReplayBuffer):
             if info.get("dead", False):
                 rewards[idx] -= 100
 
-        obs = self._normalize_obs(obs)
-        next_obs = self._normalize_obs(next_obs)
+        obs = self._normalize_obs(obs, env)
+        next_obs = self._normalize_obs(next_obs, env)
 
         # Convert to torch tensor
         observations = {key: self.to_torch(obs) for key, obs in obs.items()}
