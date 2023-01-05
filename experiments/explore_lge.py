@@ -13,20 +13,26 @@ from lge import LatentGoExplore
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env", type=str, required=True, help="Environment id")
     parser.add_argument("--algo", type=str, required=True, choices=["dqn", "sac", "ddpg", "td3", "c51"], help="Algorithm ID")
+    parser.add_argument("--env", type=str, required=True, help="Environment id")
     parser.add_argument("--num-timesteps", type=int, default=10_000_000, help="Number of timesteps")
-    parser.add_argument(
-        "--learning-starts", type=int, default=1_000_000, help="Number of random interactions before learning starts"
-    )
     parser.add_argument("--module-type", type=str, default="ae", choices=["ae", "forward", "inverse"], help="Module type")
     parser.add_argument("--latent-size", type=int, default=32, help="Latent size")
     parser.add_argument("--distance-threshold", type=float, default=0.05, help="Distance threshold")
     parser.add_argument("--lighten-dist-coef", type=float, default=8.0, help="Lighten distance coefficient")
     parser.add_argument("--p", type=float, default=0.1, help="Probability")
+    parser.add_argument("--n-envs", type=int, default=8, help="Number of environments")
+    parser.add_argument(
+        "--learning-starts", type=int, default=1_000_000, help="Number of random interactions before learning starts"
+    )
+    parser.add_argument(
+        "--nb-random-exploration-steps",
+        type=int,
+        default=200,
+        help="Number of random exploration steps once the last goal is reached.",
+    )
     parser.add_argument("--module-train-freq", type=int, default=500_000, help="Module trained frequency in timesteps")
     parser.add_argument("--module-grad-steps", type=int, default=50, help="Module gradient steps")
-    parser.add_argument("--n-envs", type=int, default=8, help="Number of environments")
     parser.add_argument("--vec-env-cls", type=str, choices=["subproc", "dummy"], help="Vector environment class")
     parser.add_argument("--tags", type=str, default="", nargs="+", help="List of tags, e.g.: --tag before-modif pr-32")
 
@@ -47,12 +53,12 @@ if __name__ == "__main__":
     latent_size = args.latent_size
     distance_threshold = args.distance_threshold
     lighten_dist_coef = args.lighten_dist_coef
-    learning_starts = args.learning_starts
     p = args.p
-    nb_random_exploration_steps = 200
+    n_envs = args.n_envs
+    learning_starts = args.learning_starts
+    nb_random_exploration_steps = args.nb_random_exploration_steps
     module_train_freq = args.module_train_freq
     module_grad_steps = args.module_grad_steps
-    n_envs = args.n_envs
     vec_env_cls = {"subproc": SubprocVecEnv, "dummy": DummyVecEnv}.get(args.vec_env_cls)
 
     run = wandb.init(
@@ -66,9 +72,9 @@ if __name__ == "__main__":
             latent_size=latent_size,
             distance_threshold=distance_threshold,
             lighten_dist_coef=lighten_dist_coef,
-            learning_starts=learning_starts,
             p=p,
             n_envs=n_envs,
+            learning_starts=learning_starts,
             nb_random_exploration_steps=nb_random_exploration_steps,
             module_train_freq=module_train_freq,
             module_grad_steps=module_grad_steps,
@@ -104,6 +110,7 @@ if __name__ == "__main__":
         nb_random_exploration_steps=nb_random_exploration_steps,
         module_train_freq=module_train_freq,
         module_grad_steps=module_grad_steps,
+        vec_env_cls=vec_env_cls,
         tensorboard_log=f"runs/{run.id}",
         verbose=1,
     )
