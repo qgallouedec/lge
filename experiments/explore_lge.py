@@ -4,7 +4,6 @@ import time
 
 from stable_baselines3 import DDPG, DQN, SAC, TD3
 from stable_baselines3.common.callbacks import CallbackList
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 import wandb
 from experiments.utils import AtariNumberCellsLogger, AtariWrapper, GoalLogger, MaxRewardLogger, NumberCellsLogger, is_atari
@@ -33,7 +32,6 @@ def parse_args():
     )
     parser.add_argument("--module-train-freq", type=int, default=500_000, help="Module trained frequency in timesteps")
     parser.add_argument("--module-grad-steps", type=int, default=50, help="Module gradient steps")
-    parser.add_argument("--vec-env-cls", type=str, choices=["subproc", "dummy"], help="Vector environment class")
     parser.add_argument("--tags", type=str, default="", nargs="+", help="List of tags, e.g.: --tag before-modif pr-32")
 
     return parser.parse_args()
@@ -59,7 +57,6 @@ if __name__ == "__main__":
     nb_random_exploration_steps = args.nb_random_exploration_steps
     module_train_freq = args.module_train_freq
     module_grad_steps = args.module_grad_steps
-    vec_env_cls = {"subproc": SubprocVecEnv, "dummy": DummyVecEnv}.get(args.vec_env_cls)
 
     run = wandb.init(
         name=f"lge__{env_id}__{module_type}__{str(time.time())[-4:]}",
@@ -110,7 +107,6 @@ if __name__ == "__main__":
         nb_random_exploration_steps=nb_random_exploration_steps,
         module_train_freq=module_train_freq,
         module_grad_steps=module_grad_steps,
-        vec_env_cls=vec_env_cls,
         tensorboard_log=f"runs/{run.id}",
         verbose=1,
     )

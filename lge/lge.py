@@ -11,7 +11,6 @@ from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.type_aliases import MaybeCallback
 from stable_baselines3.common.utils import get_device
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from lge.buffer import LGEBuffer
 from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
@@ -155,7 +154,6 @@ class LatentGoExplore:
     :param nb_random_exploration_steps: Number of random exploration steps
     :param module_train_freq: Module train frequency
     :param module_grad_steps: Module gradient steps per training rollout
-    :param vec_env_cls: A custom ``VecEnv`` class constructor. Default: None.
     :param tensorboard_log: the log location for tensorboard (if None, no logging)
     :param verbose: The verbosity level: 0 none, 1 training information, 2 debug, defaults to 0
     :param device: PyTorch device, defaults to "auto"
@@ -179,7 +177,6 @@ class LatentGoExplore:
         nb_random_exploration_steps: int = 50,
         module_train_freq: int = 5_000,
         module_grad_steps: int = 500,
-        vec_env_cls: Optional[Type[Union[DummyVecEnv, SubprocVecEnv]]] = None,
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
         device: Union[torch.device, str] = "auto",
@@ -200,7 +197,7 @@ class LatentGoExplore:
             )
             return Monitor(env)
 
-        venv = make_vec_env(env_func, n_envs=n_envs, vec_env_cls=vec_env_cls)
+        venv = make_vec_env(env_func, n_envs=n_envs)
 
         # Define the "module" used to learn the latent representation
         action_size = get_size(venv.action_space)
