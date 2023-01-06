@@ -171,17 +171,11 @@ class MaxRewardLogger(BaseCallback):
     def _on_step(self) -> bool:
         if self.n_calls % self.freq == 0:
             buffer = self.locals["replay_buffer"]  # type: LGEBuffer
-            infos = buffer.infos
+            rewards = buffer.rewards
             if not buffer.full:
                 if buffer.pos == 0:
                     return True
-                infos = buffer.infos[: buffer.pos]
-            rewards = [
-                info[env_idx]["episode"]["i"]
-                for info in infos
-                for env_idx in range(buffer.n_envs)
-                if "episode" in info[env_idx]
-            ]
+                rewards = buffer.rewards[: buffer.pos]
             self.max_reward = max(np.max(rewards), self.max_reward)
             self.logger.record("env/max_env_reward", self.max_reward)
         return True
@@ -250,8 +244,8 @@ class GoalLogger(BaseCallback):
 
     def _on_step(self):
         if self.n_calls % self.freq == 0:
-            goal_trajectory = self.training_env.get_attr("goal_trajectory")
-            image_array = [np.hstack(traj) for traj in goal_trajectory]
+            goal_trajectories = self.training_env.goal_trajectories
+            image_array = [np.hstack(traj) for traj in goal_trajectories]
             max_width = max([image.shape[1] for image in image_array])
             image_array = [
                 np.pad(image, [(0, 0), (0, max_width - image.shape[1]), (0, 0)], mode="constant", constant_values=0)

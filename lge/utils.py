@@ -247,14 +247,14 @@ def maybe_make_channel_first(observation: np.ndarray) -> np.ndarray:
     Make channel first when observation is an image.
 
     Args:
-        observation (np.ndarray): Observation (non-batched)
+        observation (np.ndarray): Observation (batched)
 
     Returns:
         np.ndarray: If observation is as image, it makes it channel-first
     """
-    if len(observation.shape) == 3:
-        if observation.shape[2] in [1, 3]:
-            return np.transpose(observation, (2, 0, 1))
+    if len(observation.shape) == 4:
+        if observation.shape[3] in [1, 3]:
+            return np.transpose(observation, (0, 3, 1, 2))
     return observation
 
 
