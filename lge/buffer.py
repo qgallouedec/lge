@@ -192,6 +192,64 @@ class LGEBuffer(HerReplayBuffer):
         trajectory, emb_trajectory = trajectory[idxs], emb_trajectory[idxs]
         return trajectory, emb_trajectory
 
+    def _sample_online(self, batch_size: int, env: Optional[VecNormalize] = None) -> DictReplayBufferSamples:
+        """
+        Sample elements from the replay buffer.
+
+        :param batch_size: Number of element to sample
+        :param env: Associated gym VecEnv
+            to normalize the observations/rewards when sampling
+        :return: Samples
+        """
+        if len(self.sorted_density) > 0:
+            batch_inds, env_indices = np.empty((0,), dtype=np.int64), np.empty((0,), dtype=np.int64)
+            while batch_inds.shape[0] != batch_size:
+                sampled_idx = self.sorted_density[sample_geometric_with_max(self.p, max_value=len(self.sorted_density), size=batch_size) - 1]
+                _batch_inds, _env_indices = np.unravel_index(sampled_idx, (self.buffer_size, self.n_envs))
+                valid_idxs = np.where(self.ep_length[_batch_inds, _env_indices] > 0)[0]
+                _batch_inds, _env_indices = _batch_inds[valid_idxs], _env_indices[valid_idxs]
+                batch_inds = np.concatenate((batch_inds, _batch_inds))[:batch_size]
+                env_indices = np.concatenate((env_indices, _env_indices))[:batch_size]
+
+
+        else:
+            # When the buffer is full, we rewrite on old episodes. We don't want to
+            # sample incomplete episode transitions, so we have to eliminate some indexes.
+            is_valid = self.ep_length > 0
+            valid_indices = np.flatnonzero(is_valid)
+            sampled_idx = np.random.choice(valid_indices, size=batch_size, replace=True)
+            batch_inds, env_indices = np.unravel_index(sampled_idx, is_valid.shape)
+
+        # Split the indexes between real and virtual transitions.
+        nb_virtual = int(self.her_ratio * batch_size)
+        virtual_batch_inds, real_batch_inds = np.split(batch_inds, [nb_virtual])
+        virtual_env_indices, real_env_indices = np.split(env_indices, [nb_virtual])
+
+        # Get real and virtual data
+        real_data = self._get_real_samples(real_batch_inds, real_env_indices, env)
+        virtual_data = self._get_virtual_samples(virtual_batch_inds, virtual_env_indices, env)
+
+        # Concatenate real and virtual data
+        observations = {
+            key: torch.cat((real_data.observations[key], virtual_data.observations[key]))
+            for key in virtual_data.observations.keys()
+        }
+        actions = torch.cat((real_data.actions, virtual_data.actions))
+        next_observations = {
+            key: torch.cat((real_data.next_observations[key], virtual_data.next_observations[key]))
+            for key in virtual_data.next_observations.keys()
+        }
+        dones = torch.cat((real_data.dones, virtual_data.dones))
+        rewards = torch.cat((real_data.rewards, virtual_data.rewards))
+
+        return DictReplayBufferSamples(
+            observations=observations,
+            actions=actions,
+            next_observations=next_observations,
+            dones=dones,
+            rewards=rewards,
+        )
+
     def _get_real_samples(
         self, batch_inds: np.ndarray, env_indices: np.ndarray, env: Optional[VecNormalize] = None
     ) -> DictReplayBufferSamples:
