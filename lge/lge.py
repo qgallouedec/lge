@@ -103,7 +103,7 @@ class VecGoalify(VecEnvWrapper):
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
         embeddings = self.lge_buffer.encode(maybe_make_channel_first(observations))
         for env_idx in range(self.num_envs):
-            infos[env_idx]["is_success"] = False  # Will be overwritten if necessary
+            infos[env_idx]["is_success"] = self._is_last_goal_reached[env_idx]  # Will be overwritten if necessary
             if not dones[env_idx]:
                 upper_idx = min(self._goal_idxs[env_idx] + self.window_size, len(self.goal_trajectories[env_idx]))
                 future_goals = self.emb_trajectories[env_idx][self._goal_idxs[env_idx] : upper_idx]
