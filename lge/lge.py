@@ -90,6 +90,10 @@ class VecGoalify(VecEnvWrapper):
             "goal": np.stack([self.goal_trajectories[env_idx][self._goal_idxs[env_idx]] for env_idx in range(self.num_envs)]),
         }
 
+    def step_async(self, actions: np.ndarray) -> None:
+        self.actions = actions
+        return super().step_async(actions)
+
     def step_wait(self) -> VecEnvStepReturn:
         observations, rewards, dones, infos = self.venv.step_wait()
 
