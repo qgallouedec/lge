@@ -171,8 +171,14 @@ class LGEBuffer(HerReplayBuffer):
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
             return goal, self.encode(goal)
 
-        sampled_idx = self.sorted_density[sample_geometric_with_max(self.p, max_value=len(self.sorted_density)) - 1]
-        goal_pos, goal_env = np.unravel_index(sampled_idx, (self.buffer_size, self.n_envs))
+        is_goal_valid = False
+        while not is_goal_valid:
+            sampled_idx = self.sorted_density[sample_geometric_with_max(self.p, max_value=len(self.sorted_density)) - 1]
+            goal_pos, goal_env = np.unravel_index(sampled_idx, (self.buffer_size, self.n_envs))
+            is_goal_valid = self.ep_length[goal_pos, goal_env] > 0
+            if not is_goal_valid:
+                print("Not a valid goal, retrying...")
+
         episode_start = self.ep_start[goal_pos, goal_env]
         episode_end = goal_pos + 1
         # When the buffer is full, the return-to-start mechanism may cause a sampled trajectory to be
