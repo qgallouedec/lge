@@ -10,7 +10,7 @@ from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
 from stable_baselines3.common.type_aliases import MaybeCallback
 from stable_baselines3.common.utils import get_device
-from stable_baselines3.common.vec_env import VecEnv, VecEnvWrapper, VecMonitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecEnvWrapper, VecMonitor
 from stable_baselines3.common.vec_env.base_vec_env import VecEnvObs, VecEnvStepReturn
 
 from lge.buffer import LGEBuffer
@@ -193,6 +193,7 @@ class LatentGoExplore:
         nb_random_exploration_steps: int = 50,
         module_train_freq: int = 5_000,
         module_grad_steps: int = 500,
+        vec_env_cls: Optional[Type[Union[DummyVecEnv, SubprocVecEnv]]] = None,
         tensorboard_log: Optional[str] = None,
         verbose: int = 0,
         device: Union[torch.device, str] = "auto",
@@ -200,14 +201,7 @@ class LatentGoExplore:
         self.device = get_device(device)
 
         env_kwargs = {} if env_kwargs is None else env_kwargs
-        # Wrap the env
-        # def env_func():
-        #     env = gym.make(env_id, **env_kwargs)
-        #     if wrapper_cls is not None:
-        #         env = wrapper_cls(env)
-        #     return env
-
-        venv = make_vec_env(env_id, n_envs=n_envs, wrapper_class=wrapper_cls, env_kwargs=env_kwargs)
+        venv = make_vec_env(env_id, n_envs=n_envs, wrapper_class=wrapper_cls, env_kwargs=env_kwargs, vec_env_cls=vec_env_cls)
         venv = VecGoalify(
             venv,
             distance_threshold=distance_threshold,
