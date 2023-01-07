@@ -94,6 +94,13 @@ class VecGoalify(VecEnvWrapper):
         self.actions = actions
         return super().step_async(actions)
 
+    def _reset_one_env(self, env_idx):
+        if isinstance(self.venv, SubprocVecEnv):
+            self.venv.remotes[env_idx].send(("reset", None))
+            return self.venv.remotes[env_idx].recv()
+        if isinstance(self.venv, DummyVecEnv):
+            return self.venv.envs[env_idx].reset()
+
     def step_wait(self) -> VecEnvStepReturn:
         observations, rewards, dones, infos = self.venv.step_wait()
 
@@ -126,7 +133,7 @@ class VecGoalify(VecEnvWrapper):
                     else:  # self.done_countdown == 0:
                         dones[env_idx] = True
                         terminal_observation = observations[env_idx]
-                        observations[env_idx] = self.envs[env_idx].reset()
+                        observations[env_idx] = self._reset_one_env(env_idx)
 
             # Dones can be due to env (death), or to the previous code
             if dones[env_idx]:
