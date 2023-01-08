@@ -115,7 +115,7 @@ if __name__ == "__main__":
         verbose=1,
     )
 
-    freq = int(num_timesteps / 1000)
+    freq = min(int(num_timesteps / 1000), 100_000)
     number_cells_logger = NumberCellsLogger(freq) if not is_atari(env_id) else AtariNumberCellsLogger(freq)
     max_reward_logger = MaxRewardLogger(freq)
     goal_logger = GoalLogger()

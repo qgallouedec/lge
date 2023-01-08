@@ -67,8 +67,10 @@ if __name__ == "__main__":
         verbose=1,
     )
 
-    freq = int(num_timesteps / 1000)
+    freq = min(int(num_timesteps / 1000), 100_000)
     number_cells_logger = AtariNumberCellsLogger(freq)
     max_reward_logger = MaxRewardLogger(freq)
     model.learn(num_timesteps, callback=CallbackList([number_cells_logger, max_reward_logger]))
     run.finish()
+
+1000 > 150000000 /100000
