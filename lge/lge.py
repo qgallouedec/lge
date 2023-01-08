@@ -94,7 +94,7 @@ class VecGoalify(VecEnvWrapper):
         self.actions = actions
         return super().step_async(actions)
 
-    def _reset_one_env(self, env_idx):
+    def _reset_one_env(self, env_idx: int):
         if isinstance(self.venv, SubprocVecEnv):
             self.venv.remotes[env_idx].send(("reset", None))
             return self.venv.remotes[env_idx].recv()

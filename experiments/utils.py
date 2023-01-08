@@ -1,11 +1,13 @@
 from collections import deque
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Union, List
 
 import cv2
 import gym
 import numpy as np
+import torch
 from gym import spaces
 from stable_baselines3.common.atari_wrappers import MaxAndSkipEnv, NoopResetEnv
+from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
 
 import wandb
@@ -256,3 +258,25 @@ class GoalLogger(BaseCallback):
             images = wandb.Image(images, caption="Goals trajectories")
             wandb.log({"Goal trajectory": images})
         return True
+
+
+class MyBuffer(ReplayBuffer):
+    def __init__(
+        self,
+        buffer_size: int,
+        observation_space: spaces.Space,
+        action_space: spaces.Space,
+        device: Union[torch.device, str] = "auto",
+        n_envs: int = 1,
+        optimize_memory_usage: bool = False,
+        handle_timeout_termination: bool = True,
+    ):
+        super().__init__(
+            buffer_size, observation_space, action_space, device, n_envs, optimize_memory_usage, handle_timeout_termination
+        )
+        self.infos = np.zeros((self.buffer_size, self.n_envs), dtype=object)
+    
+    def add(self, obs: np.ndarray, next_obs: np.ndarray, action: np.ndarray, reward: np.ndarray, done: np.ndarray, infos: List[Dict[str, Any]]) -> None:
+        pos = self.pos
+        super().add(obs, next_obs, action, reward, done, infos)
+        self.infos[pos] = infos
