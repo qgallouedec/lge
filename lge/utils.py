@@ -56,7 +56,7 @@ def estimate_density(x: Tensor, samples: Tensor) -> Tensor:
     cdist = torch.cdist(x, samples)
     dist_to_kst = cdist.topk(k, largest=False)[0][:, -1]
     Cd = torch.pi ** (d / 2) / torch.exp(torch.lgamma(torch.tensor(d / 2 + 1)))
-    return torch.log(torch.tensor(k)) - torch.log(torch.tensor(n)) - torch.log(torch.tensor(Cd)) - d * torch.log(dist_to_kst)
+    return torch.log(torch.tensor(k)) - torch.log(torch.tensor(n)) - torch.log(Cd) - d * torch.log(dist_to_kst)
 
 
 def lighten(arr: np.ndarray, threshold: float) -> np.ndarray:
