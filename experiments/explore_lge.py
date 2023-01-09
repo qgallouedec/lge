@@ -39,9 +39,6 @@ def parse_args():
     return parser.parse_args()
 
 
-args = parse_args()
-
-
 if __name__ == "__main__":
     args = parse_args()
     algo_id = args.algo
