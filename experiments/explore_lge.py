@@ -2,6 +2,7 @@
 import argparse
 import time
 
+from sb3_contrib import QRDQN
 from stable_baselines3 import DDPG, DQN, SAC, TD3
 from stable_baselines3.common.callbacks import CallbackList
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
@@ -13,7 +14,9 @@ from lge import LatentGoExplore
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--algo", type=str, required=True, choices=["dqn", "sac", "ddpg", "td3", "c51"], help="Algorithm ID")
+    parser.add_argument(
+        "--algo", type=str, required=True, choices=["dqn", "sac", "ddpg", "td3", "c51", "qr-dqn"], help="Algorithm ID"
+    )
     parser.add_argument("--env", type=str, required=True, help="Environment id")
     parser.add_argument("--num-timesteps", type=int, default=10_000_000, help="Number of timesteps")
     parser.add_argument("--module-type", type=str, default="ae", choices=["ae", "forward", "inverse"], help="Module type")
@@ -42,7 +45,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     algo_id = args.algo
-    algo = {"dqn": DQN, "sac": SAC, "ddpg": DDPG, "td3": TD3, "c51": DQN}[algo_id]
+    algo = {"dqn": DQN, "sac": SAC, "ddpg": DDPG, "td3": TD3, "c51": DQN, "qr-dqn": QRDQN}[algo_id]
     policy_kwargs = dict(categorical=True) if args.algo == "c51" else None
     env_id = args.env
     num_timesteps = args.num_timesteps
@@ -85,7 +88,7 @@ if __name__ == "__main__":
     if is_atari(env_id):
         model_kwargs["buffer_size"] = 100_000 * n_envs
         env_kwargs["repeat_action_probability"] = 0.25  # Sticky action, needed for v4
-    if algo is DQN:
+    if algo in {DQN, QRDQN}:
         # Take random actions during the `learning_starts` timesteps, then take random
         # actions with decreasing probability during more `learning_starts` timesteps,
         # with a decreasing rate starting at 0.5.
