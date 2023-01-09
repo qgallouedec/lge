@@ -273,10 +273,7 @@ class LGEBuffer(HerReplayBuffer):
         # Compute new reward
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
-        rewards = is_success.astype(np.float32) - 1
-        for idx, info in enumerate(self.infos[batch_inds, env_indices]):
-            if info.get("dead", False):
-                rewards[idx] -= 100
+        rewards = is_success.astype(np.float32)
 
         # Convert to torch tensor
         observations = {key: self.to_torch(obs) for key, obs in obs_.items()}
@@ -317,10 +314,7 @@ class LGEBuffer(HerReplayBuffer):
         # Compute new reward
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
-        rewards = is_success.astype(np.float32) - 1
-        for idx, info in enumerate(self.infos[batch_inds, env_indices]):
-            if info.get("dead", False):
-                rewards[idx] -= 100
+        rewards = is_success.astype(np.float32)
 
         obs = self._normalize_obs(obs, env)
         next_obs = self._normalize_obs(next_obs, env)
