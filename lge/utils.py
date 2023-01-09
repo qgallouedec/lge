@@ -39,21 +39,24 @@ def sample_geometric_with_max(
 
 def estimate_density(x: Tensor, samples: Tensor) -> Tensor:
     """
-    Estimate the density of `x` within the dataset.
+    Estimate the log density of `x` within the dataset.
+
+    density = k / (n * Cd) * dist_to_kst ** (-d)
 
     Args:
         x (Tensor): Points to evaluate density
         samples (Tensor): The samples from the distribution to estimate
 
     Returns:
-        Tensor:  The estimate density on `x`
+        Tensor:  The estimate log density on `x`
     """
     n, d = samples.shape
-    k = int(2 * n ** (1 / d))
+    # k = int(2 * n ** (1 / d))
+    k = 100  # We use 100 as the previous value is low and can cause trouble when several point are equals: density is +inf
     cdist = torch.cdist(x, samples)
     dist_to_kst = cdist.topk(k, largest=False)[0][:, -1]
     Cd = torch.pi ** (d / 2) / torch.exp(torch.lgamma(torch.tensor(d / 2 + 1)))
-    return k / (n * Cd) * dist_to_kst ** (-d)
+    return torch.log(torch.tensor(k)) - torch.log(torch.tensor(n)) - torch.log(torch.tensor(Cd)) - d * torch.log(dist_to_kst)
 
 
 def lighten(arr: np.ndarray, threshold: float) -> np.ndarray:

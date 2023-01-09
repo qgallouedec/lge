@@ -128,7 +128,7 @@ class LGEBuffer(HerReplayBuffer):
             embeddings = all_embeddings[k:upper]
             density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             k += 256
-        self.density = density
+        self.density = density # log density actually
         self.sorted_density = np.argsort(density)
 
     def encode(self, obs: Union[int, np.ndarray]) -> np.ndarray:
