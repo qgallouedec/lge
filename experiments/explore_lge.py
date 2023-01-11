@@ -28,12 +28,12 @@ def parse_args():
         "--algo", type=str, required=True, choices=["dqn", "sac", "ddpg", "td3", "c51", "qr-dqn"], help="Algorithm ID"
     )
     parser.add_argument("--env", type=str, required=True, help="Environment id")
-    parser.add_argument("--num-timesteps", type=int, default=10_000_000, help="Number of timesteps")
+    parser.add_argument("--num-timesteps", type=int, default=50_000_000, help="Number of timesteps")
     parser.add_argument("--module-type", type=str, default="ae", choices=["ae", "forward", "inverse"], help="Module type")
     parser.add_argument("--latent-size", type=int, default=32, help="Latent size")
-    parser.add_argument("--distance-threshold", type=float, default=0.05, help="Distance threshold")
+    parser.add_argument("--distance-threshold", type=float, default=2.0, help="Distance threshold")
     parser.add_argument("--lighten-dist-coef", type=float, default=8.0, help="Lighten distance coefficient")
-    parser.add_argument("--p", type=float, default=0.1, help="Probability")
+    parser.add_argument("--p", type=float, default=0.01, help="Probability")
     parser.add_argument("--n-envs", type=int, default=8, help="Number of environments")
     parser.add_argument(
         "--learning-starts", type=int, default=1_000_000, help="Number of random interactions before learning starts"
@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument(
         "--nb-random-exploration-steps",
         type=int,
-        default=200,
+        default=1000,
         help="Number of random exploration steps once the last goal is reached.",
     )
     parser.add_argument("--module-train-freq", type=int, default=500_000, help="Module trained frequency in timesteps")
