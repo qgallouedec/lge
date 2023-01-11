@@ -8,7 +8,17 @@ from stable_baselines3.common.callbacks import CallbackList
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 import wandb
-from experiments.utils import AtariNumberCellsLogger, AtariWrapper, GoalLogger, MaxRewardLogger, NumberCellsLogger, is_atari
+from experiments.utils import (
+    AtariNumberCellsLogger,
+    AtariWrapper,
+    DensityLogger,
+    GoalTrajectoriesLogger,
+    MaxRewardLogger,
+    NumberCellsLogger,
+    TopGoalsLogger,
+    VQVAELogger,
+    is_atari,
+)
 from lge import LatentGoExplore
 
 
@@ -35,7 +45,7 @@ def parse_args():
         help="Number of random exploration steps once the last goal is reached.",
     )
     parser.add_argument("--module-train-freq", type=int, default=500_000, help="Module trained frequency in timesteps")
-    parser.add_argument("--module-grad-steps", type=int, default=50, help="Module gradient steps")
+    parser.add_argument("--module-grad-steps", type=int, default=5_000, help="Module gradient steps")
     parser.add_argument("--vec-env-cls", type=str, choices=["subproc", "dummy"], help="Vector environment class")
     parser.add_argument("--tags", type=str, default="", nargs="+", help="List of tags, e.g.: --tag before-modif pr-32")
 
@@ -116,8 +126,14 @@ if __name__ == "__main__":
     )
 
     freq = min(int(num_timesteps / 1000), 100_000)
-    number_cells_logger = NumberCellsLogger(freq) if not is_atari(env_id) else AtariNumberCellsLogger(freq)
-    max_reward_logger = MaxRewardLogger(freq)
-    goal_logger = GoalLogger()
-    model.explore(num_timesteps, callback=CallbackList([number_cells_logger, max_reward_logger, goal_logger]))
+    callbacks = [DensityLogger(freq), MaxRewardLogger(freq)]
+    if is_atari(env_id):
+        callbacks.append(AtariNumberCellsLogger(freq))
+        callbacks.append(TopGoalsLogger(freq))
+        callbacks.append(GoalTrajectoriesLogger(freq))
+        callbacks.append(VQVAELogger(model.module))
+    else:
+        callbacks.append(NumberCellsLogger(freq))
+
+    model.explore(num_timesteps, callback=callbacks)
     run.finish()
