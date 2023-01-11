@@ -1,5 +1,5 @@
 import copy
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Any, Dict, Optional, Type, Union
 
 import gym
 import numpy as np
@@ -14,8 +14,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv,
 from stable_baselines3.common.vec_env.base_vec_env import VecEnvObs, VecEnvStepReturn
 
 from lge.buffer import LGEBuffer
-from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
-from lge.modules.ae_module import AEModule, CNNAEModule
+from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner, VQVAEModuleLearner
+from lge.modules.ae_module import AEModule, VQVAEModule
 from lge.modules.forward_module import CNNForwardModule, ForwardModule
 from lge.modules.inverse_module import CNNInverseModule, InverseModule
 from lge.utils import get_shape, get_size, maybe_make_channel_first, maybe_transpose
@@ -230,7 +230,7 @@ class LatentGoExplore:
             elif module_type == "forward":
                 self.module = CNNForwardModule(obs_shape, action_size, latent_size).to(self.device)
             elif module_type == "ae":
-                self.module = CNNAEModule(obs_shape, latent_size).to(self.device)
+                self.module = VQVAEModule(obs_shape, latent_size).to(self.device)
         else:  # Not image
             obs_size = get_size(venv.observation_space["observation"])
             if module_type == "inverse":
@@ -279,13 +279,22 @@ class LatentGoExplore:
                 learning_starts=learning_starts,
             )
         elif module_type == "ae":
-            self.module_learner = AEModuleLearner(
-                self.module,
-                self.replay_buffer,
-                train_freq=module_train_freq,
-                gradient_steps=module_grad_steps,
-                learning_starts=learning_starts,
-            )
+            if is_image_space(venv.observation_space["observation"]):
+                self.module_learner = VQVAEModuleLearner(
+                    self.module,
+                    self.replay_buffer,
+                    train_freq=module_train_freq,
+                    gradient_steps=module_grad_steps,
+                    learning_starts=learning_starts,
+                )
+            else:
+                self.module_learner = AEModuleLearner(
+                    self.module,
+                    self.replay_buffer,
+                    train_freq=module_train_freq,
+                    gradient_steps=module_grad_steps,
+                    learning_starts=learning_starts,
+                )
 
     def explore(self, total_timesteps: int, callback: MaybeCallback = None) -> None:
         """
