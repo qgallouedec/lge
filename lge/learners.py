@@ -9,7 +9,7 @@ from torch import Tensor, optim
 from torch.distributions import Normal
 
 from lge.buffer import LGEBuffer
-from lge.modules.ae_module import AEModule
+from lge.modules.ae_module import AEModule, VQVAEModule
 from lge.modules.common import BaseModule
 from lge.modules.forward_module import ForwardModule
 from lge.modules.inverse_module import InverseModule
@@ -211,4 +211,44 @@ class AEModuleLearner(BaseLearner):
     def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
         pred_next_observations = self.module(next_observations)  # we use next obs here
         loss = F.mse_loss(next_observations, pred_next_observations)
+        return loss
+
+
+class VQVAEModuleLearner(BaseLearner):
+    """
+    Learner for VQ variational auto-encoder module.
+
+    Args:
+        module (VAEModule): Auto-encoder module to train
+        buffer (LGEBuffer): Buffer to sample from
+        latent_loss_coef (float): Coefficient for the latent loss
+        batch_size (int, optional): Batch size. Defaults to 64.
+        lr (float, optional): Learning rate. Defaults to 1e-3.
+        weight_decay (float, optional): L2 penalty. Defaults to 1e-5.
+        train_freq (int, optional): Training frequency. Defaults to 5_000.
+        gradient_steps (int, optional): Number of gradient steps when training. Defaults to 500.
+        learning_starts (int, optional): Learning starts after this amount of timesteps. Defaults to 100.
+        verbose (int, optional): The verbosity level: 0 none, 1 training information, 2 debug. Defaults to 0.
+    """
+
+    def __init__(
+        self,
+        module: VQVAEModule,
+        buffer: LGEBuffer,
+        latent_loss_coef: float = 0.25,
+        batch_size: int = 64,
+        lr: float = 1e-4,
+        weight_decay: float = 1e-5,
+        train_freq: int = 5_000,
+        gradient_steps: int = 500,
+        learning_starts: int = 100,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(module, buffer, batch_size, lr, weight_decay, train_freq, gradient_steps, learning_starts, verbose)
+        self.latent_loss_coef = latent_loss_coef
+
+    def compute_loss(self, observations: Tensor, next_observations: Tensor, actions: Tensor) -> Tensor:
+        pred_next_observations, latent_loss = self.module(next_observations)
+        recons_loss = F.mse_loss(next_observations, pred_next_observations)
+        loss = recons_loss + self.latent_loss_coef * latent_loss
         return loss
