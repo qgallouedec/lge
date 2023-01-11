@@ -6,9 +6,21 @@ from torch.nn import functional as F
 
 
 class VectorQuantizer(nn.Module):
-    """
-    Reference:
-    [1] https://github.com/deepmind/sonnet/blob/v2/sonnet/src/nets/vqvae.py
+    """Vector Quantization (VQ) layer.
+
+    Implements the forward pass of the VQ layer, as described in
+    "Neural Discrete Representation Learning" by A. van den Oord et al. (2017)
+    https://arxiv.org/abs/1711.00937
+    The layer maps input latents to quantized latents, where each latent vector is replaced
+    by the embedding vector that is closest to it in the euclidean sense.
+    Additionally, the layer computes the vq_loss, which is the commitment loss and
+    the embedding loss, as described in the paper.
+    Reference: https://github.com/deepmind/sonnet/blob/v2/sonnet/src/nets/vqvae.py
+
+    Args:
+        num_embeddings (int): Number of embeddings to learn
+        embedding_dim (int): Dimension of each embedding vector (D)
+        beta (float): Weighting parameter for the commitment loss and embedding loss
     """
 
     def __init__(self, num_embeddings: int, embedding_dim: int, beta: float) -> None:
@@ -18,42 +30,53 @@ class VectorQuantizer(nn.Module):
         self.beta = beta
 
         self.embedding = nn.Embedding(self.num_embeddings, self.embedding_dim)
-        self.embedding.weight.data.uniform_(-1 / self.num_embeddings, 1 / self.num_embeddings)
+        nn.init.uniform_(self.embedding.weight, a=-1 / num_embeddings, b=1 / num_embeddings)
 
-    def forward(self, latents: Tensor) -> Tensor:
-        latents = latents.permute(0, 2, 3, 1).contiguous()  # [B x D x H x W] -> [B x H x W x D]
-        latents_shape = latents.shape
-        flat_latents = latents.view(-1, self.embedding_dim)  # [BHW x D]
+    def get_codes(self, latents: Tensor) -> Tensor:
+        """
+        Computes the code for each element in `latents`.
+
+        Args:
+            latents (Tensor): Latents to be quantized. Shape is [B x D x h x w]
+
+        Returns:
+            Tensor: Codes, between 0 and num_embeddings, shape is [B x h x w]
+        """
+        latents = latents.permute(0, 2, 3, 1)  # [B x D x h x w] -> [B x h x w x D]
+        latents_shape = latents.shape[:-1]  # (B, h, w)
+        flat_latents = latents.reshape(-1, self.embedding_dim)  # [Bhw x D]
 
         # Compute L2 distance between latents and embedding weights
-        dist = (
-            torch.sum(flat_latents**2, dim=1, keepdim=True)
-            + torch.sum(self.embedding.weight**2, dim=1)
-            - 2 * torch.matmul(flat_latents, self.embedding.weight.t())
-        )  # [BHW x K]
+        dist = torch.norm(flat_latents[:, None] - self.embedding.weight, dim=-1)
 
         # Get the encoding that has the min distance
-        encoding_inds = torch.argmin(dist, dim=1).unsqueeze(1)  # [BHW, 1]
+        encoding_inds = torch.argmin(dist, dim=1)  # [Bhw]
+        encoding_inds = torch.reshape(encoding_inds, latents_shape)  # [B x h x w]
+        return encoding_inds
 
-        # Convert to one-hot encodings
-        device = latents.device
-        encoding_one_hot = torch.zeros(encoding_inds.size(0), self.num_embeddings, device=device)
-        encoding_one_hot.scatter_(1, encoding_inds, 1)  # [BHW x K]
+    def forward(self, latents: Tensor) -> Tuple[Tensor, Tensor]:
+        latents = latents.permute(0, 2, 3, 1)  # [B x D x h x w] -> [B x h x w x D]
+        latents_shape = latents.shape
+        flat_latents = latents.reshape(-1, self.embedding_dim)  # [Bhw x D]
+
+        # Compute L2 distance between latents and embedding weights
+        dist = torch.norm(flat_latents[:, None] - self.embedding.weight, dim=-1)
+
+        # Get the encoding that has the min distance
+        encoding_inds = torch.argmin(dist, dim=1)  # [Bhw,]
 
         # Quantize the latents
-        quantized_latents = torch.matmul(encoding_one_hot, self.embedding.weight)  # [BHW, D]
-        quantized_latents = quantized_latents.view(latents_shape)  # [B x H x W x D]
+        quantized_latents = self.embedding.weight[encoding_inds]
+        quantized_latents = torch.reshape(quantized_latents, latents_shape)  # [B x h x w x D]
 
         # Compute the VQ Losses
         commitment_loss = F.mse_loss(quantized_latents.detach(), latents)
         embedding_loss = F.mse_loss(quantized_latents, latents.detach())
 
         vq_loss = commitment_loss * self.beta + embedding_loss
-
         # Add the residue back to the latents
         quantized_latents = latents + (quantized_latents - latents).detach()
-
-        return quantized_latents.permute(0, 3, 1, 2).contiguous(), vq_loss  # [B x D x H x W]
+        return quantized_latents.permute(0, 3, 1, 2), vq_loss  # [B x D x h x w]
 
 
 class VQVAE(nn.Module):
@@ -66,9 +89,11 @@ class VQVAE(nn.Module):
             nn.LeakyReLU(inplace=True),
             nn.Conv2d(8, 16, kernel_size=4, stride=2, padding=1),  # [42 x 42 x 8] > [21 x 21 x 16]
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1),  #  [21 x 21 x 16] > [21 x 21 x 16]
+            nn.Conv2d(16, 32, kernel_size=4, stride=2, padding=1),  # [21 x 21 x 16] > [10 x 10 x 32]
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(16, embedding_dim, kernel_size=1, stride=1),  #  [21 x 21 x 16] > [21 x 21 x D]
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),  #  [10 x 10 x 32] > [10 x 10 x 32]
+            nn.LeakyReLU(inplace=True),
+            nn.Conv2d(32, embedding_dim, kernel_size=1, stride=1),  #  [10 x 10 x 32] > [10 x 10 x D]
             nn.LeakyReLU(inplace=True),
         )
 
@@ -76,7 +101,11 @@ class VQVAE(nn.Module):
 
         # Decoder
         self.decoder = nn.Sequential(
-            nn.Conv2d(embedding_dim, 16, kernel_size=3, stride=1, padding=1),  #  [21 x 21 x D] >  [21 x 21 x 16]
+            nn.Conv2d(embedding_dim, 32, kernel_size=3, stride=1, padding=1),  #  [10 x 10 x D] >  [10 x 10 x 32]
+            nn.LeakyReLU(inplace=True),
+            nn.ConvTranspose2d(
+                32, 16, kernel_size=4, stride=2, padding=1, output_padding=1
+            ),  #  [10 x 10 x 32] > [21 x 21 x 16]
             nn.LeakyReLU(inplace=True),
             nn.ConvTranspose2d(16, 8, kernel_size=4, stride=2, padding=1),  #  [21 x 21 x 16] > [42 x 42 x 8]
             nn.LeakyReLU(inplace=True),
@@ -89,10 +118,10 @@ class VQVAE(nn.Module):
         Encodes the input by passing through the encoder network and returns the latent codes.
 
         Args:
-            input (Tensor): Input tensor to encoder [N x C x H x W]
+            input (Tensor): Input tensor to encoder [B x C x H x W]
 
         Returns:
-            Tensor: Latent codes
+            Tensor: Latent codes [B x D x h x w]
         """
         return self.encoder(input)
 
@@ -101,18 +130,41 @@ class VQVAE(nn.Module):
         Maps the given latent codes onto the image space.
 
         Args:
-            z (Tensor): Latent codes [B x D x H x W]
+            z (Tensor): Latent codes [B x D x h x w]
 
         Returns:
             Tensor: Predicted image [B x C x H x W]
         """
         return self.decoder(z)
 
-    def forward(self, input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, input: Tensor) -> Tuple[Tensor, Tensor]:
+        """
+        Forward pass of the model.
+
+        Computes the encoding of the input, quantizes the encoding using the Vector Quantization layer,
+        and passes the quantized encoding through the decoder to get the predicted output.
+
+        Args:
+            input (Tensor): The input tensor of shape [B x C x H x W]
+
+        Returns:
+            Tuple of Tensor:
+                - recons (Tensor): The predicted output image [B x C x H x W]
+                - vq_loss (Tensor): The Vector Quantization loss
+        """
         encoding = self.encode(input)
         quantized_inputs, vq_loss = self.vq_layer(encoding)
         return self.decode(quantized_inputs), vq_loss
 
     def get_codes(self, input: Tensor) -> Tensor:
+        """
+        Encodes the input and returns the indices of the nearest latent codes in the VQ-codebook.
+
+        Args:
+            input (Tensor): Input tensor to encode [B x C x H x W]
+
+        Returns:
+            Tensor: Indices of the nearest latent codes in the VQ-codebook [B x h x w]
+        """
         encoding = self.encode(input)
-        quantized_inputs, vq_loss = self.vq_layer(encoding)
+        return self.vq_layer.get_codes(encoding)
