@@ -41,22 +41,35 @@ def estimate_density(x: Tensor, samples: Tensor) -> Tensor:
     """
     Estimate the log density of `x` within the dataset.
 
-    density = k / (n * Cd) * dist_to_kst ** (-d)
+    The estimated density is computed using the formula:
+
+        density = k / (n * Cd) * dist_to_kst ** (-d)
+
+    where:
+        - k: The number of nearest neighbor to consider
+        - n: The number of samples in the dataset
+        - Cd: A constant that depends on the dimension of the input data.
+              It is equal to  pi ** (d / 2) / exp(gamma(d / 2 + 1))
+        - dist_to_kst: The distance of each point in `x` to its kth nearest neighbor in `samples`
+
+    As this function is only used to order observations by their density,
+    we save computational time by just returning -dist_to_kst
+    (as this function is monotonically increasing with respect to density)
 
     Args:
         x (Tensor): Points to evaluate density
         samples (Tensor): The samples from the distribution to estimate
 
     Returns:
-        Tensor:  The estimate log density on `x`
+        Tensor:  The estimate density on `x`, up to a monotonic transformation.
     """
-    n, d = samples.shape
-    # k = int(2 * n ** (1 / d))
-    k = 100  # We use 100 as the previous value is low and can cause trouble when several point are equals: density is +inf
+    # In the original paper, the recommended value is k = int(2 * n ** (1 / d)). However, it is common to have
+    # multiple identical values in the dataset. Consequently, most points would have a k-st closest dist to zero.
+    # That's why we take a larger k. Empiraically, k = 1000 seem to work well.
+    k = 1000
     cdist = torch.cdist(x, samples)
     dist_to_kst = cdist.topk(k, largest=False)[0][:, -1]
-    Cd = torch.pi ** (d / 2) / torch.exp(torch.lgamma(torch.tensor(d / 2 + 1)))
-    return torch.log(torch.tensor(k)) - torch.log(torch.tensor(n)) - torch.log(Cd) - d * torch.log(dist_to_kst)
+    return -dist_to_kst
 
 
 def lighten(arr: np.ndarray, threshold: float) -> np.ndarray:
