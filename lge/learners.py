@@ -59,8 +59,10 @@ class BaseLearner(BaseCallback):
         # The latent representation is re-computed after each training phase.
         if self.num_timesteps >= self.learning_starts:
             if (self.num_timesteps - self.learning_starts) // self.model.n_envs % (self.train_freq // self.model.n_envs) == 0:
+                self.logger.log("Training module...")
                 for _ in range(self.gradient_steps):
                     self.train_once()
+                self.logger.log("Recomputing embeddings...")
                 self.buffer.recompute_embeddings()
 
     def train_once(self):
