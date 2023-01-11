@@ -125,7 +125,7 @@ if __name__ == "__main__":
         verbose=1,
     )
 
-    freq = min(int(num_timesteps / 1000), 100_000)
+    freq = min(int(num_timesteps / 1_000), 100_000)
     callbacks = [DensityLogger(freq), MaxRewardLogger(freq)]
     if is_atari(env_id):
         callbacks.append(AtariNumberCellsLogger(freq))
