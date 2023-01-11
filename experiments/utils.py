@@ -1,5 +1,5 @@
 from collections import deque
-from typing import Any, Dict, Tuple, Union, List
+from typing import Any, Dict, List, Tuple, Union
 
 import cv2
 import gym
@@ -12,6 +12,21 @@ from stable_baselines3.common.callbacks import BaseCallback
 
 import wandb
 from lge.buffer import LGEBuffer
+from lge.modules.ae_module import VQVAEModule
+from lge.utils import preprocess
+
+
+def is_atari(env_id: str) -> bool:
+    """
+    Checks if the given environment id corresponds to an Atari environment.
+
+    Args:
+        env_id (str): The id of the environment to check.
+
+    Returns:
+        bool: True if the environment is an Atari environment, False otherwise."""
+    entry_point = gym.envs.registry.env_specs[env_id].entry_point
+    return "AtariEnv" in str(entry_point)
 
 
 class DoneOnLifeLost(gym.Wrapper):
@@ -165,26 +180,45 @@ class AtariWrapper(gym.Wrapper):
 
 
 class MaxRewardLogger(BaseCallback):
-    def __init__(self, freq: int = 5_000, verbose: int = 0):
+    """
+    Callback that logs the maximum reward observed in the replay buffer at a given frequency.
+
+    Args:
+        freq (int): Frequency at which the maximum reward is logged. Default is 1_000
+        verbose (int): Verbosity level, default is 0
+    """
+
+    def __init__(self, freq: int = 1_000, verbose: int = 0):
         super().__init__(verbose)
         self.freq = freq
         self.max_reward = -np.inf
 
     def _on_step(self) -> bool:
         if self.n_calls % self.freq == 0:
-            buffer = self.locals["replay_buffer"]  # type: LGEBuffer
+            buffer = self.locals["replay_buffer"]  # ReplayBuffer
             rewards = buffer.rewards
             if not buffer.full:
                 if buffer.pos == 0:
                     return True
-                rewards = buffer.rewards[: buffer.pos]
+                rewards = rewards[: buffer.pos]
             self.max_reward = max(np.max(rewards), self.max_reward)
-            self.logger.record("env/max_env_reward", self.max_reward)
+            self.logger.record("env/max_reward", self.max_reward)
         return True
 
 
 class AtariNumberCellsLogger(BaseCallback):
-    def __init__(self, freq: int = 500, verbose: int = 0):
+    """
+    Callback to monitor and log the number of unique cells visited in Atari environments.
+
+    It does so by monitoring the replay buffer and retrieving the cell information for each
+    transition stored in the buffer, with a logging frequency specified by the user.
+
+    Args:
+        freq (int): Frequency at which the number of unique cells visited is logged. Default is 1_000
+        verbose (int): Verbosity level, default is 0
+    """
+
+    def __init__(self, freq: int = 1_000, verbose: int = 0):
         super().__init__(verbose)
         self.all_cells = np.zeros((0, 8, 11), dtype=np.uint8)
         self.freq = freq
@@ -208,7 +242,7 @@ class AtariNumberCellsLogger(BaseCallback):
 
 
 class NumberCellsLogger(BaseCallback):
-    def __init__(self, freq: int = 500, verbose: int = 0):
+    def __init__(self, freq: int = 1_000, verbose: int = 0):
         super().__init__(verbose)
         self.freq = freq
         self._last_call = 0
@@ -234,12 +268,64 @@ class NumberCellsLogger(BaseCallback):
         return True
 
 
-def is_atari(env_id: str) -> bool:
-    entry_point = gym.envs.registry.env_specs[env_id].entry_point
-    return "AtariEnv" in str(entry_point)
+class DensityLogger(BaseCallback):
+    """
+    Callback that logs the latent density and push it as an histogram on Wandb.
+
+    Args:
+        freq (int): Frequency at which the density is logged. Default is 1_000
+        verbose (int): Verbosity level, default is 0
+    """
+
+    def __init__(self, freq: int = 1_000, verbose: int = 0):
+        super().__init__(verbose)
+        self.freq = freq
+
+    def _on_step(self):
+        """Callback that logs the density of the replay buffer at a given frequency."""
+        if self.n_calls % self.freq == 0:
+            buffer = self.model.replay_buffer  # LGEBuffer
+            density = buffer.density.copy()
+            wandb.log({"densities": wandb.Histogram(density)})
+        return True
 
 
-class GoalLogger(BaseCallback):
+class TopGoalsLogger(BaseCallback):
+    """
+    Log the top 25 goals to Wandb, i.e. the observations that have the lowest latent density.
+
+    Args:
+        freq (int): Frequency at which the top goals are logged. Default is 1_000
+        verbose (int): Verbosity level of the callback. Default is 0
+    """
+
+    def __init__(self, freq: int = 1_000, verbose: int = 0):
+        super().__init__(verbose)
+        self.freq = freq
+
+    def _on_step(self):
+        if self.n_calls % self.freq == 0:
+            buffer = self.model.replay_buffer
+            if len(buffer.sorted_density) > 0:
+                top_goals = buffer.sorted_density[:25]
+                top_goal_pos, top_goals_env = np.unravel_index(top_goals, (buffer.buffer_size, buffer.n_envs))
+                top_obs = buffer.next_observations["observation"][top_goal_pos, top_goals_env]
+                images = np.vstack(np.dstack(np.reshape(np.transpose(top_obs, (0, 2, 3, 1)), (5, 5, 84, 84, 1))))
+                images = wandb.Image(images, caption="Top goals")
+                wandb.log({"Top goals": images})
+        return True
+
+
+class GoalTrajectoriesLogger(BaseCallback):
+    """
+    Log the goal trajectories to Wandb.
+    A goal trajectory is the sequence of observations that lead to the goal being achieved.
+
+    Args:
+        freq (int): Frequency at which the goal trajectories are logged. Default is 1_000
+        verbose (int): Verbosity level of the callback. Default is 0
+    """
+
     def __init__(self, freq: int = 1_000, verbose: int = 0):
         super().__init__(verbose)
         self.freq = freq
@@ -253,14 +339,58 @@ class GoalLogger(BaseCallback):
                 np.pad(image, [(0, 0), (0, max_width - image.shape[1]), (0, 0)], mode="constant", constant_values=0)
                 for image in image_array
             ]
-            images = np.vstack(image_array)
-
-            images = wandb.Image(images, caption="Goals trajectories")
-            wandb.log({"Goal trajectory": images})
+            image = wandb.Image(np.vstack(image_array), caption="Goals trajectories")
+            wandb.log({"Goal trajectories": image})
         return True
 
 
-class MyBuffer(ReplayBuffer):
+class VQVAELogger(BaseCallback):
+    """
+    Log reconstructions of observations from the VQVAE model to Wandb.
+
+    Args:
+        module (VQVAEModule): The VQVAE module to be used for generating reconstructions
+        freq (int): Frequency at which reconstructions are logged. Default is 1_000
+        verbose (int): Verbosity level of the callback. Default is 0
+    """
+
+    def __init__(self, module: VQVAEModule, freq: int = 1_000, verbose: int = 0):
+        super().__init__(verbose)
+        self.module = module
+        self.freq = freq
+
+    def _on_step(self):
+        if self.n_calls % self.freq == 0:
+            buffer = self.model.replay_buffer  # LGEBuffer
+            samples = buffer.sample(8)
+            observations = samples.next_observations
+            observations = preprocess(observations, buffer.observation_space)["observation"]
+            recons, _ = self.module(observations)
+            observations, recons = torch.cat(tuple(observations), dim=2), torch.cat(tuple(recons), dim=2)
+            image_array = torch.cat((observations, recons), dim=1)
+            wandb.log({"VQVAE": wandb.Image(image_array, caption="VQVAE")})
+
+        return True
+
+
+class ReplayBufferWithInfo(ReplayBuffer):
+    """
+    A replay buffer that also stores additional information provided by the environment.
+    The information is stored as an array of dictionaries, where the dictionary keys depend on the environment.
+
+    Args:
+        buffer_size (int): Maximum number of transitions that can be stored in the buffer.
+        observation_space (spaces.Space): The observation space of the environment.
+        action_space (spaces.Space): The action space of the environment.
+        device (Union[torch.device, str]): Device.
+        n_envs (int): Number of parallel environments.
+        optimize_memory_usage (bool): If true, the buffer will optimize memory usage by storing the data in uint8
+            format, but this will make indexing slower.
+        handle_timeout_termination (bool): Whether to handle the case when an episode termination is caused by the
+            environment signaling a timeout (e.g. in `gym.Env`) by storing the episode in the buffer and treating the
+            next observation as the start of a new episode.
+    """
+
     def __init__(
         self,
         buffer_size: int,
@@ -275,8 +405,16 @@ class MyBuffer(ReplayBuffer):
             buffer_size, observation_space, action_space, device, n_envs, optimize_memory_usage, handle_timeout_termination
         )
         self.infos = np.zeros((self.buffer_size, self.n_envs), dtype=object)
-    
-    def add(self, obs: np.ndarray, next_obs: np.ndarray, action: np.ndarray, reward: np.ndarray, done: np.ndarray, infos: List[Dict[str, Any]]) -> None:
+
+    def add(
+        self,
+        obs: np.ndarray,
+        next_obs: np.ndarray,
+        action: np.ndarray,
+        reward: np.ndarray,
+        done: np.ndarray,
+        infos: List[Dict[str, Any]],
+    ) -> None:
         pos = self.pos
         super().add(obs, next_obs, action, reward, done, infos)
         self.infos[pos] = infos
