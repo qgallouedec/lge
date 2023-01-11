@@ -230,7 +230,9 @@ class LatentGoExplore:
             elif module_type == "forward":
                 self.module = CNNForwardModule(obs_shape, action_size, latent_size).to(self.device)
             elif module_type == "ae":
-                self.module = VQVAEModule(obs_shape, latent_size).to(self.device)
+                self.module = VQVAEModule().to(self.device)
+                # Rewriting on latent size
+                latent_size = self.module.vqvae.vq_layer.num_embeddings * 10 * 10
         else:  # Not image
             obs_size = get_size(venv.observation_space["observation"])
             if module_type == "inverse":
