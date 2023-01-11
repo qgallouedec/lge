@@ -72,6 +72,7 @@ class LGEBuffer(HerReplayBuffer):
         self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
         self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
 
+        self.density = np.zeros((self.buffer_size * self.n_envs), dtype=np.float32)
         self.sorted_density = np.zeros(0, dtype=np.int64)
 
     def add(
@@ -121,15 +122,13 @@ class LGEBuffer(HerReplayBuffer):
         all_embeddings = self.to_torch(all_embeddings)
 
         # Estimate density based on the embeddings
-        density = np.zeros((flat_upper_bound), dtype=np.float32)
         k = 0
         while k < flat_upper_bound:
             upper = min(flat_upper_bound, k + 256)
             embeddings = all_embeddings[k:upper]
-            density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
+            self.density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             k += 256
-        self.density = density
-        self.sorted_density = np.argsort(density)
+        self.sorted_density = np.argsort(self.density[:flat_upper_bound])
 
     def encode(self, obs: Union[int, np.ndarray]) -> np.ndarray:
         """
@@ -176,8 +175,6 @@ class LGEBuffer(HerReplayBuffer):
             sampled_idx = self.sorted_density[sample_geometric_with_max(self.p, max_value=len(self.sorted_density)) - 1]
             goal_pos, goal_env = np.unravel_index(sampled_idx, (self.buffer_size, self.n_envs))
             is_goal_valid = self.ep_length[goal_pos, goal_env] > 0
-            if not is_goal_valid:
-                print("Not a valid goal, retrying...")
 
         episode_start = self.ep_start[goal_pos, goal_env]
         episode_end = goal_pos + 1
