@@ -128,7 +128,7 @@ class LGEBuffer(HerReplayBuffer):
             embeddings = all_embeddings[k:upper]
             density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             k += 256
-        self.density = density # log density actually
+        self.density = density
         self.sorted_density = np.argsort(density)
 
     def encode(self, obs: Union[int, np.ndarray]) -> np.ndarray:
@@ -216,9 +216,6 @@ class LGEBuffer(HerReplayBuffer):
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
         rewards = is_success.astype(np.float32)
-        for idx, info in enumerate(self.infos[batch_inds, env_indices]):
-            if info.get("dead", False):
-                rewards[idx] -= 100
 
         # Convert to torch tensor
         observations = {key: self.to_torch(obs) for key, obs in obs_.items()}
@@ -260,9 +257,6 @@ class LGEBuffer(HerReplayBuffer):
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
         rewards = is_success.astype(np.float32)
-        for idx, info in enumerate(self.infos[batch_inds, env_indices]):
-            if info.get("dead", False):
-                rewards[idx] -= 100
 
         obs = self._normalize_obs(obs, env)
         next_obs = self._normalize_obs(next_obs, env)
