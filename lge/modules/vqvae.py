@@ -166,3 +166,25 @@ class VQVAE(nn.Module):
         """
         encoding = self.encode(input)
         return self.vq_layer.get_codes(encoding)
+
+
+class MultiModalVQVAE(VQVAE):
+    def __init__(self, embedding_dim: int, num_embeddings: int, mod_size: int, beta: float = 0.25) -> None:
+        super().__init__(embedding_dim, num_embeddings, beta)
+        self.mod_net = nn.Sequential(
+            nn.Linear(mod_size, 8 * 8 * embedding_dim),
+            nn.LeakyReLU(inplace=True),
+            nn.Unflatten(1, (embedding_dim, 8, 8)),
+        )
+
+    def encode(self, input: Tensor, mod: Tensor) -> Tensor:
+        return self.encoder(input) + self.mod_net(mod)
+
+    def forward(self, input: Tensor, mod: Tensor) -> Tuple[Tensor, Tensor]:
+        encoding = self.encode(input, mod)
+        quantized_inputs, vq_loss = self.vq_layer(encoding)
+        return self.decode(quantized_inputs), vq_loss
+
+    def get_codes(self, input: Tensor, mod: Tensor) -> Tensor:
+        encoding = self.encode(input, mod)
+        return self.vq_layer.get_codes(encoding)

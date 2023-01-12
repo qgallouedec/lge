@@ -14,9 +14,9 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv,
 from stable_baselines3.common.vec_env.base_vec_env import VecEnvObs, VecEnvStepReturn
 
 from lge.buffer import LGEBuffer
-from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner, VQVAEModuleLearner
+from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner, VQVAEModuleLearner, VQVAEForwardModuleLearner
 from lge.modules.ae_module import AEModule, VQVAEModule
-from lge.modules.forward_module import CNNForwardModule, ForwardModule
+from lge.modules.forward_module import VQVAEForwardModule, ForwardModule
 from lge.modules.inverse_module import CNNInverseModule, InverseModule
 from lge.utils import get_shape, get_size, maybe_make_channel_first, maybe_transpose
 
@@ -228,7 +228,8 @@ class LatentGoExplore:
             if module_type == "inverse":
                 self.module = CNNInverseModule(obs_shape, action_size, latent_size).to(self.device)
             elif module_type == "forward":
-                self.module = CNNForwardModule(obs_shape, action_size, latent_size).to(self.device)
+                self.module = VQVAEForwardModule(action_size).to(self.device)
+                latent_size = self.module.vqvae.vq_layer.num_embeddings * 8 * 8
             elif module_type == "ae":
                 self.module = VQVAEModule().to(self.device)
                 # Rewriting on latent size
@@ -273,13 +274,22 @@ class LatentGoExplore:
                 learning_starts=learning_starts,
             )
         elif module_type == "forward":
-            self.module_learner = ForwardModuleLearner(
-                self.module,
-                self.replay_buffer,
-                train_freq=module_train_freq,
-                gradient_steps=module_grad_steps,
-                learning_starts=learning_starts,
-            )
+            if is_image_space(venv.observation_space["observation"]):
+                self.module_learner = VQVAEForwardModuleLearner(
+                    self.module,
+                    self.replay_buffer,
+                    train_freq=module_train_freq,
+                    gradient_steps=module_grad_steps,
+                    learning_starts=learning_starts,
+                )
+            else:
+                self.module_learner = ForwardModuleLearner(
+                    self.module,
+                    self.replay_buffer,
+                    train_freq=module_train_freq,
+                    gradient_steps=module_grad_steps,
+                    learning_starts=learning_starts,
+                )
         elif module_type == "ae":
             if is_image_space(venv.observation_space["observation"]):
                 self.module_learner = VQVAEModuleLearner(
@@ -308,4 +318,4 @@ class LatentGoExplore:
             callback = [self.module_learner, callback]
         else:
             callback = [self.module_learner]
-        self.model.learn(total_timesteps, callback=callback)
+        self.model.learn(total_timesteps, callback=callback, log_interval=1000)

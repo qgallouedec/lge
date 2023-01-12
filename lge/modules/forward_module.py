@@ -4,6 +4,8 @@ import torch
 from torch import Tensor, nn
 
 from lge.modules.common import BaseModule
+from lge.modules.vqvae import MultiModalVQVAE
+import torch.nn.functional as F
 
 
 class ForwardModule(BaseModule):
@@ -67,80 +69,34 @@ class ForwardModule(BaseModule):
         return mean, std
 
 
-class CNNForwardModule(BaseModule):
-    """
-    Forward module. Takes observation and action as input and predicts the next observation.
-
-    :param obs_size: Observation size
-    :param action_size: Action size
-    :param latent_size: Feature size, defaults to 16
-    :param net_arch: The specification of the network, default to [64, 64]
-    :param activation_fn: The activation function to use for the networks, default to ReLU
-
-                    •---------•         •---------------•
-    observation --> | Encoder | ------> |               |
-                    •---------•         | Forward model | --> predicted next observation
-                             action --> |               |
-                                        •---------------•
-    """
-
-    def __init__(self, obs_shape: Tuple[int], action_size: int, latent_size: int = 16) -> None:
+class _Encoder(nn.Module):
+    def __init__(self, vqvae: MultiModalVQVAE, num_embeddings: int) -> None:
         super().__init__()
-        self.cnn = nn.Sequential(
-            nn.Conv2d(obs_shape[0], 32, kernel_size=8, stride=4, padding=0),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(),
-        )
-        # Compute shape by doing one forward pass
-        with torch.no_grad():
-            _shape = self.cnn(torch.zeros((1, *obs_shape))).shape[1:]
-            n_flatten = _shape.numel()
+        self.vqvae = vqvae
+        self.num_embeddings = num_embeddings
 
-        self.encoder = nn.Sequential(
-            self.cnn,
-            nn.Flatten(),
-            nn.Linear(n_flatten, latent_size),
-        )
+    def forward(self, input: Tensor, mod: Tensor) -> Tensor:
+        codes = self.vqvae.get_codes(input, mod)
+        codes = torch.reshape(F.one_hot(codes, self.num_embeddings), (input.shape[0], -1))
+        return codes
 
-        self.decoder_mean = nn.Sequential(
-            nn.Linear(latent_size + action_size, n_flatten),
-            nn.ReLU(),
-            nn.Unflatten(1, _shape),
-            nn.ConvTranspose2d(64, 64, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=0),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, obs_shape[0], kernel_size=8, stride=4, padding=0),
-        )
-        self.decoder_std = nn.Sequential(
-            nn.Linear(latent_size + action_size, n_flatten),
-            nn.ReLU(),
-            nn.Unflatten(1, _shape),
-            nn.ConvTranspose2d(64, 64, kernel_size=3, stride=1, padding=0),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=0),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, obs_shape[0], kernel_size=8, stride=4, padding=0),
-        )
 
-    def forward(self, obs: Tensor, action: Tensor) -> Tensor:
-        """
-        Return the predicted next observation given the observation and action.
+class VQVAEForwardModule(nn.Module):
+    """
+    Vector Quantized Variational Auto-Encoder module. Takes the observation as input and predicts the observation.
 
-        Args:
-            obs (Tensor): Observation
-            action (Tensor): Action
+    :param obs_shape: Observation shape
+    :param latent_size: Feature size, defaults to 16
 
-        Returns:
-            Tensor: Predicted next observation and standard deviation
-        """
-        latent = self.encoder(obs)
-        x = torch.concat((latent, action), dim=-1)
-        mean = self.decoder_mean(x)
-        log_std = self.decoder_std(x)
-        log_std = torch.clamp(log_std, min=-20, max=2)
-        std = torch.ones_like(mean) * log_std.exp()
-        return mean, std
+                    •---------•              •---------•
+    observation --> | Encoder | -> latent -> | Decoder |--> predicted observation
+                    •---------•              •---------•
+    """
+
+    def __init__(self, mod_size:int, num_embeddings: int = 8) -> None:
+        super().__init__()
+        self.vqvae = MultiModalVQVAE(embedding_dim=32, num_embeddings=num_embeddings, mod_size=mod_size)
+        self.encoder = _Encoder(self.vqvae, num_embeddings)
+
+    def forward(self, obs: Tensor, action: Tensor) -> Tuple[Tensor, Tensor]:
+        return self.vqvae(obs, action)
