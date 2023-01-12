@@ -21,7 +21,7 @@ from stable_baselines3.common.env_util import make_vec_env
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--env", type=str, required=True, help="Environment id")
-    parser.add_argument("--num-timesteps", type=int, default=50_000_000, help="Number of timesteps")
+    parser.add_argument("--num-timesteps", type=int, default=100_000_000, help="Number of timesteps")
     parser.add_argument("--n-envs", type=int, default=8, help="Number of environments")
     parser.add_argument(
         "--learning-starts", type=int, default=1_000_000, help="Number of random interactions before learning starts"
