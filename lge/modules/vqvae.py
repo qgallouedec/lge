@@ -84,32 +84,30 @@ class VQVAE(nn.Module):
         super().__init__()
 
         # Build Encoder
-        self.encoder = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=4, stride=2, padding=1),  # [84 x 84 x 1] > [42 x 42 x 8]
+        self.encoder = nn.Sequential(  # [84 x 84 x 1]
+            nn.Conv2d(1, 8, kernel_size=4, stride=2),  # [41 x 41 x 8]
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(8, 16, kernel_size=4, stride=2, padding=1),  # [42 x 42 x 8] > [21 x 21 x 16]
+            nn.Conv2d(8, 16, kernel_size=4, stride=2),  # [19 x 19 x 16]
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(16, 32, kernel_size=4, stride=2, padding=1),  # [21 x 21 x 16] > [10 x 10 x 32]
+            nn.Conv2d(16, 32, kernel_size=4, stride=2),  # [8 x 8 x 32]
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),  #  [10 x 10 x 32] > [10 x 10 x 32]
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),  # [8 x 8 x 32]
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(32, embedding_dim, kernel_size=1, stride=1),  #  [10 x 10 x 32] > [10 x 10 x D]
+            nn.Conv2d(32, embedding_dim, kernel_size=1, stride=1),  # [8 x 8 x D]
             nn.LeakyReLU(inplace=True),
         )
 
         self.vq_layer = VectorQuantizer(num_embeddings, embedding_dim, beta)
 
         # Decoder
-        self.decoder = nn.Sequential(
-            nn.Conv2d(embedding_dim, 32, kernel_size=3, stride=1, padding=1),  #  [10 x 10 x D] >  [10 x 10 x 32]
+        self.decoder = nn.Sequential(  # [8 x 8 x D]
+            nn.Conv2d(embedding_dim, 32, kernel_size=3, stride=1, padding=1),  # [8 x 8 x 32]
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(
-                32, 16, kernel_size=4, stride=2, padding=1, output_padding=1
-            ),  #  [10 x 10 x 32] > [21 x 21 x 16]
+            nn.ConvTranspose2d(32, 16, kernel_size=4, stride=2, output_padding=1),  # [19 x 19 x 16]
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(16, 8, kernel_size=4, stride=2, padding=1),  #  [21 x 21 x 16] > [42 x 42 x 8]
+            nn.ConvTranspose2d(16, 8, kernel_size=4, stride=2, output_padding=1),  # [41 x 41 x 8]
             nn.LeakyReLU(inplace=True),
-            nn.ConvTranspose2d(8, out_channels=1, kernel_size=4, stride=2, padding=1),  # [42 x 42 x 8] > [84 x 84 x 1]
+            nn.ConvTranspose2d(8, out_channels=1, kernel_size=4, stride=2),  # [84 x 84 x 1]
             nn.Tanh(),
         )
 

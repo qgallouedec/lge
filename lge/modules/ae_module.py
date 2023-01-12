@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from lge.modules.common import BaseModule
-from lge.vqvae import VQVAE
+from lge.modules.vqvae import VQVAE
 
 
 class AEModule(BaseModule):

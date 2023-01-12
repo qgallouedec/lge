@@ -232,7 +232,7 @@ class LatentGoExplore:
             elif module_type == "ae":
                 self.module = VQVAEModule().to(self.device)
                 # Rewriting on latent size
-                latent_size = self.module.vqvae.vq_layer.num_embeddings * 10 * 10
+                latent_size = self.module.vqvae.vq_layer.num_embeddings * 8 * 8
         else:  # Not image
             obs_size = get_size(venv.observation_space["observation"])
             if module_type == "inverse":
