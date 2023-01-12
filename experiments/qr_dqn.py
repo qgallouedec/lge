@@ -81,5 +81,5 @@ if __name__ == "__main__":
     else:
         callbacks.append(NumberCellsLogger(freq))
 
-    model.learn(num_timesteps, callback=CallbackList(callbacks))
+    model.learn(num_timesteps, callback=CallbackList(callbacks), log_interval=1000)
     run.finish()
