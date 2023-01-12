@@ -213,9 +213,9 @@ class LGEBuffer(HerReplayBuffer):
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
         rewards = is_success.astype(np.float32)
-        for idx, info in enumerate(self.infos[batch_inds, env_indices]):
-            if info.get("dead", False):
-                rewards[idx] -= 1
+        # for idx, info in enumerate(self.infos[batch_inds, env_indices]):
+        #     if info.get("dead", False):
+        #         rewards[idx] -= 20
 
         # Convert to torch tensor
         observations = {key: self.to_torch(obs) for key, obs in obs_.items()}
@@ -257,9 +257,9 @@ class LGEBuffer(HerReplayBuffer):
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
         rewards = is_success.astype(np.float32)
-        for idx, info in enumerate(self.infos[batch_inds, env_indices]):
-            if info.get("dead", False):
-                rewards[idx] -= 1
+        # for idx, info in enumerate(self.infos[batch_inds, env_indices]):
+        #     if info.get("dead", False):
+        #         rewards[idx] -= 20
 
         obs = self._normalize_obs(obs, env)
         next_obs = self._normalize_obs(next_obs, env)
@@ -296,7 +296,8 @@ class LGEBuffer(HerReplayBuffer):
         elif self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
             # replay with random state which comes from the same episode and was observed after current transition
             current_indices_in_episode = batch_inds - batch_ep_start
-            transition_indices_in_episode = np.random.randint(current_indices_in_episode, batch_ep_length)
+            idx_max = np.minimum(current_indices_in_episode + 200, batch_ep_length)
+            transition_indices_in_episode = np.random.randint(current_indices_in_episode, idx_max)
 
         elif self.goal_selection_strategy == GoalSelectionStrategy.EPISODE:
             # replay with random state which comes from the same episode as current transition
