@@ -8,7 +8,7 @@ from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
-from torch import Tensor, nn
+from torch import nn
 
 from lge.utils import batchify, estimate_density, is_batched, lighten, preprocess, sample_geometric_with_max
 
@@ -212,10 +212,11 @@ class LGEBuffer(HerReplayBuffer):
         # Compute new reward
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
-        rewards = is_success.astype(np.float32)
-        # for idx, info in enumerate(self.infos[batch_inds, env_indices]):
-        #     if info.get("dead", False):
-        #         rewards[idx] -= 20
+        rewards = is_success.astype(np.float32) - 1
+        deads = np.array(
+            [self.infos[batch_idx, env_idx].get("dead", False) for batch_idx, env_idx in zip(batch_inds, env_indices)],
+            dtype=np.float32,
+        )
 
         # Convert to torch tensor
         observations = {key: self.to_torch(obs) for key, obs in obs_.items()}
@@ -225,9 +226,11 @@ class LGEBuffer(HerReplayBuffer):
             observations=observations,
             actions=self.to_torch(self.actions[batch_inds, env_indices]),
             next_observations=next_observations,
-            # Only use dones that are not due to timeouts
+            # Only use dones that are not due to timeouts nor to death
             # deactivated by default (timeouts is initialized as an array of False)
-            dones=self.to_torch(self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])),
+            dones=self.to_torch(
+                self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices]) * (1 - deads)
+            ),
             rewards=self.to_torch(self._normalize_reward(rewards, env)),
         )
 
@@ -256,10 +259,11 @@ class LGEBuffer(HerReplayBuffer):
         # Compute new reward
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
-        rewards = is_success.astype(np.float32)
-        # for idx, info in enumerate(self.infos[batch_inds, env_indices]):
-        #     if info.get("dead", False):
-        #         rewards[idx] -= 20
+        rewards = is_success.astype(np.float32) - 1
+        deads = np.array(
+            [self.infos[batch_idx, env_idx].get("dead", False) for batch_idx, env_idx in zip(batch_inds, env_indices)],
+            dtype=np.float32,
+        )
 
         obs = self._normalize_obs(obs, env)
         next_obs = self._normalize_obs(next_obs, env)
@@ -274,7 +278,9 @@ class LGEBuffer(HerReplayBuffer):
             next_observations=next_observations,
             # Only use dones that are not due to timeouts
             # deactivated by default (timeouts is initialized as an array of False)
-            dones=self.to_torch(self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])),
+            dones=self.to_torch(
+                self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices]) * (1 - deads)
+            ),
             rewards=self.to_torch(self._normalize_reward(rewards, env)),
         )
 
@@ -296,7 +302,7 @@ class LGEBuffer(HerReplayBuffer):
         elif self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
             # replay with random state which comes from the same episode and was observed after current transition
             current_indices_in_episode = batch_inds - batch_ep_start
-            idx_max = np.minimum(current_indices_in_episode + 200, batch_ep_length)
+            idx_max = np.minimum(current_indices_in_episode + 30, batch_ep_length)
             transition_indices_in_episode = np.random.randint(current_indices_in_episode, idx_max)
 
         elif self.goal_selection_strategy == GoalSelectionStrategy.EPISODE:

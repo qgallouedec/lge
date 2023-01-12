@@ -196,11 +196,12 @@ class MaxRewardLogger(BaseCallback):
     def _on_step(self) -> bool:
         if self.n_calls % self.freq == 0:
             buffer = self.locals["replay_buffer"]  # ReplayBuffer
-            rewards = buffer.rewards
+            infos = buffer.infos
             if not buffer.full:
                 if buffer.pos == 0:
                     return True
-                rewards = rewards[: buffer.pos]
+                infos = infos[: buffer.pos]
+            rewards = np.array([info.get("env_reward") for info in infos.flatten()])
             self.max_reward = max(np.max(rewards), self.max_reward)
             self.logger.record("env/max_reward", self.max_reward)
         return True

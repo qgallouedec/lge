@@ -14,9 +14,15 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv,
 from stable_baselines3.common.vec_env.base_vec_env import VecEnvObs, VecEnvStepReturn
 
 from lge.buffer import LGEBuffer
-from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner, VQVAEModuleLearner, VQVAEForwardModuleLearner
+from lge.learners import (
+    AEModuleLearner,
+    ForwardModuleLearner,
+    InverseModuleLearner,
+    VQVAEForwardModuleLearner,
+    VQVAEModuleLearner,
+)
 from lge.modules.ae_module import AEModule, VQVAEModule
-from lge.modules.forward_module import VQVAEForwardModule, ForwardModule
+from lge.modules.forward_module import ForwardModule, VQVAEForwardModule
 from lge.modules.inverse_module import CNNInverseModule, InverseModule
 from lge.utils import get_shape, get_size, maybe_make_channel_first, maybe_transpose
 
@@ -110,6 +116,7 @@ class VecGoalify(VecEnvWrapper):
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
         embeddings = self.lge_buffer.encode(maybe_make_channel_first(observations))
         for env_idx in range(self.num_envs):
+            rewards[env_idx] = -1  # is overwritten if necessary
             infos[env_idx]["is_success"] = self._is_last_goal_reached[env_idx]  # Will be overwritten if necessary
             if not dones[env_idx]:
                 upper_idx = min(self._goal_idxs[env_idx] + self.window_size, len(self.goal_trajectories[env_idx]))
@@ -118,6 +125,8 @@ class VecGoalify(VecEnvWrapper):
                 future_success = dist < self.distance_threshold
 
                 if future_success.any():
+                    if future_success[0]:
+                        rewards[env_idx] = 0
                     furthest_futur_success = np.where(future_success)[0].max()
                     self._goal_idxs[env_idx] += furthest_futur_success + 1
                 if self._goal_idxs[env_idx] == len(self.goal_trajectories[env_idx]):
