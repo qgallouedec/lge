@@ -233,6 +233,7 @@ class MaxRewardLogger(BaseCallback):
             self.logger.record("env/max_reward", self.max_reward)
         return True
 
+
 class AtariNumberCellsLogger(BaseCallback):
     """
     Callback to monitor and log the number of unique cells visited in Atari environments.
@@ -255,16 +256,14 @@ class AtariNumberCellsLogger(BaseCallback):
         if self.n_calls % self.freq == 0:
             buffer = self.locals["replay_buffer"]  # type: LGEBuffer
             infos = buffer.infos
-            if buffer.pos < self._last_call:
-                idxs = np.arange(self._last_call, buffer.pos + buffer.buffer_size) % buffer.buffer_size
-            else:
-                idxs = np.arange(self._last_call, buffer.pos)
+            # We use n_calls 1 because when the callback is called, the last observation is not yet stored.
+            idxs = np.arange(self._last_call, self.n_calls - 1) % buffer.buffer_size
             infos = infos[idxs]
             cells = np.array([info[env_idx]["cell"] for info in infos for env_idx in range(buffer.n_envs)])
             self.all_cells = np.concatenate((self.all_cells, cells))
             self.all_cells = np.unique(self.all_cells, axis=0)
             self.logger.record("env/nb_cells", len(self.all_cells))
-            self._last_call = buffer.pos
+            self._last_call = self.n_calls - 1
         return True
 
 
@@ -278,10 +277,8 @@ class NumberCellsLogger(BaseCallback):
         if self.n_calls % self.freq == 0:
             buffer = self.locals["replay_buffer"]  # type: LGEBuffer
             observations = buffer.next_observations["observation"]
-            if buffer.pos < self._last_call:
-                idxs = np.arange(self._last_call, buffer.pos + buffer.buffer_size) % buffer.buffer_size
-            else:
-                idxs = np.arange(self._last_call, buffer.pos)
+            # We use n_calls 1 because when the callback is called, the last observation is not yet stored.
+            idxs = np.arange(self._last_call, self.n_calls - 1) % buffer.buffer_size
             observations = observations[idxs]
             observations = np.reshape(observations, (-1, observations.shape[-1]))  # (N, N_ENVS, D) to (N*N_ENVS, D)
             cells = np.floor(observations)
@@ -291,7 +288,7 @@ class NumberCellsLogger(BaseCallback):
                 self.all_cells = cells
             self.all_cells = np.unique(self.all_cells, axis=0)
             self.logger.record("env/nb_cells", len(self.all_cells))
-            self._last_call = buffer.pos
+            self._last_call = self.n_calls - 1
         return True
 
 
