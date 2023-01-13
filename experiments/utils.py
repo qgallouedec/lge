@@ -179,7 +179,7 @@ class AtariWrapper(gym.Wrapper):
         super().__init__(env)
 
 
-class MaxRewardLogger(BaseCallback):
+class MaxInnerRewardLogger(BaseCallback):
     """
     Callback that logs the maximum reward observed in the replay buffer at a given frequency.
 
@@ -206,6 +206,32 @@ class MaxRewardLogger(BaseCallback):
             self.logger.record("env/max_reward", self.max_reward)
         return True
 
+
+class MaxRewardLogger(BaseCallback):
+    """
+    Callback that logs the maximum reward observed in the replay buffer at a given frequency.
+
+    Args:
+        freq (int): Frequency at which the maximum reward is logged. Default is 1_000
+        verbose (int): Verbosity level, default is 0
+    """
+
+    def __init__(self, freq: int = 1_000, verbose: int = 0):
+        super().__init__(verbose)
+        self.freq = freq
+        self.max_reward = -np.inf
+
+    def _on_step(self) -> bool:
+        if self.n_calls % self.freq == 0:
+            buffer = self.locals["replay_buffer"]  # ReplayBuffer
+            rewards = buffer.rewards
+            if not buffer.full:
+                if buffer.pos == 0:
+                    return True
+                rewards = rewards[: buffer.pos]
+            self.max_reward = max(np.max(rewards), self.max_reward)
+            self.logger.record("env/max_reward", self.max_reward)
+        return True
 
 class AtariNumberCellsLogger(BaseCallback):
     """

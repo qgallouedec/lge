@@ -13,7 +13,7 @@ from experiments.utils import (
     AtariWrapper,
     DensityLogger,
     GoalTrajectoriesLogger,
-    MaxRewardLogger,
+    MaxInnerRewardLogger,
     NumberCellsLogger,
     TopGoalsLogger,
     VQVAELogger,
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     )
 
     freq = min(int(num_timesteps / 1_000), 100_000)
-    callbacks = [DensityLogger(freq), MaxRewardLogger(freq)]
+    callbacks = [DensityLogger(freq), MaxInnerRewardLogger(freq)]
     if is_atari(env_id):
         callbacks.append(AtariNumberCellsLogger(freq))
         callbacks.append(TopGoalsLogger(freq))
