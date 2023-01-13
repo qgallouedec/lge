@@ -102,7 +102,8 @@ if __name__ == "__main__":
         # Take random actions during the `learning_starts` timesteps, then take random
         # actions with decreasing probability during more `learning_starts` timesteps,
         # with a decreasing rate starting at 0.5.
-        model_kwargs["exploration_fraction"] = learning_starts / num_timesteps * 2
+        model_kwargs["exploration_fraction"] = learning_starts / num_timesteps * 4
+        model_kwargs["exploration_final_eps"] = 0.05
 
     model = LatentGoExplore(
         algo,
