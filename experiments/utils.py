@@ -177,7 +177,7 @@ class AtariWrapper(gym.Wrapper):
         env = MaxAndSkipEnv(env)
         env = AtariCeller(env)
         env = GrayscaleDownscale(env)
-        env = TimeLimit(env, max_episode_steps=1500)
+        env = TimeLimit(env, max_episode_steps=500)
         super().__init__(env)
 
 
