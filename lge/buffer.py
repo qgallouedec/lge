@@ -141,13 +141,11 @@ class LGEBuffer(HerReplayBuffer):
         if not _is_batched:
             obs = batchify(obs)
 
-        batch_size = obs.shape[0]
-
-        step = 2048
+        step = 64
         k = 0
-        embeddings = np.zeros((batch_size, self.latent_size), dtype=np.float32)
-        while k < batch_size:
-            upper = min(batch_size, k + step)
+        embeddings = np.zeros((obs.shape[0], self.latent_size), dtype=np.float32)
+        while k < obs.shape[0]:
+            upper = min(obs.shape[0], k + step)
             _obs = self.to_torch(obs[k:upper])
             self.encoder.eval()
             _obs = preprocess(_obs, self.observation_space["observation"])
