@@ -300,7 +300,7 @@ class LGEBuffer(HerReplayBuffer):
         elif self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
             # replay with random state which comes from the same episode and was observed after current transition
             current_indices_in_episode = batch_inds - batch_ep_start
-            idx_max = np.minimum(current_indices_in_episode + 30, batch_ep_length)
+            idx_max = np.minimum(current_indices_in_episode + 100, batch_ep_length)
             transition_indices_in_episode = np.random.randint(current_indices_in_episode, idx_max)
 
         elif self.goal_selection_strategy == GoalSelectionStrategy.EPISODE:
