@@ -6,6 +6,7 @@ import gym
 import numpy as np
 import torch
 from gym import spaces
+from gym.wrappers import TimeLimit
 from stable_baselines3.common.atari_wrappers import MaxAndSkipEnv, NoopResetEnv
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.callbacks import BaseCallback
@@ -176,6 +177,7 @@ class AtariWrapper(gym.Wrapper):
         env = MaxAndSkipEnv(env)
         env = AtariCeller(env)
         env = GrayscaleDownscale(env)
+        env = TimeLimit(env, max_episode_steps=1500)
         super().__init__(env)
 
 
