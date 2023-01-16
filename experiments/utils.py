@@ -42,12 +42,20 @@ class DoneOnLifeLost(gym.Wrapper):
         env (gym.Env): Atari environment to wrap.
     """
 
+    def reset(self):
+        obs = super().reset()
+        self._last_lives = None
+        return obs
+
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         obs, reward, done, info = super().step(action)
         lives = info["lives"]
-        if lives < 6:
+        if self._last_lives is None:  # First step of the episode, get the number of lives
+            self._last_lives = lives
+        if lives < self._last_lives:
             done = True
             info["dead"] = True
+        self._last_lives = lives
         return obs, reward, done, info
 
 
