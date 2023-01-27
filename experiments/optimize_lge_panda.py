@@ -1,4 +1,3 @@
-import gym
 import numpy as np
 import optuna
 import panda_gym
@@ -19,10 +18,9 @@ def objective(trial: optuna.Trial) -> float:
 
     coverage = np.zeros((NUM_RUN, NUM_TIMESTEPS))
     for run_idx in range(NUM_RUN):
-        env = gym.make("PandaNoTask-v0", nb_objects=1)
         model = LatentGoExplore(
             DDPG,
-            env,
+            "PandaNoTask-v0",
             module_type="forward",
             latent_size=latent_size,
             distance_threshold=distance_threshold,
@@ -30,6 +28,7 @@ def objective(trial: optuna.Trial) -> float:
             p=p,
             model_kwargs=dict(buffer_size=NUM_TIMESTEPS),
             verbose=1,
+            env_kwargs=dict(nb_objects=1),
         )
         model.explore(NUM_TIMESTEPS)
         buffer = model.replay_buffer

@@ -1,6 +1,5 @@
 import os
 
-import gym
 import gym_continuous_maze
 import numpy as np
 from stable_baselines3 import SAC
@@ -12,10 +11,9 @@ NUM_TIMESTEPS = 100_000
 NUM_RUN = 1
 
 for run_idx in range(NUM_RUN):
-    env = gym.make("ContinuousMaze-v0")
     model = LatentGoExplore(
         SAC,
-        env,
+        "ContinuousMaze-v0",
         module_type="inverse",
         latent_size=16,
         distance_threshold=1.0,

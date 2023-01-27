@@ -1,4 +1,3 @@
-import gym
 import gym_continuous_maze
 import numpy as np
 import optuna
@@ -19,10 +18,9 @@ def objective(trial: optuna.Trial) -> float:
 
     coverage = np.zeros((NUM_RUN, NUM_TIMESTEPS))
     for run_idx in range(NUM_RUN):
-        env = gym.make("ContinuousMaze-v0")
         model = LatentGoExplore(
             DDPG,
-            env,
+            "ContinuousMaze-v0",
             module_type="inverse",
             latent_size=latent_size,
             distance_threshold=distance_threshold,

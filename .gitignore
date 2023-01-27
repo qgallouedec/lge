@@ -1,5 +1,10 @@
 .vscode
 src/
+wandb/
+runs/
+models/
+env/
+*.prof
 
 # MacOS:
 .DS_Store

@@ -1,28 +1,37 @@
 import copy
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Any, Dict, Optional, Type, Union
 
 import gym
 import numpy as np
 import torch
-from gym import Env, spaces
-from stable_baselines3.common.base_class import maybe_make_env
+from gym import spaces
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.preprocessing import is_image_space
+from stable_baselines3.common.type_aliases import MaybeCallback
 from stable_baselines3.common.utils import get_device
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecEnvWrapper, VecMonitor
+from stable_baselines3.common.vec_env.base_vec_env import VecEnvObs, VecEnvStepReturn
 
 from lge.buffer import LGEBuffer
-from lge.learners import AEModuleLearner, ForwardModuleLearner, InverseModuleLearner
-from lge.modules.ae_module import AEModule
-from lge.modules.forward_module import ForwardModule
-from lge.modules.inverse_module import InverseModule
+from lge.learners import (
+    AEModuleLearner,
+    ForwardModuleLearner,
+    InverseModuleLearner,
+    VQVAEForwardModuleLearner,
+    VQVAEModuleLearner,
+)
+from lge.modules.ae_module import AEModule, VQVAEModule
+from lge.modules.forward_module import ForwardModule, VQVAEForwardModule
+from lge.modules.inverse_module import CNNInverseModule, InverseModule
+from lge.utils import get_shape, get_size, maybe_make_channel_first, maybe_transpose
 
 
-class Goalify(gym.Wrapper):
+class VecGoalify(VecEnvWrapper):
     """
     Wrap the env into a GoalEnv.
 
-    :param env: The environment
+    :param venv: The vectorized environment
     :param nb_random_exploration_steps: Number of random exploration steps after the goal is reached, defaults to 30
     :param window_size: Agent can skip goals in the goal trajectory within the limit of ``window_size``
         goals ahead, defaults to 10
@@ -34,25 +43,42 @@ class Goalify(gym.Wrapper):
 
     def __init__(
         self,
-        env: Env,
+        venv: VecEnv,
         nb_random_exploration_steps: int = 30,
         window_size: int = 10,
         distance_threshold: float = 1.0,
         lighten_dist_coef: float = 1.0,
     ) -> None:
-        super().__init__(env)
-        # Set a goal-conditionned observation space
+        super().__init__(venv)
         self.observation_space = spaces.Dict(
             {
-                "observation": copy.deepcopy(self.env.observation_space),
-                "goal": copy.deepcopy(self.env.observation_space),
+                "observation": copy.deepcopy(venv.observation_space),
+                "goal": copy.deepcopy(venv.observation_space),
             }
         )
-        self.lge_buffer = None  # type: LGEBuffer
         self.nb_random_exploration_steps = nb_random_exploration_steps
         self.window_size = window_size
         self.distance_threshold = distance_threshold
         self.lighten_dist_coef = lighten_dist_coef
+        self.lge_buffer: LGEBuffer
+        self.goal_trajectories = [None for _ in range(self.num_envs)]
+        self.emb_trajectories = [None for _ in range(self.num_envs)]
+
+    def reset(self) -> VecEnvObs:
+        observations = self.venv.reset()
+        assert hasattr(self, "lge_buffer"), "you need to set the buffer before reset. Use set_buffer()"
+        for env_idx in range(self.num_envs):
+            goal_trajectory, emb_trajectory = self.lge_buffer.sample_trajectory(self.lighten_dist_coef)
+            # For image, we need to transpose the sample
+            goal_trajectory = maybe_transpose(goal_trajectory, self.observation_space["goal"])
+            self.goal_trajectories[env_idx] = goal_trajectory
+            self.emb_trajectories[env_idx] = emb_trajectory
+
+        self._goal_idxs = np.zeros(self.num_envs, dtype=np.int64)
+        self.done_countdowns = self.nb_random_exploration_steps * np.ones(self.num_envs, dtype=np.int64)
+        self._is_last_goal_reached = np.zeros(self.num_envs, dtype=bool)  # useful flag
+        dict_observations = self._get_dict_obs(observations)  # turn into dict
+        return dict_observations
 
     def set_buffer(self, lge_buffer: LGEBuffer) -> None:
         """
@@ -64,62 +90,81 @@ class Goalify(gym.Wrapper):
         """
         self.lge_buffer = lge_buffer
 
-    def reset(self) -> Dict[str, np.ndarray]:
-        obs = self.env.reset()
-        assert self.lge_buffer is not None, "you need to set the buffer before reset. Use set_buffer()"
-        self.goal_trajectory, self.emb_trajectory = self.lge_buffer.sample_trajectory(self.lighten_dist_coef)
-        if is_image_space(self.observation_space["goal"]):
-            self.goal_trajectory = [np.moveaxis(goal, 0, 2) for goal in self.goal_trajectory]
-        self._goal_idx = 0
-        self.done_countdown = self.nb_random_exploration_steps
-        self._is_last_goal_reached = False  # useful flag
-        dict_obs = self._get_dict_obs(obs)  # turn into dict
-        return dict_obs
-
-    def _get_dict_obs(self, obs: np.ndarray) -> Dict[str, np.ndarray]:
+    def _get_dict_obs(self, observations: np.ndarray) -> Dict[str, np.ndarray]:
         return {
-            "observation": obs.astype(np.float32),
-            "goal": self.goal_trajectory[self._goal_idx].astype(np.float32),
+            "observation": observations,
+            "goal": np.stack([self.goal_trajectories[env_idx][self._goal_idxs[env_idx]] for env_idx in range(self.num_envs)]),
         }
 
-    def step(self, action: np.ndarray) -> Tuple[Dict[str, np.ndarray], float, bool, Dict[str, Any]]:
-        obs, reward, done, info = self.env.step(action)
-        # Compute reward (has to be done before moving to next goal)
-        embedding = self.lge_buffer.encode(obs).detach().cpu().numpy()
+    def step_async(self, actions: np.ndarray) -> None:
+        self.actions = actions
+        return super().step_async(actions)
+
+    def _reset_one_env(self, env_idx: int):
+        if isinstance(self.venv, SubprocVecEnv):
+            self.venv.remotes[env_idx].send(("reset", None))
+            return self.venv.remotes[env_idx].recv()
+        if isinstance(self.venv, DummyVecEnv):
+            return self.venv.envs[env_idx].reset()
+
+    def step_wait(self) -> VecEnvStepReturn:
+        observations, rewards, dones, infos = self.venv.step_wait()
+
+        for info, reward in zip(infos, rewards):
+            info["env_reward"] = reward
 
         # Move to next goal here (by modifying self._goal_idx and self._is_last_goal_reached)
-        upper_idx = min(self._goal_idx + self.window_size, len(self.goal_trajectory))
-        future_goals = self.emb_trajectory[self._goal_idx : upper_idx]
-        dist = np.linalg.norm(embedding - future_goals, axis=1)
-        future_success = dist < self.distance_threshold
+        embeddings = self.lge_buffer.encode(maybe_make_channel_first(observations))
+        for env_idx in range(self.num_envs):
+            rewards[env_idx] = -1  # is overwritten if necessary
+            infos[env_idx]["is_success"] = self._is_last_goal_reached[env_idx]  # Will be overwritten if necessary
+            if not dones[env_idx]:
+                upper_idx = min(self._goal_idxs[env_idx] + self.window_size, len(self.goal_trajectories[env_idx]))
+                future_goals = self.emb_trajectories[env_idx][self._goal_idxs[env_idx] : upper_idx]
+                dist = np.linalg.norm(embeddings[env_idx] - future_goals, axis=1)
+                future_success = dist < self.distance_threshold
 
-        if future_success.any():
-            furthest_futur_success = np.where(future_success)[0].max()
-            self._goal_idx += furthest_futur_success + 1
-        if self._goal_idx == len(self.goal_trajectory):
-            self._is_last_goal_reached = True
-            self._goal_idx -= 1
+                if future_success.any():
+                    if future_success[0]:
+                        rewards[env_idx] = 0
+                    furthest_futur_success = np.where(future_success)[0].max()
+                    self._goal_idxs[env_idx] += furthest_futur_success + 1
+                if self._goal_idxs[env_idx] == len(self.goal_trajectories[env_idx]):
+                    self._is_last_goal_reached[env_idx] = True
+                    self._goal_idxs[env_idx] -= 1
 
-        if future_success[0]:
-            # Agent has just reached the current goal
-            reward = 0
-        else:
-            # Agent has reached another goal, or no goal at all
-            reward = -1
+                # When the last goal is reached, delay the done to allow some random actions
+                if self._is_last_goal_reached[env_idx]:
+                    infos[env_idx]["is_success"] = True
+                    if self.done_countdowns[env_idx] != 0:
+                        infos[env_idx]["action_repeat"] = self.actions[env_idx]
+                        self.done_countdowns[env_idx] -= 1
+                    else:  # self.done_countdown == 0:
+                        dones[env_idx] = True
+                        terminal_observation = observations[env_idx]
+                        observations[env_idx] = self._reset_one_env(env_idx)
 
-        # When the last goal is reached, delay the done to allow some random actions
-        if self._is_last_goal_reached:
-            info["is_success"] = True
-            if self.done_countdown != 0:
-                info["action_repeat"] = action
-                self.done_countdown -= 1
-            else:  # self.done_countdown == 0:
-                done = True
-        else:
-            info["is_success"] = False
+            # Dones can be due to env (death), or to the previous code
+            if dones[env_idx]:
+                # If done is due to inner env, terminal obs is already in infos. Else
+                # it is written in terminal obs, see above.
+                if "terminal_observation" in infos[env_idx]:
+                    terminal_observation = infos[env_idx]["terminal_observation"]
+                infos[env_idx]["terminal_observation"] = {
+                    "observation": terminal_observation,
+                    "goal": self.goal_trajectories[env_idx][self._goal_idxs[env_idx]],
+                }
+                goal_trajectory, emb_trajectory = self.lge_buffer.sample_trajectory(self.lighten_dist_coef)
+                # For image, we need to transpose the sample
+                goal_trajectory = maybe_transpose(goal_trajectory, self.observation_space["goal"])
+                self.goal_trajectories[env_idx] = goal_trajectory
+                self.emb_trajectories[env_idx] = emb_trajectory
+                self._goal_idxs[env_idx] = 0
+                self.done_countdowns[env_idx] = self.nb_random_exploration_steps
+                self._is_last_goal_reached[env_idx] = False
 
-        dict_obs = self._get_dict_obs(obs)
-        return dict_obs, reward, done, info
+        dict_observations = self._get_dict_obs(observations)
+        return dict_observations, rewards, dones, infos
 
 
 class LatentGoExplore:
@@ -137,9 +182,15 @@ class LatentGoExplore:
         from the previous subgoal, defaults to 1.0
     :param p: Geometric parameter for final goal sampling, defaults to 0.005
     :param n_envs: Number of parallel environments
+    :param env_kwargs: Optional keyword argument to pass to the env constructor
     :param replay_buffer_kwargs: Keyword arguments to pass to the replay buffer on creation, defaults to None
+    :param learning_starts: how many steps of the model to collect transitions for before learning starts
     :param model_kwargs: Keyword arguments to pass to the model on creation, defaults to None
-    :param further_explore: Whether the agent further explore after reaching the final goal, defaults to True
+    :param wrapper_cls: Wrapper class.
+    :param nb_random_exploration_steps: Number of random exploration steps
+    :param module_train_freq: Module train frequency
+    :param module_grad_steps: Module gradient steps per training rollout
+    :param tensorboard_log: the log location for tensorboard (if None, no logging)
     :param verbose: The verbosity level: 0 none, 1 training information, 2 debug, defaults to 0
     :param device: PyTorch device, defaults to "auto"
     """
@@ -147,78 +198,133 @@ class LatentGoExplore:
     def __init__(
         self,
         model_class: Type[OffPolicyAlgorithm],
-        env: Env,
+        env_id: str,
         module_type: str = "inverse",
         latent_size: int = 16,
         distance_threshold: float = 1.0,
         lighten_dist_coef: float = 1.0,
         p: float = 0.005,
         n_envs: int = 1,
+        env_kwargs: Optional[Dict[str, Any]] = None,
         replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
+        learning_starts: int = 100,
         model_kwargs: Optional[Dict[str, Any]] = None,
-        further_explore: bool = True,
+        wrapper_cls: Optional[gym.Wrapper] = None,
+        nb_random_exploration_steps: int = 50,
+        module_train_freq: int = 5_000,
+        module_grad_steps: int = 500,
+        vec_env_cls: Optional[Type[Union[DummyVecEnv, SubprocVecEnv]]] = None,
+        tensorboard_log: Optional[str] = None,
         verbose: int = 0,
         device: Union[torch.device, str] = "auto",
     ) -> None:
-        env = maybe_make_env(env, verbose)
-        if type(env.action_space) is spaces.Discrete:
-            action_size = env.action_space.n
-        elif type(env.action_space) is spaces.Box:
-            action_size = env.action_space.shape[0]
-        obs_size = env.observation_space.shape[0]
-        if is_image_space(env.observation_space):
-            raise NotImplementedError()
-
         self.device = get_device(device)
 
+        env_kwargs = {} if env_kwargs is None else env_kwargs
+        venv = make_vec_env(env_id, n_envs=n_envs, wrapper_class=wrapper_cls, env_kwargs=env_kwargs, vec_env_cls=vec_env_cls)
+        venv = VecGoalify(
+            venv,
+            distance_threshold=distance_threshold,
+            nb_random_exploration_steps=nb_random_exploration_steps,
+            lighten_dist_coef=lighten_dist_coef,
+        )
+        venv = VecMonitor(venv)
+
         # Define the "module" used to learn the latent representation
-        if module_type == "inverse":
-            self.module = InverseModule(obs_size, action_size, latent_size).to(self.device)
-        elif module_type == "forward":
-            self.module = ForwardModule(obs_size, action_size, latent_size).to(self.device)
-        elif module_type == "ae":
-            self.module = AEModule(obs_size, latent_size).to(self.device)
+        action_size = get_size(venv.action_space)
+        if is_image_space(venv.observation_space["observation"]):
+            obs_shape = get_shape(venv.observation_space["observation"])
+            if module_type == "inverse":
+                self.module = CNNInverseModule(obs_shape, action_size, latent_size).to(self.device)
+            elif module_type == "forward":
+                self.module = VQVAEForwardModule(action_size).to(self.device)
+                latent_size = self.module.vqvae.vq_layer.num_embeddings * 8 * 8
+            elif module_type == "ae":
+                self.module = VQVAEModule().to(self.device)
+                # Rewriting on latent size
+                latent_size = self.module.vqvae.vq_layer.num_embeddings * 8 * 8
+        else:  # Not image
+            obs_size = get_size(venv.observation_space["observation"])
+            if module_type == "inverse":
+                self.module = InverseModule(obs_size, action_size, latent_size).to(self.device)
+            elif module_type == "forward":
+                self.module = ForwardModule(obs_size, action_size, latent_size).to(self.device)
+            elif module_type == "ae":
+                self.module = AEModule(obs_size, latent_size).to(self.device)
 
-        # Wrap the env
-        def env_func():
-            return Goalify(
-                maybe_make_env(env, verbose),
-                distance_threshold=distance_threshold,
-                nb_random_exploration_steps=50 if further_explore else 0,
-                lighten_dist_coef=lighten_dist_coef,
-            )
-
-        env = make_vec_env(env_func, n_envs=n_envs)
         replay_buffer_kwargs = {} if replay_buffer_kwargs is None else replay_buffer_kwargs
-        replay_buffer_kwargs.update(dict(encoder=self.module.encoder, distance_threshold=distance_threshold, p=p))
+        replay_buffer_kwargs.update(
+            dict(encoder=self.module.encoder, latent_size=latent_size, distance_threshold=distance_threshold, p=p)
+        )
         model_kwargs = {} if model_kwargs is None else model_kwargs
-        model_kwargs["learning_starts"] = 3_000
-        model_kwargs["train_freq"] = 1
-        model_kwargs["gradient_steps"] = 1
+        model_kwargs["learning_starts"] = learning_starts
+        model_kwargs["train_freq"] = 10
+        model_kwargs["gradient_steps"] = n_envs
+        model_kwargs["tensorboard_log"] = tensorboard_log
         self.model = model_class(
             "MultiInputPolicy",
-            env,
+            venv,
             replay_buffer_class=LGEBuffer,
             replay_buffer_kwargs=replay_buffer_kwargs,
             verbose=verbose,
             **model_kwargs,
         )
         self.replay_buffer = self.model.replay_buffer  # type: LGEBuffer
-        for _env in self.model.env.envs:
-            _env.set_buffer(self.replay_buffer)
+
+        venv.set_buffer(self.replay_buffer)
 
         # Define the learner for module
         if module_type == "inverse":
-            self.module_learner = InverseModuleLearner(self.module, self.replay_buffer)
+            self.module_learner = InverseModuleLearner(
+                self.module,
+                self.replay_buffer,
+                train_freq=module_train_freq,
+                gradient_steps=module_grad_steps,
+                learning_starts=learning_starts,
+            )
         elif module_type == "forward":
-            self.module_learner = ForwardModuleLearner(self.module, self.replay_buffer)
+            if is_image_space(venv.observation_space["observation"]):
+                self.module_learner = VQVAEForwardModuleLearner(
+                    self.module,
+                    self.replay_buffer,
+                    train_freq=module_train_freq,
+                    gradient_steps=module_grad_steps,
+                    learning_starts=learning_starts,
+                )
+            else:
+                self.module_learner = ForwardModuleLearner(
+                    self.module,
+                    self.replay_buffer,
+                    train_freq=module_train_freq,
+                    gradient_steps=module_grad_steps,
+                    learning_starts=learning_starts,
+                )
         elif module_type == "ae":
-            self.module_learner = AEModuleLearner(self.module, self.replay_buffer)
+            if is_image_space(venv.observation_space["observation"]):
+                self.module_learner = VQVAEModuleLearner(
+                    self.module,
+                    self.replay_buffer,
+                    train_freq=module_train_freq,
+                    gradient_steps=module_grad_steps,
+                    learning_starts=learning_starts,
+                )
+            else:
+                self.module_learner = AEModuleLearner(
+                    self.module,
+                    self.replay_buffer,
+                    train_freq=module_train_freq,
+                    gradient_steps=module_grad_steps,
+                    learning_starts=learning_starts,
+                )
 
-    def explore(self, total_timesteps: int) -> None:
+    def explore(self, total_timesteps: int, callback: MaybeCallback = None) -> None:
         """
         Run exploration.
 
         :param total_timesteps: Total number of timesteps for exploration
         """
-        self.model.learn(total_timesteps, callback=[self.module_learner])
+        if callback is not None:
+            callback = [self.module_learner, callback]
+        else:
+            callback = [self.module_learner]
+        self.model.learn(total_timesteps, callback=callback, log_interval=1000)

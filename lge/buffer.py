@@ -8,10 +8,9 @@ from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.utils import get_device
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
-from torch import Tensor
+from torch import nn
 
-from lge.modules.common import Encoder
-from lge.utils import estimate_density, is_image, lighten, sample_geometric_with_max
+from lge.utils import batchify, estimate_density, is_batched, lighten, preprocess, sample_geometric_with_max
 
 
 class LGEBuffer(HerReplayBuffer):
@@ -23,6 +22,7 @@ class LGEBuffer(HerReplayBuffer):
     :param action_space: Action space
     :param env: The training environment
     :param encoder: Encoder to compute latent representation
+    :param latent_size: Feature size, defaults to 16
     :param distance_threshold: The goal is reached when the latent distance between
         the current obs and the goal obs is below this threshold, defaults to 1.0
     :param p: Geometric parameter for final goal sampling, defaults to 0.005
@@ -39,10 +39,11 @@ class LGEBuffer(HerReplayBuffer):
     def __init__(
         self,
         buffer_size: int,
-        observation_space: spaces.Space,
+        observation_space: spaces.Dict,
         action_space: spaces.Space,
         env: VecEnv,
-        encoder: Encoder,
+        encoder: nn.Module,
+        latent_size: int,
         distance_threshold: float = 1.0,
         p: float = 0.005,
         device: Union[torch.device, str] = "auto",
@@ -65,15 +66,14 @@ class LGEBuffer(HerReplayBuffer):
 
         self.distance_threshold = distance_threshold
         self.encoder = encoder
+        self.latent_size = latent_size
         self.p = p
 
-        self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
-        self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, encoder.latent_size), dtype=np.float32)
+        self.goal_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
+        self.next_embeddings = np.zeros((self.buffer_size, self.n_envs, self.latent_size), dtype=np.float32)
 
-        # The buffer does not compute embedding of every new transition stored. The embeddings are
-        # computed when the method recompute_embeddings() is appealed. To keep track of the number
-        # embedding computed, we use self.self.nb_embeddings_computed
-        self.nb_embeddings_computed = 0
+        self.density = np.zeros((self.buffer_size * self.n_envs), dtype=np.float32)
+        self.sorted_density = np.zeros(0, dtype=np.int64)
 
     def add(
         self,
@@ -97,11 +97,8 @@ class LGEBuffer(HerReplayBuffer):
                     episode_end += self.buffer_size
                 episode = np.arange(episode_start, episode_end) % self.buffer_size
 
-                goal_embedding = self.encode(self.observations["goal"][episode, env_idx])
-                self.goal_embeddings[episode, env_idx] = goal_embedding.detach().cpu().numpy()
-
-                next_embedding = self.encode(self.next_observations["observation"][episode, env_idx])
-                self.next_embeddings[episode, env_idx] = next_embedding.detach().cpu().numpy()
+                self.goal_embeddings[episode, env_idx] = self.encode(self.observations["goal"][episode, env_idx])
+                self.next_embeddings[episode, env_idx] = self.encode(self.next_observations["observation"][episode, env_idx])
 
     def recompute_embeddings(self) -> None:
         """
@@ -112,55 +109,52 @@ class LGEBuffer(HerReplayBuffer):
 
         for env_idx in range(self.n_envs):
             # Recompute 256 by 256 to avoid cuda space allocation error.
-            k = 0
-            while k < upper_bound:
-                upper = min(upper_bound, k + 256)
-                goal_embedding = self.encode(self.observations["goal"][k:upper, env_idx])
-                self.goal_embeddings[k:upper, env_idx] = goal_embedding.detach().cpu().numpy()
+            self.goal_embeddings[:upper_bound, env_idx] = self.encode(self.observations["goal"][:upper_bound, env_idx])
+            self.next_embeddings[:upper_bound, env_idx] = self.encode(
+                self.next_observations["observation"][:upper_bound, env_idx]
+            )
 
-                next_embedding = self.encode(self.next_observations["observation"][k:upper, env_idx])
-                self.next_embeddings[k:upper, env_idx] = next_embedding.detach().cpu().numpy()
-                k += 256
-
-        self.nb_embeddings_computed = upper_bound * self.n_envs
+        flat_upper_bound = upper_bound * self.n_envs
 
         # Reshape and convert embeddings to torch tensor
         all_embeddings = self.next_embeddings[:upper_bound]
-        all_embeddings = all_embeddings.reshape(self.nb_embeddings_computed, -1)
+        all_embeddings = all_embeddings.reshape(flat_upper_bound, -1)
         all_embeddings = self.to_torch(all_embeddings)
 
         # Estimate density based on the embeddings
-        density = np.zeros((self.nb_embeddings_computed), dtype=np.float32)
         k = 0
-        while k < self.nb_embeddings_computed:
-            upper = min(self.nb_embeddings_computed, k + 256)
+        while k < flat_upper_bound:
+            upper = min(flat_upper_bound, k + 256)
             embeddings = all_embeddings[k:upper]
-            density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
+            self.density[k:upper] = estimate_density(embeddings, all_embeddings).detach().cpu().numpy()
             k += 256
-        self.density = density
-        self.sorted_density = np.argsort(density)
+        self.sorted_density = np.argsort(self.density[:flat_upper_bound])
 
-    def encode(self, obs: np.ndarray) -> Tensor:
+    def encode(self, obs: Union[int, np.ndarray]) -> np.ndarray:
         """
         Encode an observation.
 
         :param obs: The observation to encode
         :return: The latent representation
         """
-        obs = self.to_torch(obs).float()
-        if is_image(obs):
-            # Convert all to float
-            assert torch.max(obs) > 1
-            obs = obs / 255
-            if obs.shape[-1] == 3:
-                obs = torch.transpose(obs, -1, -3)
-            if len(obs.shape) == 3:
-                obs = obs.unsqueeze(0)
+        _is_batched = is_batched(obs, self.observation_space["observation"])  # whether obs is batched
+        if not _is_batched:
+            obs = batchify(obs)
+
+        step = 64
+        k = 0
+        embeddings = np.zeros((obs.shape[0], self.latent_size), dtype=np.float32)
+        while k < obs.shape[0]:
+            upper = min(obs.shape[0], k + step)
+            _obs = self.to_torch(obs[k:upper])
+            self.encoder.eval()
+            _obs = preprocess(_obs, self.observation_space["observation"])
+            embeddings[k:upper] = self.encoder(_obs).detach().cpu().numpy()
+            k += step
+        if _is_batched:
+            return embeddings
         else:
-            if len(obs.shape) == 1:
-                obs = obs.unsqueeze(0)
-        self.encoder.eval()
-        return self.encoder(obs)
+            return embeddings.squeeze(0)
 
     def sample_trajectory(self, lighten_dist_coef: float = 1.0) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         """
@@ -170,16 +164,24 @@ class LGEBuffer(HerReplayBuffer):
             from the previous subgoal, defaults to 1.0
         :return: The list of subgoals and their latent representation
         """
-        if self.nb_embeddings_computed == 0:  # no embeddings computed yet
+        if len(self.sorted_density) == 0:  # no density computed yet
             goal = np.expand_dims(self.observation_space["goal"].sample(), 0)
-            return goal, self.encode(goal).detach().cpu().numpy()
+            return goal, self.encode(goal)
 
-        goal_id = self.sorted_density[sample_geometric_with_max(self.p, max_value=self.sorted_density.shape[0]) - 1]
-        goal_pos = goal_id // self.n_envs
-        goal_env = goal_id % self.n_envs
-        start = self.ep_start[goal_pos, goal_env]
-        trajectory = self.next_observations["observation"][start : goal_pos + 1, goal_env]
-        emb_trajectory = self.next_embeddings[start : goal_pos + 1, goal_env]
+        is_goal_valid = False
+        while not is_goal_valid:
+            sampled_idx = self.sorted_density[sample_geometric_with_max(self.p, max_value=len(self.sorted_density)) - 1]
+            goal_pos, goal_env = np.unravel_index(sampled_idx, (self.buffer_size, self.n_envs))
+            is_goal_valid = self.ep_length[goal_pos, goal_env] > 0
+
+        episode_start = self.ep_start[goal_pos, goal_env]
+        episode_end = goal_pos + 1
+        # When the buffer is full, the return-to-start mechanism may cause a sampled trajectory to be
+        # partially stored at the beginning and end of the buffer. Handle this situation appropriately.
+        episode_end += self.buffer_size * (episode_end < episode_start)
+        episode = np.arange(episode_start, episode_end) % self.buffer_size
+        trajectory = self.next_observations["observation"][episode, goal_env]
+        emb_trajectory = self.next_embeddings[episode, goal_env]
         # Lighten trajectory
         idxs = lighten(emb_trajectory, self.distance_threshold * lighten_dist_coef)
         trajectory, emb_trajectory = trajectory[idxs], emb_trajectory[idxs]
@@ -198,15 +200,21 @@ class LGEBuffer(HerReplayBuffer):
         :return: Samples
         """
         # Normalize if needed and remove extra dimension (we are using only one env for now)
-        obs_ = self._normalize_obs({key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()})
-        next_obs_ = self._normalize_obs({key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()})
-        next_embeddings = self.next_embeddings[batch_inds, env_indices, :]
-        goal_embeddings = self.goal_embeddings[batch_inds, env_indices, :]
+        obs_ = self._normalize_obs({key: obs[batch_inds, env_indices] for key, obs in self.observations.items()}, env)
+        next_obs_ = self._normalize_obs(
+            {key: obs[batch_inds, env_indices] for key, obs in self.next_observations.items()}, env
+        )
+        next_embeddings = self.next_embeddings[batch_inds, env_indices]
+        goal_embeddings = self.goal_embeddings[batch_inds, env_indices]
 
         # Compute new reward
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
         rewards = is_success.astype(np.float32) - 1
+        deads = np.array(
+            [self.infos[batch_idx, env_idx].get("dead", False) for batch_idx, env_idx in zip(batch_inds, env_indices)],
+            dtype=np.float32,
+        )
 
         # Convert to torch tensor
         observations = {key: self.to_torch(obs) for key, obs in obs_.items()}
@@ -216,12 +224,12 @@ class LGEBuffer(HerReplayBuffer):
             observations=observations,
             actions=self.to_torch(self.actions[batch_inds, env_indices]),
             next_observations=next_observations,
-            # Only use dones that are not due to timeouts
+            # Only use dones that are not due to timeouts nor to death
             # deactivated by default (timeouts is initialized as an array of False)
-            dones=self.to_torch(self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(
-                -1, 1
+            dones=self.to_torch(
+                self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices]) * (1 - deads)
             ),
-            rewards=self.to_torch(self._normalize_reward(rewards.reshape(-1, 1), env)),
+            rewards=self.to_torch(self._normalize_reward(rewards, env)),
         )
 
     def _get_virtual_samples(
@@ -236,9 +244,9 @@ class LGEBuffer(HerReplayBuffer):
         :return: Samples
         """
         # Get infos and obs
-        obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.observations.items()}
-        next_obs = {key: obs[batch_inds, env_indices, :] for key, obs in self.next_observations.items()}
-        next_embeddings = self.next_embeddings[batch_inds, env_indices, :]
+        obs = {key: obs[batch_inds, env_indices] for key, obs in self.observations.items()}
+        next_obs = {key: obs[batch_inds, env_indices] for key, obs in self.next_observations.items()}
+        next_embeddings = self.next_embeddings[batch_inds, env_indices]
 
         # Sample and set new goals
         new_goals, goal_embeddings = self._sample_goals(batch_inds, env_indices)
@@ -250,9 +258,13 @@ class LGEBuffer(HerReplayBuffer):
         dist = np.linalg.norm(goal_embeddings - next_embeddings, axis=1)
         is_success = dist < self.distance_threshold
         rewards = is_success.astype(np.float32) - 1
+        deads = np.array(
+            [self.infos[batch_idx, env_idx].get("dead", False) for batch_idx, env_idx in zip(batch_inds, env_indices)],
+            dtype=np.float32,
+        )
 
-        obs = self._normalize_obs(obs)
-        next_obs = self._normalize_obs(next_obs)
+        obs = self._normalize_obs(obs, env)
+        next_obs = self._normalize_obs(next_obs, env)
 
         # Convert to torch tensor
         observations = {key: self.to_torch(obs) for key, obs in obs.items()}
@@ -264,10 +276,10 @@ class LGEBuffer(HerReplayBuffer):
             next_observations=next_observations,
             # Only use dones that are not due to timeouts
             # deactivated by default (timeouts is initialized as an array of False)
-            dones=self.to_torch(self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(
-                -1, 1
+            dones=self.to_torch(
+                self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices]) * (1 - deads)
             ),
-            rewards=self.to_torch(self._normalize_reward(rewards.reshape(-1, 1), env)),
+            rewards=self.to_torch(self._normalize_reward(rewards, env)),
         )
 
     def _sample_goals(self, batch_inds: np.ndarray, env_indices: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -288,7 +300,8 @@ class LGEBuffer(HerReplayBuffer):
         elif self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
             # replay with random state which comes from the same episode and was observed after current transition
             current_indices_in_episode = batch_inds - batch_ep_start
-            transition_indices_in_episode = np.random.randint(current_indices_in_episode, batch_ep_length)
+            idx_max = np.minimum(current_indices_in_episode + 100, batch_ep_length)
+            transition_indices_in_episode = np.random.randint(current_indices_in_episode, idx_max)
 
         elif self.goal_selection_strategy == GoalSelectionStrategy.EPISODE:
             # replay with random state which comes from the same episode as current transition
