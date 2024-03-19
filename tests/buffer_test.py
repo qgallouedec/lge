@@ -8,8 +8,8 @@ from stable_baselines3.common.utils import set_random_seed
 from torch import optim
 
 from lge.buffer import LGEBuffer
-from lge.modules.ae_module import AEModule, CNNAEModule
-from lge.modules.forward_module import CNNForwardModule, ForwardModule
+from lge.modules.ae_module import AEModule
+from lge.modules.forward_module import ForwardModule
 from lge.modules.inverse_module import CNNInverseModule, InverseModule
 from lge.utils import get_shape, get_size, preprocess
 from tests.utils import DummyEnv

@@ -2,8 +2,8 @@ import pytest
 import torch
 from stable_baselines3.common.utils import set_random_seed
 
-from lge.modules.ae_module import AEModule, CNNAEModule
-from lge.modules.forward_module import CNNForwardModule, ForwardModule
+from lge.modules.ae_module import AEModule
+from lge.modules.forward_module import ForwardModule
 from lge.modules.inverse_module import CNNInverseModule, InverseModule
 
 BATCH_SIZE = 32

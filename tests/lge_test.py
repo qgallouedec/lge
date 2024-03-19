@@ -8,9 +8,9 @@ from stable_baselines3.common.utils import set_random_seed
 
 from lge import LatentGoExplore
 from lge.buffer import LGEBuffer
-from lge.lge import Goalify
-from lge.modules.ae_module import AEModule, CNNAEModule
-from lge.modules.forward_module import CNNForwardModule, ForwardModule
+from lge.lge import VecGoalify
+from lge.modules.ae_module import AEModule
+from lge.modules.forward_module import ForwardModule
 from lge.modules.inverse_module import CNNInverseModule, InverseModule
 from lge.utils import get_shape, get_size
 from tests.utils import BitFlippingEnv, DummyEnv
@@ -45,7 +45,7 @@ SEED = 42
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
 def test_goalify(observation_space, action_space):
     env = DummyEnv(observation_space, action_space)
-    env = Goalify(env)
+    env = VecGoalify(env)
     assert "observation" in env.observation_space.keys()
     assert "goal" in env.observation_space.keys()
     assert env.observation_space["observation"].__class__ == env.observation_space["goal"].__class__
@@ -56,7 +56,7 @@ def test_goalify(observation_space, action_space):
 @pytest.mark.parametrize("action_space", ACTION_SPACES)
 def test_reset_no_buffer(observation_space, action_space):
     env = DummyEnv(observation_space, action_space)
-    env = Goalify(env)
+    env = VecGoalify(env)
     with pytest.raises(AssertionError):
         env.reset()
 
@@ -89,7 +89,7 @@ def test_goalify_reset(observation_space, action_space, module_class):
     # Create environment
     def env_func():
         env = DummyEnv(observation_space, action_space)
-        env = Goalify(env)
+        env = VecGoalify(env)
         return env
 
     venv = make_vec_env(env_func, N_ENVS)
@@ -129,7 +129,7 @@ def test_goalify_step(action_type, observation_type, module_class):
     # Create environment
     def env_func():
         env = BitFlippingEnv(8, action_type, observation_type)
-        env = Goalify(env, distance_threshold=distance_threshold)
+        env = VecGoalify(env, distance_threshold=distance_threshold)
         return env
 
     venv = make_vec_env(env_func, N_ENVS)
